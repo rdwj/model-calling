@@ -3,6 +3,7 @@ Adapter for Ollama models.
 """
 import json
 import logging
+import re
 import time
 import sys
 from typing import Dict, List, Any, Optional, Tuple
