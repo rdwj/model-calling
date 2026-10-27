@@ -1,10 +1,98 @@
 # Next Session — api-shapes
 
-## Next: <to be planned via /plan-next-session>
+## Next: Phase 1, offline test harness and green CI
 
-(No next-session focus selected yet. Run `/plan-next-session api-shapes` to
-pick the first slice from the phases below. Phase 1 is the only phase with
-no dependencies.)
+Build the offline test harness from Phase 1 below and get CI fully green.
+Every later phase uses this suite as its exit predicate, so it lands first.
+All items share that one theme.
+
+1. **Lint baseline** (mechanical, do first)
+   Fix the two F821 bugs that fail CI lint today, each with a regression
+   test: `re` is used but never imported in
+   `model_calling/ollama_adapter.py` (the tool-call debug logging around
+   line 397 crashes when a model writes a function call as plain text), and
+   `logger` is used before it is defined in the `ImportError` fallback at
+   `model_calling/registry.py:24`. Then make one standalone
+   `style: Apply black` commit over `model_calling/` and `tests/` with no
+   other changes, so the Phase 2 refactor diffs stay readable.
+
+2. **Test isolation and markers**
+   Add the `integration` and `live` markers to `pyproject.toml`. Move the
+   three existing service-dependent test files under `integration`, and add
+   `requests==2.34.2` (already in `uv.lock`) to the `dev` group, since those
+   tests import it undeclared today. Make `conftest.py` point the capability
+   cache at `tmp_path` and skip dotenv loading for offline tests, so nothing
+   reads `~/.model_calling/`, `.env`, or `tests/models_available.py`.
+   Default `pytest` runs exclude `integration` and `live`.
+
+3. **SDK validators and replay harness**
+   Add `openai` and `anthropic` to the `dev` group under the dependency
+   policy: exact pins, at or before the `exclude-newer` cutoff, clean
+   audit. Look up their current type modules (via context7 or the installed
+   source, not from memory) and write helpers that parse our output with
+   `openai.types.chat.ChatCompletion` / `ChatCompletionChunk` and
+   `anthropic.types.Message` / stream events. Add an httpx replay transport
+   that serves committed fixtures, run the FastAPI app in-process through
+   ASGI transport, and add the (ingress, backend) grid parametrization
+   helper. Write offline tests covering today's behavior: the server's
+   Chat Completions path against replayed Ollama and OpenAI-compatible
+   responses. Where current behavior is wrong, mark those tests `xfail`
+   with a reason that points at the phase that fixes them. Don't fix them
+   in this session.
+
+4. **Fixture recorder, live tests, spend ledger**
+   Add a committed recorder script that captures OpenRouter and Ollama
+   (`qwen3:4b`) responses into `tests/fixtures/` with auth headers
+   scrubbed. Add `-m live` smoke tests (one cheap call per wire format:
+   Chat Completions, Messages, Responses) that append each call's cost to
+   the committed `tests/live/spend.jsonl`, plus a guard that refuses to run
+   once the ledger total reaches $5.
+
+5. **CI**
+   Trim the test matrix to Ubuntu on 3.11, 3.12, 3.13, and 3.14 plus macOS
+   and Windows on 3.12. CI runs the offline suite only.
+
+**Sequencing.** Do 1 first so lint and formatting are clean before new code
+lands. Do 2 before 3 so new tests start isolated. Item 4 needs 3's replay
+format. Item 5 goes last, once the suite passes locally.
+
+**Constraints for the session:**
+- Dependency policy applies to `openai`, `anthropic`, and anything else
+  added: exact pins, release on or before the `exclude-newer` cutoff, clean
+  `pip-audit`. Do not move the cutoff in this session unless a pinned
+  version has a CVE.
+- Clean-room rule: no LiteLLM source, docs, or types.
+- Harness only: no adapter or server behavior changes beyond the two F821
+  fixes. Wrong behavior gets an `xfail` pointing at its phase.
+
+**Session start protocol:**
+- Premise checks (before item 1, report before acting):
+  `git status` is clean apart from the untracked `test_model_calling.py`,
+  and `main` matches `origin/main`. `gh run list --limit 3` shows the most
+  recent `Test Package` run: dependencies job green, lint and tests red
+  for the known reasons (F821 and connection refused). Ollama is running
+  and has `qwen3:4b` (`ollama list`). `OPENROUTER_API_KEY` is set, and
+  `GET https://openrouter.ai/api/v1/key` shows roughly $47 remaining.
+  Using OpenRouter's free models endpoint, pick the cheapest tool-capable
+  model for each of chat/completions, messages, and responses, and record
+  the picks in this file before recording fixtures.
+- Rules with history:
+  - Harness only. When a test exposes a bug, mark it `xfail` and move on.
+    The bug list belongs to Phase 2.
+  - Live spend for this session is capped at $0.50, measured from
+    `tests/live/spend.jsonl`. Stop and ask before exceeding it.
+  - Every new dependency is pinned and audited before it is used.
+- Stop-and-ask before: spending past $0.50 on OpenRouter, moving the
+  `exclude-newer` cutoff, force-pushing, or changing the published
+  `[project] dependencies`.
+- Close ritual: run `/session-close`, update "What landed" here, record
+  session spend from the ledger, and confirm CI is green on the pushed
+  commit with `gh run list`.
+
+**Definition of done for the session:** Phase 1's definition of done, i.e.
+`HOME=$(mktemp -d) uv run pytest` passes offline in under 30s,
+`uv run pytest -m live` passes and the ledger is committed, and every job in
+the latest `Test Package` run is green.
 
 ## Remaining epic phases
 
@@ -314,10 +402,21 @@ suite passes with LiteLLM removed from its dependencies.
 
 ## What landed last session (2026-10-26)
 
-Public-release prep: relicensed to Apache-2.0, moved to PEP 621 packaging
-with a Python 3.11 floor, switched to UBI 9 containers, lazy-loaded the
-torch-dependent moderation adapter, removed docs for unbuilt companion
-projects, rewrote history to a single root commit, and made the repo public.
+Public-release prep and planning. Relicensed to Apache-2.0, moved to PEP 621
+packaging with a Python 3.11 floor, lazy-loaded the torch-dependent
+moderation adapter, removed docs for unbuilt companion projects, rewrote
+history to a single root commit, and made the repo public. Planned this epic
+and adopted the dependency policy.
+
+**Commits:** `23f63dc` initial public release; `27866ab` independent-
+implementation and offline-testing rules; `2f9a2a8` epic plan; `1fdd8c0` exact
+pins behind a 7-day cutoff, SHA-pinned Actions, digest-pinned images, and the
+CI dependency gate (the first audit caught certifi PYSEC-2026-4320);
+`2edf055` dependency policy docs; `5d76b5b` policy applied to the phases.
+
+**CI baseline on `5d76b5b`:** dependencies job green; lint red on two F821
+bugs; tests red because they need a running service. Black would reformat 22
+of 23 files.
 
 ## Watch out for
 
