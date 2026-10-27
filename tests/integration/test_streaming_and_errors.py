@@ -6,7 +6,9 @@ import pytest
 import requests
 import json
 import time
-from tests.conftest import TEST_CONFIG, TEST_MESSAGES, WEATHER_TOOL
+from tests.integration.conftest import TEST_CONFIG, TEST_MESSAGES, WEATHER_TOOL
+
+pytestmark = pytest.mark.integration
 
 # Base URL for API calls
 BASE_URL = TEST_CONFIG["service_url"]

@@ -102,4 +102,4 @@ else
 fi
 
 echo -e "\n${YELLOW}Diagnosis complete.${NC}"
-echo -e "Use this information to update the tests in ${GREEN}tests/conftest.py${NC} with working models."
+echo -e "Use this information to update the tests in ${GREEN}tests/integration/conftest.py${NC} with working models."

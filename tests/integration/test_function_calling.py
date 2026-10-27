@@ -5,7 +5,7 @@ Tests for function calling (tool use) capabilities with Ollama models.
 import pytest
 import requests
 import json
-from tests.conftest import (
+from tests.integration.conftest import (
     TEST_CONFIG,
     WEATHER_TOOL,
     CALCULATOR_TOOL,
@@ -13,6 +13,8 @@ from tests.conftest import (
     get_weather,
     calculate,
 )
+
+pytestmark = pytest.mark.integration
 
 # Base URL for API calls
 BASE_URL = TEST_CONFIG["service_url"]

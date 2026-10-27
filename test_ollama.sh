@@ -12,7 +12,7 @@ run_tests() {
     local test_description=$2
     
     echo -e "\n${YELLOW}Running $test_description...${NC}"
-    PYTHONPATH=$PWD python -m pytest $test_pattern -v
+    PYTHONPATH=$PWD python -m pytest -m integration $test_pattern -v
     echo -e "${GREEN}Completed $test_description.${NC}"
 }
 
@@ -32,23 +32,23 @@ echo -e "${YELLOW}Running tests...${NC}"
 # Stay in the root directory and use correct paths
 if [[ "$1" == "function" || "$1" == "functions" || "$1" == "tool" || "$1" == "tools" ]]; then
     # Run only function calling tests
-    run_tests "tests/test_function_calling.py" "function calling tests"
+    run_tests "tests/integration/test_function_calling.py" "function calling tests"
 elif [[ "$1" == "basic" ]]; then
     # Run only basic tests
-    run_tests "tests/test_basic.py" "basic functionality tests"
+    run_tests "tests/integration/test_basic.py" "basic functionality tests"
 elif [[ "$1" == "streaming" || "$1" == "stream" ]]; then
     # Run only streaming tests
-    run_tests "tests/test_streaming_and_errors.py::test_streaming*" "streaming tests"
+    run_tests "tests/integration/test_streaming_and_errors.py::test_streaming*" "streaming tests"
 elif [[ "$1" == "errors" || "$1" == "error" ]]; then
     # Run only error tests
-    run_tests "tests/test_streaming_and_errors.py::test_invalid_model tests/test_streaming_and_errors.py::test_malformed_request" "error handling tests"
+    run_tests "tests/integration/test_streaming_and_errors.py::test_invalid_model tests/integration/test_streaming_and_errors.py::test_malformed_request" "error handling tests"
 elif [[ "$1" == "quick" || "$1" == "fast" ]]; then
     # Run a subset of tests quickly to verify functionality
-    run_tests "tests/test_basic.py::test_service_health" "quick verification tests"
+    run_tests "tests/integration/test_basic.py::test_service_health" "quick verification tests"
 else
     # Run all tests
     echo -e "${YELLOW}Running all tests...${NC}"
-    PYTHONPATH=$PWD python -m pytest tests/ -v
+    PYTHONPATH=$PWD python -m pytest -m integration tests/integration -v
     echo -e "${GREEN}Completed all tests.${NC}"
 fi
 

@@ -5,7 +5,9 @@ Tests for basic Model Calling functionality with Ollama models.
 import pytest
 import requests
 import json
-from tests.conftest import TEST_CONFIG, TEST_MESSAGES, TEST_SYSTEM_MESSAGES
+from tests.integration.conftest import TEST_CONFIG, TEST_MESSAGES, TEST_SYSTEM_MESSAGES
+
+pytestmark = pytest.mark.integration
 
 # Base URL for API calls
 BASE_URL = TEST_CONFIG["service_url"]

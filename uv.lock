@@ -1101,6 +1101,7 @@ dev = [
     { name = "pip-audit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "requests" },
 ]
 
 [package.metadata]
@@ -1127,6 +1128,7 @@ dev = [
     { name = "pip-audit", specifier = "==2.10.1" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-asyncio", specifier = "==1.4.0" },
+    { name = "requests", specifier = "==2.34.2" },
 ]
 
 [[package]]

@@ -1,158 +1,125 @@
 """
-Test configuration and utilities.
+Shared pytest configuration.
+
+The default run is offline. It needs no network, backend, or running
+service, and reads nothing from the machine: not `~/.model_calling/`, not
+`.env`, and not the generated `tests/models_available.py`. Tests marked
+`integration` or `live` opt out of that isolation.
 """
 
+import atexit
+import ipaddress
 import os
-import json
+import re
+import shutil
+import socket
+import tempfile
+from pathlib import Path
+
+import dotenv
+import httpx
 import pytest
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+TESTS_DIR = Path(__file__).parent
+INTEGRATION_DIR = TESTS_DIR / "integration"
+OPT_OUT_MARKERS = ("integration", "live")
 
-# Define fallback models in case auto-configuration hasn't run
-FALLBACK_FUNCTION_CALLING = [
-    "mistral-small3.1:24b",  # Larger model with good function calling
-    "granite3-dense:8b",  # Medium-sized model
-    "llama3:latest",  # Alternative model family
-]
+# Environment the package reads for backend URLs and credentials. Offline
+# tests must never see the developer's real values.
+BACKEND_ENV_VARS = (
+    "OLLAMA_BASE_URL",
+    "VLLM_BASE_URL",
+    "VLLM_OPENAI_COMPATIBLE",
+    "OPENAI_API_KEY",
+    "OPENAI_API_BASE",
+    "OPENAI_ORG_ID",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_API_BASE",
+    "COHERE_API_KEY",
+    "COHERE_API_BASE",
+    "OPENROUTER_API_KEY",
+)
 
-FALLBACK_BASIC_MODELS = [
-    "mistral:latest",  # Basic model for simple tests
-    "llama3:latest",  # Alternative model family
-]
+# This module loads before any test module imports model_calling.
+# capability_cache builds a singleton at import time that reads
+# ~/.model_calling/capability_cache.json, so home has to point at an empty
+# directory first. Integration tests talk to a service in another process,
+# and live tests read only the environment, so neither needs the real home.
+_SESSION_HOME = tempfile.mkdtemp(prefix="model-calling-tests-home-")
+atexit.register(shutil.rmtree, _SESSION_HOME, ignore_errors=True)
+os.environ["HOME"] = _SESSION_HOME
+os.environ["USERPROFILE"] = _SESSION_HOME
 
-# Try to import models from auto-generated file
-try:
-    from .models_available import FUNCTION_CALLING_MODELS, BASIC_MODELS
-except ImportError:
-    # Use fallback models if auto-config hasn't been run yet
-    FUNCTION_CALLING_MODELS = FALLBACK_FUNCTION_CALLING
-    BASIC_MODELS = FALLBACK_BASIC_MODELS
-
-# Configuration for tests
-TEST_CONFIG = {
-    "service_url": os.environ.get("MODEL_CALLING_URL", "http://localhost:8000"),
-    "ollama_models": {
-        # Models that support function calling
-        "function_calling": FUNCTION_CALLING_MODELS[
-            :1
-        ],  # Only use the first model to speed up tests
-        # Models for basic tests
-        "basic": BASIC_MODELS[:1],  # Only use the first model to speed up tests
-    },
-}
-
-# Test data
-TEST_MESSAGES = [{"role": "user", "content": "What is the capital of France?"}]
-
-TEST_SYSTEM_MESSAGES = [
-    {"role": "system", "content": "You are a helpful assistant that provides concise answers."},
-    {"role": "user", "content": "What is the capital of France?"},
-]
-
-WEATHER_TOOL = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get current weather in a location",
-            "parameters": {
-                "type": "object",
-                "properties": {"location": {"type": "string", "description": "City name"}},
-                "required": ["location"],
-            },
-        },
-    }
-]
-
-CALCULATOR_TOOL = [
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate",
-            "description": "Perform a mathematical calculation",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "expression": {
-                        "type": "string",
-                        "description": "Mathematical expression to calculate",
-                    }
-                },
-                "required": ["expression"],
-            },
-        },
-    }
-]
-
-MULTIPLE_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get current weather in a location",
-            "parameters": {
-                "type": "object",
-                "properties": {"location": {"type": "string", "description": "City name"}},
-                "required": ["location"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate",
-            "description": "Perform a mathematical calculation",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "expression": {
-                        "type": "string",
-                        "description": "Mathematical expression to calculate",
-                    }
-                },
-                "required": ["expression"],
-            },
-        },
-    },
-]
+# server.py calls load_dotenv() at import. Make that a no-op so a developer's
+# .env never configures the code under test. The integration conftest calls
+# dotenv.main.load_dotenv directly when it wants the real thing.
+dotenv.load_dotenv = lambda *args, **kwargs: False
 
 
-# Mock function implementations
-def get_weather(location):
-    """Mock weather function"""
-    return {
-        "location": location,
-        "temperature": 22,
-        "unit": "celsius",
-        "description": "Partly cloudy",
-    }
+def _selects_marker(config: pytest.Config, marker: str) -> bool:
+    """True when the -m expression asks for `marker` rather than excluding it."""
+    expr = config.getoption("markexpr") or ""
+    return re.search(rf"(?<!not )\b{marker}\b", expr) is not None
 
 
-def calculate(expression):
-    """Mock calculator function"""
-    try:
-        # Basic safety check - only allow simple arithmetic
-        allowed_chars = set("0123456789+-*/() .")
-        if not all(c in allowed_chars for c in expression):
-            return {"error": "Invalid expression, only basic arithmetic allowed"}
-
-        # Safely evaluate expression
-        result = eval(expression, {"__builtins__": {}})
-        return {"result": result}
-    except Exception as e:
-        return {"error": str(e)}
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config):
+    # Importing the integration package reads .env and models_available.py,
+    # so skip it entirely unless the run selects integration tests.
+    if collection_path == INTEGRATION_DIR and not _selects_marker(config, "integration"):
+        return True
+    return None
 
 
-# Export these for other test files to use
-__all__ = [
-    "TEST_CONFIG",
-    "TEST_MESSAGES",
-    "TEST_SYSTEM_MESSAGES",
-    "WEATHER_TOOL",
-    "CALCULATOR_TOOL",
-    "MULTIPLE_TOOLS",
-    "get_weather",
-    "calculate",
-]
+def _is_offline(item: pytest.Item) -> bool:
+    return not any(item.get_closest_marker(m) for m in OPT_OUT_MARKERS)
+
+
+@pytest.fixture(autouse=True)
+def offline_isolation(request, monkeypatch, tmp_path):
+    """Strip backend env vars, use a per-test capability cache, block the network."""
+    if not _is_offline(request.node):
+        yield
+        return
+
+    for var in BACKEND_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+    from model_calling.capability_cache import capability_cache
+
+    monkeypatch.setattr(capability_cache, "cache_file", str(tmp_path / "capability_cache.json"))
+    monkeypatch.setattr(capability_cache, "cache", capability_cache._load_cache())
+
+    real_connect = socket.socket.connect
+
+    def guarded_connect(sock, address):
+        # Loopback stays open: asyncio's self-pipe uses it on Windows.
+        if sock.family in (socket.AF_INET, socket.AF_INET6):
+            host = address[0]
+            try:
+                loopback = ipaddress.ip_address(host).is_loopback
+            except ValueError:
+                loopback = host == "localhost"
+            if not loopback:
+                raise RuntimeError(
+                    f"Offline test tried to connect to {address!r}. Serve backend "
+                    "responses from a fixture, or mark the test integration/live."
+                )
+        return real_connect(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+
+    # The package reaches backends only through httpx. Blocking its network
+    # transports also catches loopback calls (a local Ollama or server) that
+    # the socket guard lets through. Replay and ASGI transports are unaffected.
+    def blocked_transport(transport, request):
+        raise RuntimeError(
+            f"Offline test sent {request.method} {request.url} over the network. "
+            "Use the replay transport from tests/harness, or mark the test integration/live."
+        )
+
+    async def blocked_async_transport(transport, request):
+        blocked_transport(transport, request)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", blocked_transport)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", blocked_async_transport)
+    yield

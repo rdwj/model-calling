@@ -20,6 +20,6 @@ echo -e "${GREEN}Model-calling service is running.${NC}"
 echo -e "${YELLOW}Running tests...${NC}"
 
 # Stay in the root directory for correct imports
-PYTHONPATH=$PWD python -m pytest tests/ "$@" --verbose
+PYTHONPATH=$PWD python -m pytest -m integration tests/integration "$@" --verbose
 
 echo -e "\n${YELLOW}Tests complete. Check the output above for any failures.${NC}"

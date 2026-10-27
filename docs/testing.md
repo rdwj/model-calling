@@ -84,7 +84,7 @@ TEST_CONFIG = {
 
 You can customize which models to test by:
 1. Running the auto-configuration script (`./auto_config_tests.sh`)
-2. Manually editing the `conftest.py` file
+2. Manually editing the `tests/integration/conftest.py` file
 
 ## Understanding Test Output
 
@@ -140,7 +140,7 @@ When testing function calling, there are a few possible outcomes:
 
 3. **Test One Category at a Time**: Use the category-specific test commands to focus on particular functionality.
 
-4. **Check Model Availability**: Ensure the models listed in `conftest.py` are available in your Ollama installation.
+4. **Check Model Availability**: Ensure the models listed in `tests/integration/conftest.py` are available in your Ollama installation.
 
 ## Diagnosing Model Issues
 
@@ -160,4 +160,4 @@ This script will:
 3. Test several models to see which ones work
 4. Test function calling capabilities
 
-Based on the results, you can update the test configuration in `tests/conftest.py` to use models that are compatible with your setup.
+Based on the results, you can update the test configuration in `tests/integration/conftest.py` to use models that are compatible with your setup.
