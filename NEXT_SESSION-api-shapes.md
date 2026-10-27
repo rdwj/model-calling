@@ -89,6 +89,14 @@ format. Item 5 goes last, once the suite passes locally.
   session spend from the ledger, and confirm CI is green on the pushed
   commit with `gh run list`.
 
+**Live model picks (2026-10-26).** `mistralai/mistral-nemo` for all three
+endpoints ($0.029 in / $0.030 out per M tokens). It is the cheapest paid
+model on OpenRouter's model list that supports both `tools` and
+`tool_choice`. A probe call to each of `/chat/completions`, `/messages`,
+and `/responses` succeeded and returned `usage.cost` in the body, which the
+ledger reads. `:free` models were skipped because rate limits and catalog
+churn would make recording and live runs flaky.
+
 **Definition of done for the session:** Phase 1's definition of done, i.e.
 `HOME=$(mktemp -d) uv run pytest` passes offline in under 30s,
 `uv run pytest -m live` passes and the ledger is committed, and every job in

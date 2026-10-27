@@ -1,0 +1,8 @@
+{"ts": "2026-10-27T03:50:30+00:00", "source": "probe:model-pick", "endpoint": "chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793073017-qZu2UhcqoF31vgpfel7Z", "cost_usd": 3.3e-07}
+{"ts": "2026-10-27T03:50:30+00:00", "source": "probe:model-pick", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_W3tEUGObadHeRatdUAZ7", "cost_usd": 3.3e-07}
+{"ts": "2026-10-27T03:50:30+00:00", "source": "probe:model-pick", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793073021-MvQGJ1L8cS1cNUyoPiz0", "cost_usd": 4.8e-07}
+{"ts": "2026-10-27T03:52:46+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "model-calling/does-not-exist", "id": null, "cost_usd": 0.0}
+{"ts": "2026-10-27T03:52:48+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793073166-ZguqLJso9ZEUNOK1P1vL", "cost_usd": 2.88e-07}
+{"ts": "2026-10-27T03:52:48+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793073168-3ZIxzPt9qwjzA8PcdrJZ", "cost_usd": 2.4696e-07}
+{"ts": "2026-10-27T03:52:49+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793073168-2qE5vcmXhWk0cyMjMtB1", "cost_usd": 1.7856e-06}
+{"ts": "2026-10-27T03:53:00+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "model-calling/does-not-exist", "id": null, "cost_usd": 0.0}
