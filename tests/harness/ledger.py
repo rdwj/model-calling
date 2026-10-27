@@ -19,6 +19,9 @@ EPIC_BUDGET_USD = 5.00
 OPENROUTER_GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 GENERATION_LOOKUP_ATTEMPTS = 5
 GENERATION_LOOKUP_DELAY_S = 2
+# Charged when a paid call's cost can't be determined, far above what any
+# call in this suite costs, so an unknown never lets spend slip past the guard.
+UNKNOWN_COST_USD = 0.05
 
 
 class BudgetExceeded(RuntimeError):
@@ -69,6 +72,22 @@ def record(
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
+
+
+def response_cost(client: httpx.Client, key: str, body: dict) -> Optional[float]:
+    """usage.cost from a response body, else OpenRouter's generation lookup.
+
+    Returns None when neither works; callers record UNKNOWN_COST_USD then.
+    """
+    cost = (body.get("usage") or {}).get("cost")
+    if cost is not None:
+        return float(cost)
+    if not body.get("id"):
+        return None
+    try:
+        return lookup_generation_cost(client, key, body["id"])
+    except (RuntimeError, httpx.HTTPError, KeyError, ValueError):
+        return None
 
 
 def lookup_generation_cost(client: httpx.Client, key: str, response_id: str) -> float:

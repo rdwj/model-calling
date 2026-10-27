@@ -53,7 +53,9 @@ def parse_sse(text: str) -> List[Union[dict, str]]:
         ]
         if not data_lines:
             continue
-        data = "\n".join(data_lines)
+        data = "\n".join(data_lines).strip()
+        if not data:
+            continue
         if data == SSE_DONE:
             events.append(SSE_DONE)
             continue

@@ -24,6 +24,10 @@ fixture for credential patterns.
 
 Places where OpenRouter's responses don't match the official SDK types:
 
+- **Chat Completions streaming** (checked 2026-10-26): the final chunk
+  that carries `usage` repeats `finish_reason` and a delta in `choices`,
+  where OpenAI sends `choices: []`. The grid's stream check allows a
+  repeated `finish_reason`.
 - **Responses API usage** (`/api/v1/responses`, checked 2026-10-26):
   `usage.input_tokens_details` omits `cache_write_tokens`, which
   `openai.types.responses.ResponseUsage` requires as of `openai` 3.35.1.

@@ -76,13 +76,20 @@ def record_one(client: httpx.Client, backend: Backend, scenario: Scenario) -> Ex
     if key is not None:
         if lines is not None:
             response_id, cost = _stream_cost(lines)
-        else:
+            if cost is None:
+                cost = ledger.response_cost(client, key, {"id": response_id})
+        elif resp.status_code == 200:
             response_id = response_json.get("id")
-            cost = (response_json.get("usage") or {}).get("cost")
-        if cost is None and response_id and resp.status_code == 200:
-            cost = ledger.lookup_generation_cost(client, key, response_id)
+            cost = ledger.response_cost(client, key, response_json)
+        else:
+            # OpenRouter doesn't bill rejected requests.
+            response_id, cost = None, 0.0
         ledger.record(
-            LEDGER_SOURCE, backend.endpoint, body["model"], response_id, float(cost or 0.0)
+            LEDGER_SOURCE,
+            backend.endpoint,
+            body["model"],
+            response_id,
+            ledger.UNKNOWN_COST_USD if cost is None else cost,
         )
 
     if isinstance(response_json, dict):

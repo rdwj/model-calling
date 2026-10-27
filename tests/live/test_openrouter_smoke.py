@@ -53,12 +53,18 @@ def call_and_record(openrouter, endpoint: str, body: dict, headers=None) -> dict
     client, key = openrouter
     ledger.check_budget()
     resp = client.post(f"/{endpoint}", json=body, headers=headers or {})
+    data = (
+        resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+    )
+    cost = ledger.response_cost(client, key, data)
+    ledger.record(
+        LEDGER_SOURCE,
+        endpoint,
+        LIVE_MODEL,
+        data.get("id"),
+        ledger.UNKNOWN_COST_USD if cost is None else cost,
+    )
     assert resp.status_code == 200, f"{endpoint}: HTTP {resp.status_code} {resp.text}"
-    data = resp.json()
-    cost = (data.get("usage") or {}).get("cost")
-    if cost is None:
-        cost = ledger.lookup_generation_cost(client, key, data["id"])
-    ledger.record(LEDGER_SOURCE, endpoint, LIVE_MODEL, data.get("id"), float(cost))
     return data
 
 

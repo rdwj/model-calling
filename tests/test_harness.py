@@ -48,6 +48,8 @@ def test_streaming_exchange_replays_lines():
         ('data: {"a": 1}\n\ndata: [DONE]\n\n', [{"a": 1}, SSE_DONE]),
         ('event: message_start\ndata: {"type": "message_start"}\n\n', [{"type": "message_start"}]),
         ('data: {"a": 1}\r\n\r\n: comment\n\n', [{"a": 1}]),
+        ("data: [DONE]  \n\n", [SSE_DONE]),
+        ("data: \n\n", []),
     ],
 )
 def test_parse_sse(text, expected):

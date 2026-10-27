@@ -13,3 +13,6 @@
 {"ts": "2026-10-27T03:55:59+00:00", "source": "tests/live", "endpoint": "chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793073358-EYnHUFOzWpFYRBVFm27A", "cost_usd": 2.4696e-07}
 {"ts": "2026-10-27T03:55:59+00:00", "source": "tests/live", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_h7jnWdlGmGYnWEnxlLuL", "cost_usd": 4.38e-07}
 {"ts": "2026-10-27T03:56:00+00:00", "source": "tests/live", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793073360-0sSH3BzslqSXgi4wKDif", "cost_usd": 2.4696e-07}
+{"ts": "2026-10-27T04:04:55+00:00", "source": "tests/live", "endpoint": "chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793073895-yXUkO0ftuC5UVUX5YHuC", "cost_usd": 2.88e-07}
+{"ts": "2026-10-27T04:04:57+00:00", "source": "tests/live", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_RXSzSz7ylpu3slZM7W9o", "cost_usd": 2.88e-07}
+{"ts": "2026-10-27T04:04:58+00:00", "source": "tests/live", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793073897-U7WgUeqrQbzxqVpXEWjZ", "cost_usd": 2.88e-07}

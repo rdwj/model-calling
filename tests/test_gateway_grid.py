@@ -71,7 +71,8 @@ async def check_chat_completions_stream(gateway, cell, replay):
     finish = [
         c.choices[0].finish_reason for c in chunks if c.choices and c.choices[0].finish_reason
     ]
-    assert finish == ["stop"]
+    # OpenRouter repeats finish_reason on its usage chunk, so allow repeats.
+    assert finish and set(finish) == {"stop"}, finish
     assert len({c.id for c in chunks}) == 1, "chunks of one stream must share an id"
     assert {c.model for c in chunks} == {BACKENDS[cell.backend].gateway_model}
 
