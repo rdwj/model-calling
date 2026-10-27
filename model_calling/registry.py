@@ -16,6 +16,8 @@ from model_calling.thinking import ThinkingStyle
 from model_calling.callbacks import DefaultCallback
 from model_calling.capability_cache import capability_cache
 
+logger = logging.getLogger(__name__)
+
 # Import the capability testing module
 try:
     from model_calling.capability_testing import CapabilityTester
@@ -34,8 +36,6 @@ from model_calling.hosted.cohere_embedding_adapter import CohereEmbeddingAdapter
 from model_calling.hosted.openai_adapter import OpenAIAdapter, OPENAI_MODELS
 from model_calling.hosted.anthropic_adapter import AnthropicAdapter, ANTHROPIC_MODELS
 from model_calling.hosted.cohere_adapter import CohereAdapter, COHERE_MODELS
-
-logger = logging.getLogger(__name__)
 
 
 class ModelCapabilities:
