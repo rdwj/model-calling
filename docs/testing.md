@@ -1,10 +1,10 @@
 # Testing Guide
 
-This guide covers how to use the Model Calling test suite to verify functionality with local Ollama models, with a particular focus on testing function calling (tool use) capabilities.
+Plain `uv run pytest` runs the offline suite, which needs no network or backend; [tests/README.md](../tests/README.md) covers it along with the live tests. This guide covers the `integration` suite, which verifies a running gateway against local Ollama models, with a particular focus on function calling (tool use).
 
 ## Running Tests
 
-Model Calling includes several test scripts for convenience:
+These scripts run the integration suite (`pytest -m integration`):
 
 ```bash
 # Make scripts executable first
@@ -118,7 +118,7 @@ export MODEL_CALLING_URL="http://your-service-url:8000"
 
 ## Writing Custom Tests
 
-You can add your own tests by creating new test files in the `tests` directory. See the [tests README](tests/README.md) for more details on the test structure and how to add new tests.
+You can add your own tests by creating new test files in the `tests` directory. See the [tests README](../tests/README.md) for more details on the test structure and how to add new tests.
 
 ## Interpreting Function Call Results
 

@@ -286,36 +286,17 @@ registry.register_adapter_class("custom", MyCustomAdapter)
 
 ## Testing
 
-Model Calling includes a comprehensive test suite focusing on:
-
-- Basic functionality with different models
-- Function calling (tool use) capabilities 
-- Streaming responses
-- Error handling
-
-To run the tests:
-
 ```bash
-# Run all tests
-./run_tests.sh
-
-# Run only function calling tests
-./test_ollama.sh function
-
-# Run a quick verification
-./test_ollama.sh quick
-
-# Auto-configure tests based on available Ollama models
-./auto_config_tests.sh
-
-# Complete test setup and auto-configuration
-./setup_tests.sh
-
-# Diagnose model compatibility issues
-./diagnose_models.sh
+uv run pytest                  # offline suite; no network, backend, or local files
+uv run pytest -m integration   # against a running gateway backed by Ollama
+uv run pytest -m live          # one cheap OpenRouter call per wire format
 ```
 
-The tests automatically detect which models are available and will test appropriate functionality.
+The offline suite runs the gateway in-process against recorded backend
+fixtures and validates output with the official `openai` and `anthropic`
+SDK types. Live tests need `OPENROUTER_API_KEY` and log their cost to
+`tests/live/spend.jsonl`. See [tests/README.md](tests/README.md) for the
+harness, the fixture recorder, and the integration scripts.
 
 ## License
 

@@ -43,9 +43,9 @@ By participating in this project, you agree to maintain a respectful and inclusi
 2. **Comment on the issue** to let others know you're working on it.
 3. **Implement your changes** following the project's style and testing guidelines.
 4. **Write or update tests** for your changes.
-5. **Ensure all tests pass** by running the test scripts:
+5. **Ensure all tests pass**, including with an empty home directory:
    ```bash
-   ./run_tests.sh
+   HOME=$(mktemp -d) uv run pytest
    ```
 6. **Update documentation** as needed.
 
@@ -112,10 +112,11 @@ registry.register_adapter_class("mymodel", MyCustomAdapter)
 - **Run the full test suite** before submitting pull requests.
 - **Test edge cases** and error handling.
 - **Keep the default suite offline.** Plain `pytest` must pass without network access, a running backend, or files outside the repository. Tests that call real providers use the `live` marker and read `OPENROUTER_API_KEY` from the environment. Every live run appends its cost to the committed `tests/live/spend.jsonl`.
-- The project includes several test scripts:
-  - `run_tests.sh`: Run all tests
-  - `test_ollama.sh`: Test Ollama adapter specifically
-  - `diagnose_models.sh`: Check model compatibility
+- **Fixture-backed tests.** New offline coverage goes in the (ingress, backend, scenario) grid in `tests/harness/grid.py`, replaying fixtures recorded with `tests/harness/record.py`. See [tests/README.md](tests/README.md).
+- Scripts for the `integration` suite, which needs a running gateway and Ollama:
+  - `run_tests.sh`: run the integration suite
+  - `test_ollama.sh`: run a subset of it
+  - `diagnose_models.sh`: check model compatibility
 
 ## Style Guidelines
 
