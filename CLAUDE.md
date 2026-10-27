@@ -30,3 +30,9 @@ tracked in git.
   variable.
 - Scrub auth headers from recorded fixtures and run gitleaks before
   committing them. This repo is public.
+- **Grid xfails are the bug list.** Offline coverage goes in the
+  (ingress, backend, scenario) grid (`tests/harness/grid.py`). Known-wrong
+  behavior is a strict xfail in `KNOWN_FAILURES` naming the fixing phase;
+  remove the entry when the fix lands. OpenRouter diverges from the SDK
+  types in small ways; record each one in `tests/fixtures/README.md`
+  instead of loosening validators.

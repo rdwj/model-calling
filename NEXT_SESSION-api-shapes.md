@@ -413,7 +413,22 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-26)
+## What landed this session (2026-10-26, evening): Phase 1 complete
+
+Phase 1's definition of done is met on `8b6120e`. The offline suite passes
+in about 1s with an empty home directory, `pytest -m live` passes on all
+three wire formats, and every `Test Package` job is green. Session spend:
+$0.000007 across 18 ledger entries (cumulative epic total is the same).
+The OpenRouter key showed $3.15 used before any epic spend, not the $2.90
+noted earlier. Full record: `session-summaries/2026-10-26-api-shapes-phase1-harness.md`.
+
+The grid's first row has 1 passing cell and 7 strict xfails, which make up
+Phase 2's starting bug list, plus one Phase 4 item. `anthropic` is pinned
+at 1.15.0 because 2.0.0 (2026-10-21) postdates the cutoff; moving the cutoff
+on or after 2026-10-28 makes 2.x eligible, so decide that at Phase 2 start
+before writing translators against the SDK types.
+
+## What landed earlier (2026-10-26)
 
 Public-release prep and planning. Relicensed to Apache-2.0, moved to PEP 621
 packaging with a Python 3.11 floor, lazy-loaded the torch-dependent
