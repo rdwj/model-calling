@@ -1,0 +1,38 @@
+# Podman Compose file for model-calling service
+version: '3'
+
+services:
+  model-calling:
+    container_name: model-calling
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: localhost/model-calling:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - VLLM_BASE_URL=http://vllm:8000
+    networks:
+      - model-network
+    depends_on:
+      - ollama
+
+  ollama:
+    container_name: ollama
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - model-network
+
+networks:
+  model-network:
+    name: model-network
+
+volumes:
+  ollama_data:
+    name: ollama_data

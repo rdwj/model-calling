@@ -1,0 +1,11 @@
+include PYPI_README.md
+include README.md
+include LICENSE
+include NOTICE
+include .env.example
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude tests *
+recursive-exclude examples *
+recursive-exclude docs *
+recursive-exclude .git *
