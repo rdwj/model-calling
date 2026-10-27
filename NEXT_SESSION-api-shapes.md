@@ -185,7 +185,12 @@ instead of N×M.
    `call_model` skips callbacks; unprefixed model names hijack
    `/v1/moderations`; backend errors return HTTP 200; library modules call
    `logging.basicConfig`; response IDs built from `int(time.time())`
-   collide.
+   collide; hosted adapters crash every non-streaming call because
+   callbacks receive `**translated_request`, whose `model` key collides
+   with the positional model name (found by the Phase 1 grid);
+   `stream_response` appends `/v1/chat/completions` to hosted adapters'
+   full endpoint URL and sends no auth header. The strict xfails in
+   `tests/harness/grid.py` track these.
 5. Remove the keyword-based "reasoning" warning heuristic in the server.
 
 **Definition of done:** fixture round trips pass for Ollama, vLLM, OpenAI,
