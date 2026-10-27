@@ -29,18 +29,21 @@ git clone https://github.com/rdwj/model-calling.git
 cd model-calling
 ```
 
-2. Install into a virtual environment:
+2. Install the locked environment with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+# Core package plus development tools, at the exact versions in uv.lock
+uv sync --frozen
 
-# Core package
-pip install -e .
-
-# Optional: development tools and example dependencies
-pip install -e '.[dev,examples]'
+# Optional: example dependencies
+uv sync --frozen --extra examples
 ```
+
+model-calling pins every dependency to an exact, vetted version (see
+"Dependency Policy" in [CONTRIBUTING.md](CONTRIBUTING.md)). If you install it
+into your own project, lock your environment too, and consider a release-age
+cutoff such as uv's `exclude-newer` so a freshly compromised release can't
+reach you before the ecosystem catches it.
 
 ## Quick Start
 

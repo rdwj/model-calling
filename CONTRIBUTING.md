@@ -9,6 +9,7 @@ Thank you for your interest in contributing to the Model Calling project! This d
 - [Development Process](#development-process)
 - [Pull Request Process](#pull-request-process)
 - [Independent Implementation](#independent-implementation)
+- [Dependency Policy](#dependency-policy)
 - [Adding New Model Adapters](#adding-new-model-adapters)
 - [Testing Guidelines](#testing-guidelines)
 - [Style Guidelines](#style-guidelines)
@@ -29,8 +30,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
    ```
 3. **Set up the development environment**
    ```bash
-   python3 -m venv .venv && source .venv/bin/activate
-   pip install -e '.[dev]'
+   uv sync --frozen
    ```
 4. **Create a new branch** for your feature or bugfix
    ```bash
@@ -60,6 +60,17 @@ By participating in this project, you agree to maintain a respectful and inclusi
 ## Independent Implementation
 
 model-calling offers an API that will feel familiar to LiteLLM users, but it is an independent implementation. Build translators and types from the public OpenAI, Anthropic, Cohere, and OpenRouter API specifications and the official SDK type definitions. Do not copy or adapt source code, docstrings, documentation, type definitions, or data files (such as model pricing tables) from LiteLLM or other gateway projects, and do not consult LiteLLM's separately licensed `enterprise/` directory. Mention LiteLLM only when describing migration.
+
+## Dependency Policy
+
+Supply-chain attacks are getting faster and more frequent, so every external dependency is pinned and vetted:
+
+- **Exact versions everywhere.** Runtime dependencies, extras, dev tools, and the build backend in `pyproject.toml` use `==`. `uv.lock` pins every transitive dependency with hashes. GitHub Actions are pinned to full commit SHAs, and container images to digests.
+- **At least 7 days old.** `[tool.uv] exclude-newer` in `pyproject.toml` is a fixed cutoff that uv enforces for every package in the lock. When updating, move it forward to no later than 7 days before the update. Apply the same rule by hand to Actions and images.
+- **No known major CVEs.** CI runs `pip-audit` against the full lock and fails on any finding. Run it locally before committing a dependency change: `uv export --frozen --all-extras --all-groups --no-emit-project -o requirements-audit.txt && uv run --frozen --only-group dev pip-audit -r requirements-audit.txt --no-deps --disable-pip`.
+- **No LiteLLM.** It must never appear in `uv.lock`, directly or transitively; CI checks this.
+
+To update dependencies: move the cutoff, run `uv lock --upgrade`, update the `==` pins in `pyproject.toml` to match the lock, audit, and run the test suite.
 
 ## Adding New Model Adapters
 

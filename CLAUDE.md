@@ -20,6 +20,11 @@ tracked in git.
   outside the repo. Live tests (`-m live`) use `OPENROUTER_API_KEY` from the
   environment and append their cost to the committed
   `tests/live/spend.jsonl`. Respect the budget in the active epic plan.
+- **Dependency policy.** Every external dependency is pinned to an exact
+  version (`==`, commit SHA, or image digest) that is at least 7 days old and
+  has no known major CVEs, enforced by `[tool.uv] exclude-newer` and
+  `pip-audit` in CI. Never add LiteLLM. See "Dependency Policy" in
+  `CONTRIBUTING.md`.
 - **No local-only dependencies.** Anything the plans or tests rely on must
   be committed, fetched from a public source, or read from an environment
   variable.
