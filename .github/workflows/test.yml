@@ -2,62 +2,71 @@ name: Test Package
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
+# Actions are pinned to full commit SHAs and uv to an exact version; see
+# "Dependency Policy" in CONTRIBUTING.md.
+env:
+  UV_VERSION: "0.13.3"
+
 jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        version: ${{ env.UV_VERSION }}
+    - name: Lockfile matches pyproject.toml
+      run: uv lock --check
+    - name: LiteLLM is not a dependency
+      run: |
+        if grep -qi 'litellm' uv.lock; then
+          echo "::error::uv.lock contains litellm"; exit 1
+        fi
+    - name: Audit locked dependencies for known vulnerabilities
+      run: |
+        uv export --frozen --all-extras --all-groups --no-emit-project -o requirements-audit.txt
+        uv run --frozen --only-group dev pip-audit -r requirements-audit.txt --no-deps --disable-pip --strict
+
   test:
+    needs: dependencies
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.11', '3.12', '3.13', '3.14']
-
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       with:
+        version: ${{ env.UV_VERSION }}
         python-version: ${{ matrix.python-version }}
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e '.[dev]'
-    
+    - name: Install locked dependencies
+      run: uv sync --frozen
     - name: Run tests
-      run: |
-        pytest tests/ -v
-    
-    - name: Test installation
-      run: |
-        pip install .
-        python -c "from model_calling.client import SyncModelCallingClient; print('Import successful!')"
+      run: uv run --frozen pytest tests/
+    - name: Import check
+      run: uv run --frozen python -c "from model_calling.client import SyncModelCallingClient; print('Import successful!')"
 
   lint:
+    needs: dependencies
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install black flake8
-    
+        version: ${{ env.UV_VERSION }}
+        python-version: '3.12'
     - name: Lint with flake8
       run: |
-        flake8 model_calling --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 model_calling --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    
+        uv run --frozen --only-group dev flake8 model_calling --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv run --frozen --only-group dev flake8 model_calling --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Check formatting with black
-      run: |
-        black --check model_calling
+      run: uv run --frozen --only-group dev black --check model_calling

@@ -13,7 +13,7 @@ echo -e "${YELLOW}To access the service, go to: http://localhost:8000${NC}"
 # Check if podman-compose is installed
 if ! command -v podman-compose &> /dev/null; then
     echo -e "${YELLOW}podman-compose not found. Installing it first...${NC}"
-    pip install podman-compose
+    pip install podman-compose==1.6.0
 fi
 
 # Run the services

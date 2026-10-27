@@ -60,3 +60,4 @@ pypi/
 
 # Capability probe cache and auto-generated test config
 tests/models_available.py
+requirements-audit.txt

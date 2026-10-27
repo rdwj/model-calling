@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+requires = ["setuptools==84.2.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -24,30 +24,37 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
 ]
+# Every dependency is pinned to an exact version that was at least 7 days
+# old and free of known CVEs when vetted. See "Dependency Policy" in
+# CONTRIBUTING.md before changing any of these.
 dependencies = [
-    "fastapi>=0.104.0",
-    "uvicorn>=0.23.0",
-    "httpx>=0.25.0",
-    "pydantic>=2.0.0",
-    "python-dotenv>=1.0.0",
+    "fastapi==0.150.0",
+    "uvicorn==0.54.0",
+    "httpx==0.28.1",
+    "pydantic==2.14.1",
+    "python-dotenv==1.2.4",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-]
 moderation = [
-    "torch>=2.0.0",
-    "transformers>=4.40.0",
+    "torch==2.14.1",
+    "transformers==5.20.2",
 ]
 examples = [
-    "requests>=2.31.0",
-    "aiohttp>=3.8.0",
-    "numpy>=1.22.0",
-    "scikit-learn>=1.0.0",
+    "requests==2.34.2",
+    "aiohttp==3.14.5",
+    "numpy==2.4.6; python_version < '3.12'",
+    "numpy==2.5.4; python_version >= '3.12'",
+    "scikit-learn==1.9.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "black==26.10.1",
+    "flake8==7.4.1",
+    "pip-audit==2.10.1",
 ]
 
 [project.urls]
@@ -78,3 +85,9 @@ markers = [
     "function_calling: tests that verify function calling capabilities",
 ]
 asyncio_mode = "auto"
+
+[tool.uv]
+# Supply-chain rule: never resolve a release (direct or transitive) published
+# after this timestamp. When updating dependencies, move it forward to no later
+# than 7 days before the update, then re-run the audit.
+exclude-newer = "2026-10-20T02:25:00Z"

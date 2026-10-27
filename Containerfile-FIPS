@@ -1,5 +1,5 @@
 # Use Red Hat's UBI 9 as base - it has FIPS mode available
-FROM registry.access.redhat.com/ubi9/python-312:latest
+FROM registry.access.redhat.com/ubi9/python-312:9.8-1792441557@sha256:f43a57e9a6a2243e333008219002b9f2b1661868a94199f5dec4d602e1501482
 
 USER 0
 
@@ -10,25 +10,18 @@ RUN fips-mode-setup --enable && \
 # Work in app directory
 WORKDIR /opt/app-root/src
 
-# Install FIPS-validated crypto packages
-RUN dnf install -y openssl-devel python3.12-devel gcc && \
-    dnf clean all
+# uv comes from a digest-pinned image and installs exactly what uv.lock
+# specifies. Base and uv images are pinned by digest; see "Dependency Policy"
+# in CONTRIBUTING.md.
+COPY --from=ghcr.io/astral-sh/uv:0.13.3@sha256:bee0a2a458fd956c5df7b8b4c5fed2257b0af34866e3da7b51db0be3acb375d1 /uv /usr/local/bin/uv
+ENV UV_PROJECT_ENVIRONMENT=/opt/app-root \
+    UV_COMPILE_BYTECODE=1 \
+    UV_NO_CACHE=1
 
-# Copy the application
+# Copy the application and install it with its locked dependencies
+# (examples and dev tools are not included)
 COPY . .
-
-# Install dependencies with FIPS-compliant versions
-# Note: numpy and scikit-learn are only needed for examples, not included in FIPS build
-RUN pip install --no-cache-dir \
-    # Use Red Hat's cryptography package which is FIPS validated
-    cryptography==42.0.0 \
-    # Install httpx with FIPS-compliant backend
-    httpx[fips]==0.25.0 \
-    # Install uvicorn with FIPS-compliant SSL
-    uvicorn[standard]==0.23.0 \
-    # Install the package itself
-    .
-
+RUN uv sync --frozen --no-dev --no-editable --inexact
 
 # Set environment variables for FIPS compliance
 ENV PYTHONHTTPSVERIFY=1

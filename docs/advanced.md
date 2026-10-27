@@ -250,7 +250,7 @@ services:
       start_period: 20s
 
   ollama:
-    image: ollama/ollama:latest
+    image: docker.io/ollama/ollama:0.40.6@sha256:265409e1d931028a8f7d5a32bcbafddd7bffbc6cc629d77efe9560adf692a5e7
     restart: always
     ports:
       - "11434:11434"
