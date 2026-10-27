@@ -18,7 +18,6 @@ import datetime
 import json
 import os
 import sys
-import time
 from typing import Optional
 
 import httpx
@@ -28,7 +27,6 @@ from tests.harness.replay import Exchange, fixture_path
 from tests.harness.scenarios import BACKENDS, SCENARIOS, Backend, Scenario
 
 OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
-OPENROUTER_GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 REQUEST_TIMEOUT = 300.0
 LEDGER_SOURCE = "record_fixtures"
 # Account identifiers OpenRouter puts in response bodies. Not secrets, but
@@ -58,20 +56,6 @@ def _stream_cost(lines) -> tuple[Optional[str], Optional[float]]:
     return response_id, cost
 
 
-def _lookup_cost(client: httpx.Client, key: str, response_id: str) -> float:
-    """Ask OpenRouter for a generation's cost when the body didn't carry it."""
-    for _ in range(5):
-        resp = client.get(
-            OPENROUTER_GENERATION_URL,
-            params={"id": response_id},
-            headers={"Authorization": f"Bearer {key}"},
-        )
-        if resp.status_code == 200:
-            return float(resp.json()["data"]["total_cost"])
-        time.sleep(2)
-    raise RuntimeError(f"Could not look up cost for generation {response_id}: {resp.text}")
-
-
 def record_one(client: httpx.Client, backend: Backend, scenario: Scenario) -> Exchange:
     body = backend.native_request(scenario)
     headers = {}
@@ -96,7 +80,7 @@ def record_one(client: httpx.Client, backend: Backend, scenario: Scenario) -> Ex
             response_id = response_json.get("id")
             cost = (response_json.get("usage") or {}).get("cost")
         if cost is None and response_id and resp.status_code == 200:
-            cost = _lookup_cost(client, key, response_id)
+            cost = ledger.lookup_generation_cost(client, key, response_id)
         ledger.record(
             LEDGER_SOURCE, backend.endpoint, body["model"], response_id, float(cost or 0.0)
         )
