@@ -20,6 +20,8 @@ import dotenv
 import httpx
 import pytest
 
+pytest_plugins = ["tests.harness.gateway"]
+
 TESTS_DIR = Path(__file__).parent
 INTEGRATION_DIR = TESTS_DIR / "integration"
 OPT_OUT_MARKERS = ("integration", "live")
