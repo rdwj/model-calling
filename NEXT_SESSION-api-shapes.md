@@ -29,8 +29,10 @@ Make the code testable without a running server or backend, so every later
 phase has a deterministic exit predicate.
 
 **Work:**
-1. Look up current `openai` (3.x) and `anthropic` (2.x) SDK type modules and
-   write validator helpers that parse our output with them.
+1. Add the `openai` and `anthropic` SDKs to the `dev` dependency group under
+   the dependency policy (exact pins, at least 7 days old, clean audit).
+   Look up their current type modules and write validator helpers that parse
+   our output with them.
 2. Use httpx transport replay for backend responses, with a recorder script
    (committed) that captures real responses from OpenRouter and from Ollama
    running `qwen3:4b` (`ollama pull qwen3:4b`) into `tests/fixtures/`.
@@ -129,7 +131,9 @@ where it matters. Confirm these design proposals with rdwj at phase start:
    exception hierarchy with OpenAI-style names (`AuthenticationError`,
    `RateLimitError`, `BadRequestError`, and so on) mapped from backend
    errors.
-4. Move FastAPI and uvicorn into a `[server]` extra. The server exposes both
+4. Move FastAPI, uvicorn, and python-dotenv into a `[server]` extra, still
+   exact-pinned; the core library depends only on httpx and pydantic and
+   never reads `.env`. The server exposes both
    `POST /v1/chat/completions` and `POST /v1/messages` over the same core.
 5. Replace the HTTP-only `ModelCallingClient` docs with in-process usage as
    the primary path.
@@ -317,6 +321,11 @@ projects, rewrote history to a single root commit, and made the repo public.
 
 ## Watch out for
 
+- **Dependency policy.** Every external dependency is pinned exactly (`==`,
+  commit SHA, or image digest), at least 7 days old, and free of known major
+  CVEs. `[tool.uv] exclude-newer` and the CI `pip-audit` job enforce it.
+  LiteLLM must never appear in `uv.lock`. Any phase that adds a dependency
+  follows "Dependency Policy" in `CONTRIBUTING.md`.
 - **Clean-room rule.** Where the API resembles LiteLLM, it matches names and
   call patterns only, built from the
   OpenAI, Anthropic, Cohere, and OpenRouter public specs and SDK types. Do
