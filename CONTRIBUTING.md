@@ -8,6 +8,7 @@ Thank you for your interest in contributing to the Model Calling project! This d
 - [Getting Started](#getting-started)
 - [Development Process](#development-process)
 - [Pull Request Process](#pull-request-process)
+- [Independent Implementation](#independent-implementation)
 - [Adding New Model Adapters](#adding-new-model-adapters)
 - [Testing Guidelines](#testing-guidelines)
 - [Style Guidelines](#style-guidelines)
@@ -56,6 +57,10 @@ By participating in this project, you agree to maintain a respectful and inclusi
 4. **Wait for a review** from the maintainers.
 5. **Address any feedback** received during the review process.
 
+## Independent Implementation
+
+model-calling offers an API that will feel familiar to LiteLLM users, but it is an independent implementation. Build translators and types from the public OpenAI, Anthropic, Cohere, and OpenRouter API specifications and the official SDK type definitions. Do not copy or adapt source code, docstrings, documentation, type definitions, or data files (such as model pricing tables) from LiteLLM or other gateway projects, and do not consult LiteLLM's separately licensed `enterprise/` directory. Mention LiteLLM only when describing migration.
+
 ## Adding New Model Adapters
 
 One of the most valuable contributions is adding support for new model backends. To add a new adapter:
@@ -95,6 +100,7 @@ registry.register_adapter_class("mymodel", MyCustomAdapter)
 - **Write tests** for all new functionality.
 - **Run the full test suite** before submitting pull requests.
 - **Test edge cases** and error handling.
+- **Keep the default suite offline.** Plain `pytest` must pass without network access, a running backend, or files outside the repository. Tests that call real providers use the `live` marker and read `OPENROUTER_API_KEY` from the environment. Every live run appends its cost to the committed `tests/live/spend.jsonl`.
 - The project includes several test scripts:
   - `run_tests.sh`: Run all tests
   - `test_ollama.sh`: Test Ollama adapter specifically
