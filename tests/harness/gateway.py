@@ -64,6 +64,6 @@ async def gateway(monkeypatch):
     async with httpx.AsyncClient(transport=transport, base_url=GATEWAY_BASE_URL) as client:
         gw = Gateway(client=client, registry=registry)
         yield gw
-    await registry.http_clients.aclose()
+    await registry.client.aclose()
     for replay in gw.replays:
         replay.check()

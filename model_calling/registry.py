@@ -14,7 +14,7 @@ from model_calling.adapter import ModelAdapter
 from model_calling.ollama_adapter import OllamaAdapter
 from model_calling.thinking import ThinkingStyle
 from model_calling.callbacks import DefaultCallback
-from model_calling.providers import HttpClients, default_configs
+from model_calling.library import Client
 from model_calling.capability_cache import capability_cache
 
 logger = logging.getLogger(__name__)
@@ -30,8 +30,6 @@ except ImportError:
 
 # Import embedding adapters
 from model_calling.embedding_adapter import EmbeddingAdapter
-from model_calling.ollama_embedding_adapter import OllamaEmbeddingAdapter
-from model_calling.hosted.openai_embedding_adapter import OpenAIEmbeddingAdapter
 from model_calling.hosted.cohere_embedding_adapter import CohereEmbeddingAdapter
 
 # Import hosted providers
@@ -99,24 +97,22 @@ class ModelRegistry:
             "cohere": CohereAdapter,
         }
 
-        # Embedding adapter classes
+        # Embedding adapters for the prefixes `client` doesn't serve yet.
         self.embedding_adapter_classes = {
-            "ollama": OllamaEmbeddingAdapter,
-            "openai": OpenAIEmbeddingAdapter,
             "cohere": CohereEmbeddingAdapter,
         }
 
         # Create a default callback for logging
         self.default_callback = DefaultCallback()
-        # Pooled HTTP clients for the providers; closed when the server stops.
-        self.http_clients = HttpClients()
+        # The library client the server answers ported prefixes with; closed
+        # when the server stops. Unsupported parameters are dropped, as the
+        # gateway always has.
+        self.client = Client(callbacks=[self.default_callback], drop_params=True)
 
-        # Default configurations
+        # Default configurations. The ported prefixes' entries are the client's
+        # own config dicts, so an update here reaches the next request.
         self.default_configs = {
-            **{
-                prefix: {**config, "callbacks": [self.default_callback]}
-                for prefix, config in default_configs().items()
-            },
+            **self.client.config,
             "anthropic": {
                 "base_url": "https://api.anthropic.com/v1/messages",
                 "api_key": os.environ.get("ANTHROPIC_API_KEY", ""),

@@ -275,5 +275,6 @@ EMBEDDING_BACKENDS = {
     )
 }
 
-# Every recorded backend, chat and embeddings, by fixture directory.
+# Every recorded backend and scenario, chat and embeddings.
 ALL_BACKENDS = {**BACKENDS, **EMBEDDING_BACKENDS}
+ALL_SCENARIOS = {**SCENARIOS, **EMBEDDING_SCENARIOS}

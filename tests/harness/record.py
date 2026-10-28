@@ -33,6 +33,7 @@ from tests.harness import ledger
 from tests.harness.replay import Exchange, fixture_path
 from tests.harness.scenarios import (
     ALL_BACKENDS,
+    ALL_SCENARIOS,
     EMBEDDING_SCENARIOS,
     SCENARIOS,
     VLLM_URL,
@@ -41,8 +42,6 @@ from tests.harness.scenarios import (
     EmbeddingScenario,
     Scenario,
 )
-
-ALL_SCENARIOS = {**SCENARIOS, **EMBEDDING_SCENARIOS}
 
 
 def _scenarios_for(backend) -> dict:

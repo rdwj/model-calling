@@ -1,5 +1,7 @@
 """Gateway regression tests for bugs in backend integration."""
 
+import json
+
 import pytest
 
 from model_calling.callbacks import Callback
@@ -147,3 +149,51 @@ async def test_streaming_unported_backend_is_501_naming_phase_6(gateway, model):
     resp = await gateway.client.post("/v1/chat/completions", json=body)
     assert resp.status_code == 501, resp.text
     assert "Phase 6" in resp.json()["error"]["message"]
+
+
+ENVELOPE_ERRORS = {
+    "chat_reserved": ("/v1/chat/completions", {"api_base": "http://evil.test"}, "api_base"),
+    "messages_reserved": ("/v1/messages", {"api_key": "k", "drop_params": False}, "api_key"),
+    "embeddings_reserved": ("/v1/embeddings", {"api_base": "http://evil.test"}, "api_base"),
+    "messages_not_object": ("/v1/messages", [], "JSON object"),
+    "messages_no_model": ("/v1/messages", {"model": None}, "model is required"),
+    "messages_unported": ("/v1/messages", {"model": "cohere/command-a"}, "no provider"),
+}
+
+
+@pytest.mark.parametrize("path, fields, match", ENVELOPE_ERRORS.values(), ids=ENVELOPE_ERRORS)
+async def test_envelope_errors_are_400_in_the_ingress_format(gateway, path, fields, match):
+    """Reserved Client arguments would point the gateway's key at another host."""
+    body = {"model": "ollama/m", "messages": [], "input": "x", "max_tokens": 8}
+    body = {**body, **fields} if isinstance(fields, dict) else fields
+    resp = await gateway.client.post(path, json=body)
+    assert resp.status_code == 400, resp.text
+    error = resp.json()["error"]
+    assert match in error["message"]
+    assert error["type"] == "invalid_request_error"
+
+
+async def test_messages_stream_error_after_start_is_an_error_event(gateway):
+    """Ollama failing mid-stream ends the Anthropic stream with an `error` event."""
+    from tests.harness.replay import Exchange, ReplayTransport
+
+    recorded = Exchange.load(fixture_path("ollama", "stream"))
+    recorded.lines = recorded.lines[:2] + [json.dumps({"error": "model crashed"})]
+    config = gateway.registry.default_configs["ollama"]
+    config.update(BACKENDS["ollama"].gateway_config, transport=ReplayTransport([recorded]))
+    body = SCENARIOS["stream"].messages_body(BACKENDS["ollama"].gateway_model)
+    resp = await gateway.client.post("/v1/messages", json=body)
+    assert resp.status_code == 200
+    last = resp.text.strip().split("\n\n")[-1]
+    assert last.startswith("event: error\n"), last
+    assert json.loads(last.split("data: ", 1)[1])["error"] == {
+        "type": "api_error",
+        "message": "Ollama error: model crashed",
+    }
+
+
+async def test_refresh_reports_capabilities_for_a_vllm_model(gateway):
+    """vLLM lost its legacy adapter in Phase 2, and refresh 404ed since."""
+    resp = await gateway.client.post("/v1/models/refresh", json={"model": "vllm/gpt-oss-20b"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "refreshed"

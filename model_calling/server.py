@@ -16,10 +16,10 @@ from dotenv import load_dotenv
 from model_calling import __version__
 from model_calling import gateway
 from model_calling.formats import chat_completions as chat
-from model_calling.providers import provider_for
+from model_calling.providers import PROVIDERS, split_model
 from model_calling.registry import registry
 from model_calling.cache import embedding_cache
-from model_calling.embedding_adapter import create_openai_embedding_response, EmbeddingAdapter
+from model_calling.embedding_adapter import create_openai_embedding_response
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -28,7 +28,7 @@ load_dotenv()
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    await registry.http_clients.aclose()
+    await registry.client.aclose()
 
 
 app = FastAPI(title="Model Calling Service", version=__version__, lifespan=lifespan)
@@ -36,6 +36,14 @@ app = FastAPI(title="Model Calling Service", version=__version__, lifespan=lifes
 logger = logging.getLogger(__name__)
 
 NOT_IMPLEMENTED = 501
+# Unsupported parameters are dropped, as the gateway always has.
+DROP_PARAMS = True
+
+
+def _ported(body: Any) -> bool:
+    """Whether the library `Client` serves this request's model prefix."""
+    model = body.get("model") if isinstance(body, dict) else None
+    return isinstance(model, str) and split_model(model)[0] in PROVIDERS
 
 
 # Models for API validation
@@ -183,16 +191,10 @@ async def chat_completions(request: Request):
     # Parse the request body
     body = await request.json()
 
-    # Ported backends go through the provider interface; the rest stay on
-    # the legacy adapter path below until they move.
-    model = body.get("model") if isinstance(body, dict) else None
-    provider = (
-        provider_for(model, registry.default_configs, registry.http_clients)
-        if isinstance(model, str)
-        else None
-    )
-    if provider is not None:
-        return await gateway.chat_completions(provider, body)
+    # Ported backends go through the library client; the rest stay on the
+    # legacy adapter path below until they move.
+    if _ported(body):
+        return await gateway.chat_completions(registry.client, body, drop_params=DROP_PARAMS)
 
     # Validate request format
     try:
@@ -265,11 +267,21 @@ async def chat_completions(request: Request):
         raise HTTPException(status_code=500, detail=f"Error calling model: {e}")
 
 
+@app.post("/v1/messages")
+async def messages(request: Request):
+    """Anthropic Messages over every ported backend."""
+    body = await request.json()
+    return await gateway.messages(registry.client, body, drop_params=DROP_PARAMS)
+
+
 @app.post("/v1/embeddings")
 async def create_embeddings(request: Request):
     """OpenAI-compatible embeddings endpoint"""
     # Parse the request body
     body = await request.json()
+
+    if _ported(body):
+        return await gateway.embeddings(registry.client, body, drop_params=DROP_PARAMS)
 
     # Validate request format
     try:
@@ -299,111 +311,53 @@ async def create_embeddings(request: Request):
     if isinstance(inputs, str):
         inputs = [inputs]
 
-    # Process inputs - differs by adapter type
+    # Only unported prefixes (Cohere) reach this legacy path.
     try:
-        # Check if using Ollama adapter which needs special batch handling
-        if model_name.startswith("ollama/") or (not "/" in model_name):
-            # Ollama doesn't support batch processing natively, handle manually
-            all_embeddings = []
+        # Check if all inputs are in cache
+        all_cached = True
+        cached_embeddings = []
 
-            for input_text in inputs:
-                # Check cache first
-                cached_embedding = embedding_cache.get(model_name, input_text)
-                if cached_embedding is not None:
-                    all_embeddings.append({"embedding": cached_embedding})
-                    continue
+        for input_text in inputs:
+            cached_embedding = embedding_cache.get(model_name, input_text)
+            if cached_embedding is None:
+                all_cached = False
+                break
+            cached_embeddings.append(cached_embedding)
 
-                # Create a single-input request
-                # For Ollama, we need to pass just the model name without the prefix
-                model_short_name = (
-                    validated_request.model.split("/")[-1]
-                    if "/" in validated_request.model
-                    else validated_request.model
-                )
-                single_request = {
-                    "model": model_short_name,
-                    "input": input_text,  # This will be converted to 'prompt' in translate_request
-                }
+        # If all items are cached, return directly
+        if all_cached:
+            logger.info(f"Using cached embeddings for all {len(inputs)} inputs")
+            return create_openai_embedding_response(
+                model=model_name, embeddings=cached_embeddings, input_texts=inputs
+            )
 
-                logger.debug(
-                    f"Processing single input for Ollama model {model_short_name}: {input_text[:50]}..."
-                )
+        # Otherwise, make API request
+        single_request = {
+            "model": (
+                validated_request.model.split("/")[-1]
+                if "/" in validated_request.model
+                else validated_request.model
+            ),
+            "input": inputs,
+        }
 
-                # Add optional parameters
-                if validated_request.dimensions:
-                    single_request["dimensions"] = validated_request.dimensions
+        # Add optional parameters
+        if validated_request.dimensions:
+            single_request["dimensions"] = validated_request.dimensions
 
-                # Translate request for the model (converts 'input' to 'prompt' for Ollama)
-                translated_request = await adapter.translate_request(single_request)
+        # Translate request for the model
+        translated_request = await adapter.translate_request(single_request)
 
-                # Call the model for each input
-                model_response = await adapter.call_model(translated_request)
-                all_embeddings.append(model_response)
+        # Call the model with all inputs
+        model_response = await adapter.call_model(translated_request)
 
-                # Cache the result
-                if "embedding" in model_response:
-                    embedding_cache.set(model_name, input_text, model_response["embedding"])
+        # Cache individual results
+        response_data = model_response.get("data", [])
+        for i, data_item in enumerate(response_data):
+            if i < len(inputs) and "embedding" in data_item:
+                embedding_cache.set(model_name, inputs[i], data_item["embedding"])
 
-            # Combine all results
-            if len(inputs) == 1:
-                return await adapter.translate_response(all_embeddings[0], inputs)
-            else:
-                # Extract embeddings from each response
-                embeddings = []
-                for emb_response in all_embeddings:
-                    if "embedding" in emb_response:
-                        embeddings.append(emb_response["embedding"])
-
-                # Make a combined response with all embeddings
-                combined_response = {"embeddings": embeddings}
-                return await adapter.translate_response(combined_response, inputs)
-        else:
-            # Other providers support batching natively
-            # Check if all inputs are in cache
-            all_cached = True
-            cached_embeddings = []
-
-            for input_text in inputs:
-                cached_embedding = embedding_cache.get(model_name, input_text)
-                if cached_embedding is None:
-                    all_cached = False
-                    break
-                cached_embeddings.append(cached_embedding)
-
-            # If all items are cached, return directly
-            if all_cached:
-                logger.info(f"Using cached embeddings for all {len(inputs)} inputs")
-                return create_openai_embedding_response(
-                    model=model_name, embeddings=cached_embeddings, input_texts=inputs
-                )
-
-            # Otherwise, make API request
-            single_request = {
-                "model": (
-                    validated_request.model.split("/")[-1]
-                    if "/" in validated_request.model
-                    else validated_request.model
-                ),
-                "input": inputs,
-            }
-
-            # Add optional parameters
-            if validated_request.dimensions:
-                single_request["dimensions"] = validated_request.dimensions
-
-            # Translate request for the model
-            translated_request = await adapter.translate_request(single_request)
-
-            # Call the model with all inputs
-            model_response = await adapter.call_model(translated_request)
-
-            # Cache individual results
-            response_data = model_response.get("data", [])
-            for i, data_item in enumerate(response_data):
-                if i < len(inputs) and "embedding" in data_item:
-                    embedding_cache.set(model_name, inputs[i], data_item["embedding"])
-
-            return await adapter.translate_response(model_response, inputs)
+        return await adapter.translate_response(model_response, inputs)
     except Exception as e:
         logger.error(f"Error generating embeddings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
@@ -437,8 +391,11 @@ async def refresh_model(request: Request):
     # Clear the adapter cache to force re-verification
     registry.adapters = {}
 
-    # Get the adapter to trigger capability detection
+    # Ported prefixes without a legacy adapter (vllm, openrouter) have no
+    # capability probe; report the registry's capabilities for them.
     adapter = registry.get_adapter(model_name)
+    if not adapter and _ported(body):
+        adapter = registry.get_capabilities(model_name, ignore_cache=True)
     if not adapter:
         raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
 

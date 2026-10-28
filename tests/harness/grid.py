@@ -18,11 +18,12 @@ from tests.harness.scenarios import (
     SCENARIOS,
 )
 
-# The gateway's HTTP ingress, and the library API's two call families.
-GATEWAY_INGRESSES = ("chat_completions",)
+# The gateway's HTTP ingresses, and the library API's two call families.
+GATEWAY_INGRESSES = ("chat_completions", "gateway_messages")
 LIBRARY_INGRESSES = ("library_completion", "library_messages")
 INGRESSES = GATEWAY_INGRESSES + LIBRARY_INGRESSES
-# Embeddings run over their own backends and scenarios (EMBEDDING_GRID).
+# Embeddings run over their own backends and scenarios (`embedding_grid`).
+GATEWAY_EMBEDDING_INGRESSES = ("gateway_embeddings",)
 LIBRARY_EMBEDDING_INGRESSES = ("library_embedding",)
 
 # (ingress, backend, scenario) -> reason, naming the phase that fixes it.
