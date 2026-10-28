@@ -1,22 +1,36 @@
 """
-Main entry point for the model-calling service.
+Main entry point for the model-calling gateway: `python -m model_calling`
+or the `model-calling` script. The gateway needs the `server` extra.
 """
 
-import uvicorn
 import logging
 import os
+import sys
+
 from model_calling.config import load_config
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+SERVER_EXTRA_HINT = (
+    "The model-calling gateway needs the server extra "
+    "({missing} is not installed). Install it with:\n"
+    "    pip install 'model-calling[server]'"
 )
 
 logger = logging.getLogger(__name__)
 
 
 def main():
-    """Start the model-calling service"""
+    """Start the model-calling gateway"""
+    try:
+        import uvicorn
+        import model_calling.server  # noqa: F401 - fail here, not inside uvicorn
+    except ModuleNotFoundError as e:
+        if e.name not in ("uvicorn", "fastapi", "dotenv", "starlette"):
+            raise
+        sys.exit(SERVER_EXTRA_HINT.format(missing=e.name))
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     # Load configuration from environment
     config = load_config()
 

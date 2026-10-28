@@ -1215,11 +1215,8 @@ wheels = [
 name = "model-calling"
 source = { editable = "." }
 dependencies = [
-    { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -1234,12 +1231,18 @@ moderation = [
     { name = "torch" },
     { name = "transformers" },
 ]
+server = [
+    { name = "fastapi" },
+    { name = "python-dotenv" },
+    { name = "uvicorn" },
+]
 
 [package.dev-dependencies]
 dev = [
     { name = "anthropic" },
     { name = "black" },
     { name = "flake8" },
+    { name = "model-calling", extra = ["server"] },
     { name = "openai" },
     { name = "pip-audit" },
     { name = "pytest" },
@@ -1250,25 +1253,26 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", marker = "extra == 'examples'", specifier = "==3.14.5" },
-    { name = "fastapi", specifier = "==0.150.0" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = "==0.150.0" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "numpy", marker = "python_full_version >= '3.12' and extra == 'examples'", specifier = "==2.5.4" },
     { name = "numpy", marker = "python_full_version < '3.12' and extra == 'examples'", specifier = "==2.4.6" },
     { name = "pydantic", specifier = "==2.14.1" },
-    { name = "python-dotenv", specifier = "==1.2.4" },
+    { name = "python-dotenv", marker = "extra == 'server'", specifier = "==1.2.4" },
     { name = "requests", marker = "extra == 'examples'", specifier = "==2.34.2" },
     { name = "scikit-learn", marker = "extra == 'examples'", specifier = "==1.9.1" },
     { name = "torch", marker = "extra == 'moderation'", specifier = "==2.14.1" },
     { name = "transformers", marker = "extra == 'moderation'", specifier = "==5.20.2" },
-    { name = "uvicorn", specifier = "==0.54.0" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = "==0.54.0" },
 ]
-provides-extras = ["moderation", "examples"]
+provides-extras = ["server", "moderation", "examples"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "anthropic", specifier = "==2.0.0" },
     { name = "black", specifier = "==26.10.1" },
     { name = "flake8", specifier = "==7.4.1" },
+    { name = "model-calling", extras = ["server"] },
     { name = "openai", specifier = "==3.35.1" },
     { name = "pip-audit", specifier = "==2.10.1" },
     { name = "pytest", specifier = "==9.1.1" },

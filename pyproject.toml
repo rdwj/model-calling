@@ -26,16 +26,19 @@ classifiers = [
 ]
 # Every dependency is pinned to an exact version that was at least 7 days
 # old and free of known CVEs when vetted. See "Dependency Policy" in
-# CONTRIBUTING.md before changing any of these.
+# CONTRIBUTING.md before changing any of these. The library needs only
+# httpx and pydantic; the gateway is the `server` extra.
 dependencies = [
-    "fastapi==0.150.0",
-    "uvicorn==0.54.0",
     "httpx==0.28.1",
     "pydantic==2.14.1",
-    "python-dotenv==1.2.4",
 ]
 
 [project.optional-dependencies]
+server = [
+    "fastapi==0.150.0",
+    "uvicorn==0.54.0",
+    "python-dotenv==1.2.4",
+]
 moderation = [
     "torch==2.14.1",
     "transformers==5.20.2",
@@ -50,6 +53,8 @@ examples = [
 
 [dependency-groups]
 dev = [
+    # The offline suite exercises the gateway too.
+    "model-calling[server]",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "black==26.10.1",

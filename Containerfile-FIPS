@@ -19,9 +19,9 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/app-root \
     UV_NO_CACHE=1
 
 # Copy the application and install it with its locked dependencies
-# (examples and dev tools are not included)
+# and the server extra (examples and dev tools are not included)
 COPY . .
-RUN uv sync --frozen --no-dev --no-editable --inexact
+RUN uv sync --frozen --no-dev --no-editable --inexact --extra server
 
 # Set environment variables for FIPS compliance
 ENV PYTHONHTTPSVERIFY=1
