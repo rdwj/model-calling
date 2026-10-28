@@ -10,50 +10,19 @@ Needs OPENROUTER_API_KEY in the environment. Each call's cost is appended
 to tests/live/spend.jsonl, and the epic budget guard runs before each call.
 """
 
-import os
-
 import anthropic
-import httpx
 import httpx2
 import pytest
 
 from model_calling.library import Client
-from tests.harness import ledger
 from tests.harness.checks import message_text, message_tools
 from tests.harness.gateway import GATEWAY_BASE_URL
 from tests.harness.scenarios import SCENARIOS
+from tests.live.conftest import LIVE_MODEL, SDK_API_KEY, TIMEOUT_S
 
 pytestmark = pytest.mark.live
 
-OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
-LIVE_MODEL = "openrouter/mistralai/mistral-nemo"
-LEDGER_SOURCE = "tests/live"
-TIMEOUT_S = 60.0
-# The gateway takes no client key; the SDK requires one.
-SDK_API_KEY = "live-not-a-real-key"
 CHECKS = {"text": message_text, "tools": message_tools}
-
-
-@pytest.fixture
-def spend():
-    """Record a call's cost from OpenRouter's generation lookup, by message id."""
-    key = os.environ.get(OPENROUTER_KEY_ENV)
-    if not key:
-        pytest.fail(f"{OPENROUTER_KEY_ENV} must be set to run live tests")
-    ledger.check_budget()
-    with httpx.Client(timeout=TIMEOUT_S) as client:
-
-        def record(endpoint: str, message_id: str) -> None:
-            cost = ledger.response_cost(client, key, {"id": message_id})
-            ledger.record(
-                LEDGER_SOURCE,
-                endpoint,
-                LIVE_MODEL,
-                message_id,
-                ledger.UNKNOWN_COST_USD if cost is None else cost,
-            )
-
-        yield record
 
 
 @pytest.fixture
