@@ -5,13 +5,14 @@ API, stream lifecycle, and the module-level functions.
 
 import asyncio
 import json
+import re
 
 import httpx
 import pytest
 
 import model_calling.library as library_module
 from model_calling.callbacks import Callback
-from model_calling.errors import APIError, BadRequestError, NotFoundError
+from model_calling.errors import APIError, BadRequestError, InternalServerError, NotFoundError
 from model_calling.library import Client
 from model_calling.types.chat import ChatCompletion
 from model_calling.types.messages import Message
@@ -208,3 +209,92 @@ def test_default_client_is_created_once(monkeypatch):
     first = library_module.default_client()
     assert library_module.default_client() is first
     first.close()
+
+
+# --- strict by default ------------------------------------------------------
+
+CACHED_TEXT = {"type": "text", "text": "x", "cache_control": {"type": "ephemeral"}}
+CACHED_TOOL = {
+    "name": "get_weather",
+    "input_schema": {"type": "object"},
+    "cache_control": {"type": "ephemeral"},
+}
+STRICT_CASES = {
+    "ollama_forced_tool": (
+        "completion",
+        "ollama/m",
+        {"tools": [SCENARIOS["tools"].tools[0]], "tool_choice": "required"},
+        "tool_choice",
+    ),
+    "ollama_cached_block": (
+        "messages",
+        "ollama/m",
+        {"messages": [{"role": "user", "content": [CACHED_TEXT]}]},
+        "cache_control",
+    ),
+    "ollama_cached_tool": ("messages", "ollama/m", {"tools": [CACHED_TOOL]}, "cache_control"),
+    "vllm_thinking_budget": (
+        "messages",
+        "vllm/m",
+        {"thinking": {"type": "enabled", "budget_tokens": 1024}},
+        "thinking.budget_tokens",
+    ),
+    "openrouter_cached_system": (
+        "messages",
+        "openrouter/m",
+        {"system": [CACHED_TEXT]},
+        "cache_control",
+    ),
+}
+
+
+async def call(client, family, model, params, **kwargs):
+    params = {"messages": USER, **params}
+    if family == "messages":
+        return await client.amessages(model, max_tokens=16, **params, **kwargs)
+    return await client.acompletion(model, **params, **kwargs)
+
+
+def strict_client(transport, **kwargs) -> Client:
+    config = {
+        p: {"transport": transport, "api_key": "k"}
+        for p in ("ollama", "vllm", "openai", "openrouter")
+    }
+    return Client(config=config, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "family, model, params, name", STRICT_CASES.values(), ids=STRICT_CASES.keys()
+)
+async def test_unhonorable_parameter_is_refused(family, model, params, name):
+    sent = []
+    async with strict_client(mock(lambda req: sent.append(req) or httpx.Response(500))) as client:
+        with pytest.raises(BadRequestError, match=rf"cannot honor {re.escape(name)}.*drop_params"):
+            await call(client, family, model, params)
+    assert sent == []
+
+
+@pytest.mark.parametrize("where", ["client", "call"])
+@pytest.mark.parametrize(
+    "family, model, params, name", STRICT_CASES.values(), ids=STRICT_CASES.keys()
+)
+async def test_drop_params_sends_without_the_parameter(family, model, params, name, where):
+    sent = []
+    transport = mock(lambda req: sent.append(json.loads(req.content)) or httpx.Response(500))
+    client_kwargs, call_kwargs = (
+        ({"drop_params": True}, {}) if where == "client" else ({}, {"drop_params": True})
+    )
+    async with strict_client(transport, **client_kwargs) as client:
+        with pytest.raises(InternalServerError):
+            await call(client, family, model, params, **call_kwargs)
+    top_level = name.split(".")[0]
+    assert top_level not in json.dumps(sent[0]), sent[0]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_request_the_backend_cannot_express_is_bad_request(stream):
+    """OpenAI's provider rejects top_k while building the native body."""
+    async with strict_client(mock(lambda req: httpx.Response(500))) as client:
+        with pytest.raises(BadRequestError, match="top_k") as err:
+            await client.acompletion("openai/m", USER, top_k=5, stream=stream)
+    assert err.value.provider == "openai"

@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 from model_calling.callbacks import Callback
-from model_calling.core import Request, StreamError, StreamEvent, Usage
+from model_calling.core import Request, Response, StreamError, StreamEvent, Usage
 from model_calling.errors import APIResponseValidationError, BadRequestError
 from model_calling.formats import TranslationError
 from model_calling.formats import anthropic
@@ -41,17 +41,23 @@ class Client:
         *,
         config: Mapping[str, Mapping[str, Any]] | None = None,
         callbacks: Sequence[Callback] = (),
+        drop_params: bool = False,
     ):
         """`config` maps a model prefix (`ollama`, `vllm`, `openai`,
         `openrouter`) to settings merged over `providers.default_configs()`:
         `base_url`, `api_key`, `headers`, `callbacks`, and `transport` (an
         httpx transport, mostly for tests). `callbacks` run for every prefix,
         before the prefix's own.
+
+        A request using a parameter the backend can't honor (Ollama can't
+        force a tool call) raises `BadRequestError` naming it. With
+        `drop_params=True`, here or per call, it is dropped instead.
         """
         self.config = default_configs()
         for prefix, overrides in (config or {}).items():
             self.config[prefix] = {**self.config.get(prefix, {}), **overrides}
         self.callbacks = list(callbacks)
+        self.drop_params = drop_params
         self._http = HttpClients()
         self._sync_http = HttpClients()
         self._sync: LoopThread | None = None
@@ -67,6 +73,7 @@ class Client:
         stream: bool = False,
         api_base: str | None = None,
         api_key: str | None = None,
+        drop_params: bool | None = None,
         **params: Any,
     ) -> ChatCompletion | AsyncIterator[ChatCompletionChunk]:
         """A Chat Completions call. `model` is `prefix/name`, as `ollama/qwen3:4b`.
@@ -76,7 +83,7 @@ class Client:
         Other keyword arguments are Chat Completions request fields.
         """
         return await self._completion(
-            self._http, model, messages, stream, api_base, api_key, params
+            self._http, model, messages, stream, api_base, api_key, drop_params, params
         )
 
     def completion(
@@ -87,20 +94,26 @@ class Client:
         stream: bool = False,
         api_base: str | None = None,
         api_key: str | None = None,
+        drop_params: bool | None = None,
         **params: Any,
     ) -> ChatCompletion | Iterator[ChatCompletionChunk]:
         """The sync form of `acompletion`; streams are sync iterators."""
         return self._run_sync(
-            self._completion(self._sync_http, model, messages, stream, api_base, api_key, params),
+            self._completion(
+                self._sync_http, model, messages, stream, api_base, api_key, drop_params, params
+            ),
             stream,
         )
 
-    async def _completion(self, http, model, messages, stream, api_base, api_key, params):
+    async def _completion(
+        self, http, model, messages, stream, api_base, api_key, drop_params, params
+    ):
         body = {**params, "model": model, "messages": messages, "stream": stream}
         provider = self._provider(http, model, api_base, api_key)
         request = _translate(provider, lambda: chat.request_to_internal(body))
+        self._check_params(provider, request, drop_params)
         if not stream:
-            response = await provider.complete(request)
+            response = await _complete(provider, request)
             return ChatCompletion.model_validate(chat.response_from_internal(response, model))
         encoder = ChatCompletionsStreamEncoder(model, chat.include_usage(request))
         events = await _open_stream(provider, request)
@@ -117,6 +130,7 @@ class Client:
         stream: bool = False,
         api_base: str | None = None,
         api_key: str | None = None,
+        drop_params: bool | None = None,
         **params: Any,
     ) -> Message | AsyncIterator[MessageStreamEvent]:
         """An Anthropic Messages call over any backend. `model` is `prefix/name`.
@@ -127,7 +141,7 @@ class Client:
         fields, such as `system`, `tools`, and `thinking`.
         """
         return await self._messages(
-            self._http, model, messages, max_tokens, stream, api_base, api_key, params
+            self._http, model, messages, max_tokens, stream, api_base, api_key, drop_params, params
         )
 
     def messages(
@@ -139,17 +153,28 @@ class Client:
         stream: bool = False,
         api_base: str | None = None,
         api_key: str | None = None,
+        drop_params: bool | None = None,
         **params: Any,
     ) -> Message | Iterator[MessageStreamEvent]:
         """The sync form of `amessages`; streams are sync iterators."""
         return self._run_sync(
             self._messages(
-                self._sync_http, model, messages, max_tokens, stream, api_base, api_key, params
+                self._sync_http,
+                model,
+                messages,
+                max_tokens,
+                stream,
+                api_base,
+                api_key,
+                drop_params,
+                params,
             ),
             stream,
         )
 
-    async def _messages(self, http, model, messages, max_tokens, stream, api_base, api_key, params):
+    async def _messages(
+        self, http, model, messages, max_tokens, stream, api_base, api_key, drop_params, params
+    ):
         body = {
             **params,
             "model": model,
@@ -159,8 +184,9 @@ class Client:
         }
         provider = self._provider(http, model, api_base, api_key)
         request = _translate(provider, lambda: anthropic.request_to_internal(body))
+        self._check_params(provider, request, drop_params)
         if not stream:
-            response = await provider.complete(request)
+            response = await _complete(provider, request)
             # Messages always carries usage; a backend that reports none gets zeros.
             usage = response.usage or Usage(input_tokens=0, output_tokens=0)
             response = response.model_copy(update={"model": model, "usage": usage})
@@ -190,6 +216,16 @@ class Client:
             return provider_for(model, {prefix: config}, http)
         except ValueError as e:
             raise BadRequestError(str(e), provider=prefix) from e
+
+    def _check_params(self, provider: Provider, request: Request, drop_params: bool | None):
+        drop = self.drop_params if drop_params is None else drop_params
+        names = provider.unsupported_params(request)
+        if names and not drop:
+            raise BadRequestError(
+                f"{provider.name} cannot honor {', '.join(names)}; pass "
+                "drop_params=True to send the request without them",
+                provider=provider.name,
+            )
 
     def _run_sync(self, call, stream: bool):
         runner = self._runner()
@@ -240,12 +276,23 @@ def _translate(provider: Provider, fn: Callable[[], Request]) -> Request:
         raise BadRequestError(str(e), provider=provider.name) from e
 
 
+async def _complete(provider: Provider, request: Request) -> Response:
+    """`provider.complete`, with a request the backend can't express as a
+    `BadRequestError`. Unreadable responses are already typed by the provider."""
+    try:
+        return await provider.complete(request)
+    except TranslationError as e:
+        raise BadRequestError(str(e), provider=provider.name) from e
+
+
 async def _open_stream(provider: Provider, request: Request) -> AsyncIterator[StreamEvent]:
     """Start a stream and read its first event, so a refused request raises
     before the caller starts iterating."""
     events = provider.stream(request)
     try:
         first = await anext(events)
+    except TranslationError as e:
+        raise BadRequestError(str(e), provider=provider.name) from e
     except StopAsyncIteration:
         raise APIResponseValidationError(
             f"{provider.name} ended the stream before it started", provider=provider.name

@@ -38,7 +38,7 @@ from model_calling.formats.chat_completions import (
     usage_in,
 )
 from model_calling.errors import APIError
-from model_calling.providers.base import Provider, StreamParser, new_id
+from model_calling.providers.base import Provider, StreamParser, new_id, uses_cache_control
 from model_calling.providers.openai_compat_stream import ChatCompletionsStreamParser
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,16 @@ class OpenAICompatProvider(Provider):
         return f"{self.base_url}{CHAT_PATH}"
 
     # --- request ----------------------------------------------------------
+
+    def unsupported_params(self, request: Request) -> list[str]:
+        names = []
+        thinking = request.thinking
+        if thinking is not None and thinking.budget_tokens is not None and thinking.effort is None:
+            # Chat Completions takes reasoning_effort; a token budget has no equivalent.
+            names.append("thinking.budget_tokens")
+        if uses_cache_control(request):
+            names.append("cache_control")
+        return names
 
     def build_request(self, request: Request) -> dict:
         messages: list[dict] = []

@@ -20,7 +20,7 @@ import httpx
 from pydantic import ValidationError
 
 from model_calling.callbacks import Callback
-from model_calling.core import Request, Response, StreamError, StreamEvent
+from model_calling.core import Request, Response, StreamError, StreamEvent, Tool, ToolResult
 from model_calling.errors import (
     APIConnectionError,
     APIError,
@@ -38,6 +38,14 @@ BAD_GATEWAY = 502
 # Long-lived streams hold their connections, so a pooled client must not cap
 # them; per-call clients never did. Idle connections are still reused.
 POOL_LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
+
+
+def uses_cache_control(request: Request) -> bool:
+    """Whether any system block, message block, tool result, or tool sets `cache_control`."""
+    blocks = [*(request.system or []), *(b for m in request.messages for b in m.content)]
+    nested = [c for b in blocks if isinstance(b, ToolResult) for c in b.content or ()]
+    tools = [t for t in request.tools or () if isinstance(t, Tool)]
+    return any(getattr(x, "cache_control", None) is not None for x in (*blocks, *nested, *tools))
 
 
 def new_id(prefix: str = "gen-") -> str:
@@ -135,6 +143,12 @@ class Provider(ABC):
     @abstractmethod
     def build_request(self, request: Request) -> dict:
         """Internal request to the backend's native body."""
+
+    def unsupported_params(self, request: Request) -> list[str]:
+        """Parameters in `request` this backend can't honor and `build_request`
+        drops. The library refuses such a request unless the caller passes
+        `drop_params=True`; the gateway still drops them."""
+        return []
 
     @abstractmethod
     def parse_response(self, body: dict) -> Response:

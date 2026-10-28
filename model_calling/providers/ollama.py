@@ -36,11 +36,19 @@ from model_calling.core import (
     Usage,
 )
 from model_calling.formats import TranslationError
-from model_calling.providers.base import BAD_GATEWAY, Provider, StreamParser, new_id
+from model_calling.providers.base import (
+    BAD_GATEWAY,
+    Provider,
+    StreamParser,
+    new_id,
+    uses_cache_control,
+)
 
 logger = logging.getLogger(__name__)
 
 CHAT_PATH = "/api/chat"
+# Ollama has no tool_choice, so it can't make the model call a tool.
+FORCED_TOOL_CHOICES = ("any", "tool")
 # Ollama's done_reason -> internal stop reason. Ollama reports "stop" even
 # when the turn ends in tool calls, so callers check for those first.
 _STOP_REASONS = {"stop": "end_turn", "length": "max_tokens"}
@@ -90,6 +98,15 @@ class OllamaProvider(Provider):
 
     # --- request ----------------------------------------------------------
 
+    def unsupported_params(self, request: Request) -> list[str]:
+        names = []
+        choice = request.tool_choice
+        if choice is not None and choice.mode in FORCED_TOOL_CHOICES:
+            names.append("tool_choice")
+        if uses_cache_control(request):
+            names.append("cache_control")
+        return names
+
     def build_request(self, request: Request) -> dict:
         tool_names: dict[str, str] = {}
         messages: list[dict] = []
@@ -99,7 +116,7 @@ class OllamaProvider(Provider):
             messages.extend(self._message_out(msg, tool_names))
         body: dict[str, Any] = {"model": self.model, "messages": messages}
         choice = request.tool_choice
-        if choice is not None and choice.mode in ("any", "tool"):
+        if choice is not None and choice.mode in FORCED_TOOL_CHOICES:
             # Ollama has no tool_choice; the model may still answer in text.
             logger.warning("Ollama cannot force a tool call; ignoring tool_choice %r", choice.mode)
         if request.tools and not (choice and choice.mode == "none"):
