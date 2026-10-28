@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 import httpx
 import json
 from model_calling import __version__
+from model_calling import gateway
+from model_calling.providers import provider_for
 from model_calling.registry import registry
 from model_calling.ollama_adapter import OllamaAdapter
 from model_calling.cache import embedding_cache
@@ -175,6 +177,13 @@ async def chat_completions(request: Request):
     """OpenAI-compatible chat completions endpoint"""
     # Parse the request body
     body = await request.json()
+
+    # Ported backends go through the provider interface; the rest stay on
+    # the legacy adapter path below until they move.
+    model = body.get("model") if isinstance(body, dict) else None
+    provider = provider_for(model, registry.default_configs) if isinstance(model, str) else None
+    if provider is not None:
+        return await gateway.chat_completions(provider, body)
 
     # Validate request format
     try:

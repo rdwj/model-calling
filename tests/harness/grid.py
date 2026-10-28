@@ -21,16 +21,6 @@ _HOSTED_CALLBACK_CRASH = (
     "'model' key collides with the positional model name and every call returns 500"
 )
 KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
-    ("chat_completions", "ollama", "tools"): (
-        "Phase 4: Ollama tool calls keep finish_reason 'stop' instead of 'tool_calls'"
-    ),
-    ("chat_completions", "ollama", "stream"): (
-        "Phase 2: server.stream_response bypasses the adapter and never sends [DONE] "
-        "for NDJSON backends"
-    ),
-    ("chat_completions", "ollama", "backend_error"): (
-        "Phase 2: backend errors return HTTP 200 with the backend's error body"
-    ),
     ("chat_completions", "openai_compat", "text"): _HOSTED_CALLBACK_CRASH,
     ("chat_completions", "openai_compat", "tools"): _HOSTED_CALLBACK_CRASH,
     ("chat_completions", "openai_compat", "backend_error"): _HOSTED_CALLBACK_CRASH,
