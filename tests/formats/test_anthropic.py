@@ -281,6 +281,10 @@ EDGE_RESPONSES = {
         },
     },
     "null_stop_reason": {**RESPONSE, "stop_reason": None},
+    "unsigned_thinking": {
+        **RESPONSE,
+        "content": [{"type": "thinking", "thinking": "hm", "signature": ""}, *RESPONSE["content"]],
+    },
     "text_with_null_citations": {
         **RESPONSE,
         "content": [{"type": "text", "text": "hi", "citations": None}],
@@ -313,3 +317,20 @@ def test_typed_stop_reason_overrides_extras(wire):
 def test_malformed_request_raises_translation_error(message):
     with pytest.raises(TranslationError, match="invalid Anthropic request"):
         fmt.request_to_internal({**REQUEST, "messages": [message]})
+
+
+def test_unsigned_thinking_gets_an_empty_signature():
+    """Ollama and vLLM reasoning has no signature, which the SDK requires."""
+    from model_calling.core import Response, Thinking, Usage
+
+    resp = Response(
+        id="r",
+        model="m",
+        content=[Thinking(thinking="hm")],
+        stop_reason="end_turn",
+        usage=Usage(input_tokens=1, output_tokens=1),
+    )
+    body = fmt.response_from_internal(resp)
+    assert body["content"] == [{"type": "thinking", "thinking": "hm", "signature": ""}]
+    validate_anthropic_message(body)
+    assert fmt.response_to_internal(body).content[0].signature is None

@@ -57,6 +57,10 @@ _TOOL_CHOICE_MODES = {"auto", "any", "tool", "none"}
 _CACHE_TTLS = {None, "5m", "1h"}
 _TOOL_RESULT_CONTENT_TYPES = {"text", "image"}
 _IMAGE_SOURCES = {"base64": Base64Source, "url": UrlSource, "file": FileSource}
+# The signature sent for thinking that no Anthropic model signed (Ollama,
+# vLLM's Chat Completions), as Anthropic itself does in content_block_start.
+# The SDK requires the field. Ingress reads it back as unsigned.
+UNSIGNED = ""
 
 T = TypeVar("T")
 
@@ -151,7 +155,9 @@ _BLOCK_IN = {
     "image": _image_in,
     "tool_use": lambda r: ToolCall(id=r.pop("id"), name=r.pop("name"), input=r.pop("input")),
     "tool_result": _tool_result_in,
-    "thinking": lambda r: Thinking(thinking=r.pop("thinking"), signature=_take(r, "signature")),
+    "thinking": lambda r: Thinking(
+        thinking=r.pop("thinking"), signature=_take(r, "signature") or None
+    ),
     "redacted_thinking": lambda r: RedactedThinking(data=r.pop("data")),
 }
 
@@ -184,12 +190,21 @@ def _block_out(block: Any) -> dict:
             "is_error": block.is_error,
         }
     elif isinstance(block, Thinking):
-        fields |= {"type": "thinking", "thinking": block.thinking, "signature": block.signature}
+        fields |= {
+            "type": "thinking",
+            "thinking": block.thinking,
+            "signature": block.signature or UNSIGNED,
+        }
     elif isinstance(block, RedactedThinking):
         fields |= {"type": "redacted_thinking", "data": block.data}
     else:
         raise TranslationError(f"no Anthropic encoding for {type(block).__name__}")
     return _out(block, fields)
+
+
+def block_from_internal(block: Any) -> dict:
+    """One internal content block as an Anthropic content block."""
+    return _translating("content block", lambda: _block_out(block))
 
 
 def _is_plain_text(blocks: list) -> bool:
