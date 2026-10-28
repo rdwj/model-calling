@@ -256,7 +256,7 @@ def thinking_request(mode="enabled", effort="low") -> Request:
     ],
 )
 def test_build_request_think(provider, info, mode, effort, think):
-    provider.use_model_info(info)
+    provider.use_model_info(None if info is None else provider.read_model_info(info))
     assert provider.build_request(thinking_request(mode, effort))["think"] == think
 
 
@@ -293,6 +293,21 @@ async def test_prepare_looks_up_each_model_once():
     await second.prepare(thinking_request())
     assert second.think_levels == ("low", "medium", "high")
     assert len(replay.requests) == 1 and not unused.requests
+    replay.check()
+
+
+@pytest.mark.parametrize(
+    "body", [{"thinking": True}, {"thinking": {"values": "low"}}, ["low"], {}, None]
+)
+def test_read_model_info_tolerates_any_shape(provider, body):
+    assert provider.read_model_info(body) == ()
+
+
+async def test_prepare_caches_only_the_levels():
+    cache: dict = {}
+    provider, replay = replayed_provider([GPT_OSS_INFO], cache)
+    await provider.prepare(thinking_request())
+    assert list(cache.values()) == [("low", "medium", "high")]
     replay.check()
 
 

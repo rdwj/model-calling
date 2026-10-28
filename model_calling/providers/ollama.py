@@ -127,10 +127,17 @@ class OllamaProvider(Provider):
     def model_info_request(self) -> tuple[str, dict]:
         return f"{self.base_url}{SHOW_PATH}", {"model": self.model}
 
-    def use_model_info(self, info: Any) -> None:
-        thinking = (info or {}).get("thinking") or {}
-        values = thinking.get("values") or []
-        self.think_levels = tuple(v for v in values if isinstance(v, str))
+    def read_model_info(self, body: Any) -> tuple[str, ...]:
+        """The named levels in /api/show's `thinking.values`; booleans there
+        are on/off controls, not levels."""
+        thinking = body.get("thinking") if isinstance(body, dict) else None
+        values = thinking.get("values") if isinstance(thinking, dict) else None
+        if not isinstance(values, list):
+            return ()
+        return tuple(v for v in values if isinstance(v, str))
+
+    def use_model_info(self, info: tuple[str, ...] | None) -> None:
+        self.think_levels = info or ()
 
     # --- request ----------------------------------------------------------
 

@@ -213,6 +213,8 @@ def record_model_info(client: httpx.Client, backend: Backend, scenario: Scenario
     /api/show). Only local backends need one, so no key or target swap."""
     url, body = backend.native_provider(scenario).model_info_request()
     resp = client.post(url, json=body)
+    if resp.status_code != 200:
+        sys.exit(f"{backend.name} model lookup {url} answered HTTP {resp.status_code}: {resp.text}")
     return Exchange(
         method="POST",
         url=url,

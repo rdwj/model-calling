@@ -197,8 +197,13 @@ class Provider(ABC):
         """The URL and JSON body that look up this provider's model."""
         raise NotImplementedError(f"{self.name} has no model lookup")
 
+    def read_model_info(self, body: Any) -> Any:
+        """What `use_model_info` needs from the lookup's JSON answer, which
+        is what gets cached. It must tolerate a body of any shape."""
+        return body
+
     def use_model_info(self, info: Any) -> None:
-        """Take the lookup's JSON answer, or None when it failed."""
+        """Take what `read_model_info` kept, or None when the lookup failed."""
 
     async def prepare(self, request: Request) -> None:
         """Look up the model if `request` needs it. A failed lookup is
@@ -211,7 +216,7 @@ class Provider(ABC):
         if key not in self.model_info_cache:
             url, body = self.model_info_request()
             try:
-                self.model_info_cache[key] = await self._post_json(url, body)
+                self.model_info_cache[key] = self.read_model_info(await self._post_json(url, body))
             except APIError as e:
                 logger.warning("%s model lookup for %s failed: %s", self.name, self.model, e)
                 self.use_model_info(None)

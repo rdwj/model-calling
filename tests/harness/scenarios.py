@@ -502,7 +502,8 @@ class Backend:
         if info is not None:
             from tests.harness.replay import Exchange, fixture_path
 
-            provider.use_model_info(Exchange.load(fixture_path(self.name, info)).response_json)
+            body = Exchange.load(fixture_path(self.name, info)).response_json
+            provider.use_model_info(provider.read_model_info(body))
         return {**provider.build_request(request), "stream": scenario.stream}
 
 
