@@ -31,6 +31,9 @@ GATEWAY_TIMEOUT = 504
 # The backend refused the gateway's credential: a gateway fault, not the
 # client's, so it is reported as a bad gateway too.
 _CREDENTIAL_REFUSED = (401, 403)
+# Long-lived streams hold their connections, so a pooled client must not cap
+# them; per-call clients never did. Idle connections are still reused.
+POOL_LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
 
 
 def new_id(prefix: str = "gen-") -> str:
@@ -61,7 +64,9 @@ class HttpClients:
     def get(self, prefix: str, config: Mapping[str, Any]) -> httpx.AsyncClient:
         client = self._clients.get(prefix)
         if client is None or client.is_closed:
-            client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, transport=config.get("transport"))
+            client = httpx.AsyncClient(
+                timeout=DEFAULT_TIMEOUT, limits=POOL_LIMITS, transport=config.get("transport")
+            )
             self._clients[prefix] = client
         return client
 
@@ -94,14 +99,17 @@ class Provider(ABC):
         callbacks: Sequence[Callback] = (),
         timeout: float = DEFAULT_TIMEOUT,
         http_client: httpx.AsyncClient | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
-        """Without `http_client`, each call opens and closes its own client."""
+        """Without `http_client`, each call opens and closes its own client.
+        `extra_headers` go on every request, after auth."""
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.callbacks = list(callbacks)
         self.timeout = timeout
         self.http_client = http_client
+        self.extra_headers = dict(extra_headers or {})
 
     # --- what each provider defines --------------------------------------
 
@@ -110,7 +118,8 @@ class Provider(ABC):
         """Full URL of the backend's chat endpoint."""
 
     def headers(self) -> dict[str, str]:
-        return {"authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        auth = {"authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        return {**auth, **self.extra_headers}
 
     @abstractmethod
     def build_request(self, request: Request) -> dict:

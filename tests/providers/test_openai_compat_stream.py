@@ -161,6 +161,22 @@ def test_finish_stop_with_tool_calls_is_tool_use():
     assert events[-2].stop_reason == "tool_use"
 
 
+def test_new_id_on_a_reused_index_is_a_new_call():
+    events = feed_all(
+        [
+            tool(0, id="c1", name="f", args='{"a": 1}'),
+            tool(0, id="c2", name="g", args='{"b": 2}'),
+            chunk(finish="tool_calls"),
+            DONE,
+        ]
+    )
+    assert_well_formed(events)
+    assert [(s.block.id, s.block.name) for s in starts(events, ToolCall)] == [
+        ("c1", "f"),
+        ("c2", "g"),
+    ]
+
+
 def test_fragment_for_closed_tool_call_is_error():
     events = feed_all(
         [
@@ -217,6 +233,21 @@ def test_reasoning_fields_become_a_thinking_block(field):
     assert [type(s.block) for s in starts(events, (Thinking, Text))] == [Thinking, Text]
     assert deltas(events, ThinkingDelta) == "Thinking hard"
     assert deltas(events, TextDelta) == "Answer"
+
+
+def test_streamed_refusal_is_text_with_refusal_stop():
+    events = feed_all(
+        [chunk({"refusal": "I can't"}), chunk({"refusal": " help."}), chunk(finish="stop"), DONE]
+    )
+    assert_well_formed(events)
+    assert deltas(events, TextDelta) == "I can't help."
+    assert events[-2].stop_reason == "refusal"
+
+
+def test_finish_without_done_still_finishes():
+    events = feed_all([chunk({"content": "Hi"}), chunk(finish="stop")], close=True)
+    assert_well_formed(events)
+    assert events[-2].stop_reason == "end_turn"
 
 
 # --- errors ---

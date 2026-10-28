@@ -226,3 +226,17 @@ def test_provider_for_empty_api_key_sends_no_auth():
 
 def test_provider_for_unported_prefix_is_none():
     assert provider_for("anthropic/claude", {"anthropic": {"base_url": "x"}}) is None
+
+
+def test_config_headers_go_on_every_request():
+    configs = {
+        "openai": {
+            "base_url": "https://api.openai.test/v1",
+            "api_key": "k",
+            "headers": {"OpenAI-Organization": "org-1"},
+        }
+    }
+    assert provider_for("openai/gpt-5", configs).headers() == {
+        "authorization": "Bearer k",
+        "OpenAI-Organization": "org-1",
+    }

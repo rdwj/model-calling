@@ -610,3 +610,27 @@ def test_parse_response_usage_details(provider):
     assert resp.usage.cache_read_tokens == 3
     assert resp.usage.cache_write_tokens == 2
     assert resp.usage.reasoning_tokens == 1
+
+
+def test_build_request_keeps_system_blocks_apart(provider):
+    body = provider.build_request(req(system=[Text(text="Be kind."), Text(text="Be brief.")]))
+    assert body["messages"][0] == {"role": "system", "content": "Be kind.\nBe brief."}
+
+
+def test_build_request_top_k_in_extras_is_still_refused_by_openai(openai_provider):
+    with pytest.raises(TranslationError, match="does not support top_k"):
+        openai_provider.build_request(req(extras={"openai_chat": {"top_k": 5}}))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"model": None, "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]},
+        {"choices": [{"message": None, "finish_reason": "stop"}]},
+    ],
+    ids=["null_model", "null_message"],
+)
+def test_parse_response_tolerates_nulls(provider, body):
+    resp = provider.parse_response(body)
+    assert resp.model == "gpt-oss-20b"
+    assert resp.stop_reason == "end_turn"

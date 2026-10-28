@@ -48,8 +48,8 @@ _MANAGED_FIELDS = ("stream", "stream_options")
 _TOOL_CHOICE_MODES = {"auto": "auto", "none": "none", "any": "required"}
 
 
-def _text(blocks: list) -> str:
-    return "".join(b.text for b in blocks if isinstance(b, Text))
+def _text(blocks: list, sep: str = "") -> str:
+    return sep.join(b.text for b in blocks if isinstance(b, Text))
 
 
 def _check_part(block: Any, provider: str) -> None:
@@ -107,7 +107,8 @@ class OpenAICompatProvider(Provider):
     def build_request(self, request: Request) -> dict:
         messages: list[dict] = []
         if request.system:
-            messages.append({"role": "system", "content": _text(request.system)})
+            # One block per client system message; keep them apart.
+            messages.append({"role": "system", "content": _text(request.system, "\n")})
         for msg in request.messages:
             messages.extend(self._message_out(msg))
         body: dict[str, Any] = {
@@ -118,8 +119,6 @@ class OpenAICompatProvider(Provider):
             body["tools"] = [self._tool_out(t) for t in request.tools]
         if request.tool_choice is not None:
             body.update(self._tool_choice_out(request))
-        if request.top_k is not None and not self.supports_top_k:
-            raise TranslationError(f"{self.name} does not support top_k")
         params = {
             self.max_tokens_field: request.max_tokens,
             "temperature": request.temperature,
@@ -133,6 +132,9 @@ class OpenAICompatProvider(Provider):
             "response_format": self._response_format_out(request),
         }
         body.update({k: v for k, v in params.items() if v is not None})
+        # Checked after the merge: a Chat Completions client's top_k arrives in extras.
+        if "top_k" in body and not self.supports_top_k:
+            raise TranslationError(f"{self.name} does not support top_k")
         if request.stream:
             # Usage arrives only when asked for; the ingress decides whether
             # the client sees it.
@@ -248,7 +250,7 @@ class OpenAICompatProvider(Provider):
         if not choices:
             raise TranslationError("response has no choices")
         choice = choices[0]
-        msg = choice["message"]
+        msg = choice.get("message") or {}
         blocks: list = []
         reasoning = next((msg[f] for f in REASONING_FIELDS if msg.get(f)), None)
         if reasoning:
@@ -266,7 +268,7 @@ class OpenAICompatProvider(Provider):
             stop_reason = "refusal"
         return Response(
             id=body.get("id") or new_id(),
-            model=body.get("model", self.model),
+            model=body.get("model") or self.model,
             content=blocks,
             stop_reason=stop_reason,
             usage=usage_in(body.get("usage")),

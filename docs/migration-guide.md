@@ -166,7 +166,7 @@ client.update_config(
     prefix="openai",
     config={
         "api_key": "your_openai_api_key",
-        "org_id": "your_openai_org_id",  # Optional
+        "headers": {"OpenAI-Organization": "your_openai_org_id"},  # Optional
         "base_url": "https://api.openai.com/v1"
     }
 )

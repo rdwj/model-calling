@@ -125,7 +125,11 @@ class ModelRegistry:
             "openai": {
                 "base_url": "https://api.openai.com/v1",
                 "api_key": os.environ.get("OPENAI_API_KEY", ""),
-                "org_id": os.environ.get("OPENAI_ORG_ID", ""),
+                "headers": (
+                    {"OpenAI-Organization": os.environ["OPENAI_ORG_ID"]}
+                    if os.environ.get("OPENAI_ORG_ID")
+                    else {}
+                ),
                 "callbacks": [self.default_callback],
             },
             "openrouter": {

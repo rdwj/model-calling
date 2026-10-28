@@ -46,8 +46,9 @@ class ChatCompletionsStreamParser(StreamParser):
         self.index = -1
         # Kind of the open block ("thinking", "text", or "tool"), if any.
         self.open: str | None = None
-        # Chat Completions tool_calls index -> internal block index.
-        self.tool_blocks: dict[int, int] = {}
+        # Chat Completions tool_calls index -> (call id, internal block index).
+        self.tool_blocks: dict[int, tuple[str | None, int]] = {}
+        self.refused = False
         self.finish_reason: str | None = None
         self.usage = None
         self.done = False
@@ -73,7 +74,7 @@ class ChatCompletionsStreamParser(StreamParser):
         if not self.started:
             self.started = True
             events.append(
-                MessageStart(id=chunk.get("id") or new_id(), model=chunk.get("model", self.model))
+                MessageStart(id=chunk.get("id") or new_id(), model=chunk.get("model") or self.model)
             )
         if chunk.get("usage"):
             self.usage = usage_in(chunk["usage"])
@@ -89,6 +90,9 @@ class ChatCompletionsStreamParser(StreamParser):
     def close(self) -> list[StreamEvent]:
         if self.done:
             return []
+        if self.finish_reason is not None:
+            # Finished, but the backend never sent [DONE].
+            return self._finish()
         return [self._error(f"{self.provider} closed the stream before it finished")]
 
     # --- internals --------------------------------------------------------
@@ -100,24 +104,28 @@ class ChatCompletionsStreamParser(StreamParser):
             events += self._into("thinking", ThinkingDelta(thinking=reasoning))
         if delta.get("content"):
             events += self._into("text", TextDelta(text=delta["content"]))
+        if delta.get("refusal"):
+            self.refused = True
+            events += self._into("text", TextDelta(text=delta["refusal"]))
         for fragment in delta.get("tool_calls") or []:
             events += self._tool_fragment(fragment)
         return events
 
     def _tool_fragment(self, fragment: dict) -> list[StreamEvent]:
         tc_index = fragment.get("index", 0)
+        call_id = fragment.get("id")
         fn = fragment.get("function") or {}
         events: list[StreamEvent] = []
-        if tc_index not in self.tool_blocks:
+        known = self.tool_blocks.get(tc_index)
+        # Some servers reuse index 0 for every call; a new id means a new call.
+        if known is None or (call_id and call_id != known[0]):
             events += self._close()
             self.index += 1
             self.open = "tool"
-            self.tool_blocks[tc_index] = self.index
-            call = ToolCall(
-                id=fragment.get("id") or new_id("call_"), name=fn.get("name") or "", input={}
-            )
+            self.tool_blocks[tc_index] = (call_id, self.index)
+            call = ToolCall(id=call_id or new_id("call_"), name=fn.get("name") or "", input={})
             events.append(BlockStart(index=self.index, block=call))
-        elif self.tool_blocks[tc_index] != self.index or self.open != "tool":
+        elif known[1] != self.index or self.open != "tool":
             return [self._error(f"{self.provider} interleaved tool call arguments")]
         if fn.get("arguments"):
             events.append(
@@ -150,6 +158,8 @@ class ChatCompletionsStreamParser(StreamParser):
         stop_reason = STOP_REASONS.get(self.finish_reason)
         if self.tool_blocks and stop_reason == "end_turn":
             stop_reason = "tool_use"
+        if self.refused:
+            stop_reason = "refusal"
         return self._close() + [
             MessageDelta(stop_reason=stop_reason, usage=self.usage),
             MessageStop(),

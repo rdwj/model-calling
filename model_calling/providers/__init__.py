@@ -32,7 +32,7 @@ def provider_for(
     """The provider for `model_name`, or None if its prefix isn't ported yet.
 
     `configs` maps each prefix to its settings (`base_url`, `api_key`,
-    `callbacks`, and optionally `transport`), as in
+    `callbacks`, and optionally `headers` and `transport`), as in
     `ModelRegistry.default_configs`. With `clients`, the provider shares its
     prefix's pooled HTTP client instead of opening one per call.
     """
@@ -52,6 +52,7 @@ def provider_for(
         api_key=config.get("api_key") or None,
         callbacks=config.get("callbacks", ()),
         http_client=clients.get(prefix, config) if clients is not None else None,
+        extra_headers=config.get("headers"),
     )
 
 
