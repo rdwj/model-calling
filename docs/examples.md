@@ -194,8 +194,8 @@ with Client() as client:
         block = tool_use_blocks[0]
         result = get_weather(block.input["location"])
         
-        # Send the blocks back as wire dicts.
-        messages.append({"role": "assistant", "content": [b.to_dict() for b in response.content]})
+        # Send the typed blocks directly; the library converts them to wire dicts.
+        messages.append({"role": "assistant", "content": response.content})
         messages.append({
             "role": "user",
             "content": [

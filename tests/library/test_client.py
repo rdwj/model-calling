@@ -393,3 +393,81 @@ async def test_mid_stream_error_kind_picks_the_class(kind, error_type):
         with pytest.raises(APIError, match="slow down") as err:
             await client.acompletion("openrouter/m", USER, stream=True)
     assert type(err.value) is error_type
+
+
+# --- typed content blocks as input -----------------------------------------
+
+TOOL_RESULT_TEXT = "22C and sunny"
+
+
+def conversation(first: Message | None) -> list:
+    """The tools scenario, then (given its answer) the assistant turn as the
+    typed blocks `messages()` returned, and a tool result."""
+    turns = list(SCENARIOS["tools"].messages_body("ollama/m")["messages"])
+    if first is None:
+        return turns
+    call = next(b for b in first.content if b.type == "tool_use")
+    result = {"type": "tool_result", "tool_use_id": call.id, "content": TOOL_RESULT_TEXT}
+    return turns + [
+        {"role": "assistant", "content": first.content},
+        {"role": "user", "content": [result]},
+    ]
+
+
+def tools_backend():
+    """Answers every request with the recorded Ollama tools response
+    (thinking, then a call), keeping the bodies sent."""
+    recorded = Exchange.load(fixture_path("ollama", "tools")).response_json
+    sent = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=recorded)
+
+    return mock(handler), sent, recorded["message"]
+
+
+def assert_follow_up(sent: list, recorded: dict):
+    """The second request carries the first answer's thinking and call back."""
+    _, assistant, tool = sent[1]["messages"]
+    assert assistant == {
+        "role": "assistant",
+        "content": "",
+        "thinking": recorded["thinking"],
+        "tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Paris"}}}],
+    }
+    assert tool == {"role": "tool", "content": TOOL_RESULT_TEXT, "tool_name": "get_weather"}
+
+
+TOOLS = list(SCENARIOS["tools"].anthropic_tools)
+
+
+async def test_amessages_takes_its_own_content_back():
+    transport, sent, recorded = tools_backend()
+    async with ollama_client(transport) as client:
+        first = await client.amessages("ollama/m", conversation(None), max_tokens=256, tools=TOOLS)
+        assert [b.type for b in first.content] == ["thinking", "tool_use"]
+        await client.amessages("ollama/m", conversation(first), max_tokens=256, tools=TOOLS)
+    assert_follow_up(sent, recorded)
+
+
+def test_messages_takes_its_own_content_back():
+    transport, sent, recorded = tools_backend()
+    with ollama_client(transport) as client:
+        first = client.messages("ollama/m", conversation(None), max_tokens=256, tools=TOOLS)
+        turns = conversation(first)
+        client.messages("ollama/m", turns, max_tokens=256, tools=TOOLS)
+    assert_follow_up(sent, recorded)
+    assert turns[1]["content"] is first.content, "the caller's turns were replaced"
+
+
+async def test_dict_blocks_and_typed_blocks_send_the_same_body():
+    transport, sent, _ = tools_backend()
+    async with ollama_client(transport) as client:
+        first = await client.amessages("ollama/m", conversation(None), max_tokens=256, tools=TOOLS)
+        typed = conversation(first)
+        as_dicts = [*typed[:1], {**typed[1], "content": [b.to_dict() for b in first.content]}]
+        as_dicts.append(typed[2])
+        await client.amessages("ollama/m", typed, max_tokens=256, tools=TOOLS)
+        await client.amessages("ollama/m", as_dicts, max_tokens=256, tools=TOOLS)
+    assert sent[1] == sent[2]

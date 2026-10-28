@@ -14,7 +14,7 @@ import threading
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from typing import Any, TypeVar
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from model_calling.callbacks import Callback
 from model_calling.core import Request, Response, StreamError, StreamEvent, Usage
@@ -42,6 +42,19 @@ from model_calling.types.embeddings import CreateEmbeddingResponse
 from model_calling.types.messages import Message, MessageStreamEvent, parse_stream_event
 
 T = TypeVar("T")
+
+
+def _wire(value: Any) -> Any:
+    """`value` with every pydantic model in it (such as the content blocks a
+    previous `messages()` call returned) dumped as the SDK dumps request
+    models. Builds new containers; the caller's are untouched."""
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json", exclude_unset=True, by_alias=True)
+    if isinstance(value, (list, tuple)):
+        return [_wire(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _wire(v) for k, v in value.items()}
+    return value
 
 
 class Client:
@@ -197,7 +210,7 @@ class Client:
         body = {
             **params,
             "model": model,
-            "messages": messages,
+            "messages": _wire(messages),
             "max_tokens": max_tokens,
             "stream": stream,
         }
