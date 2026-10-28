@@ -17,6 +17,10 @@ from anthropic.types.message_create_params import (
 )
 from openai.types import CreateEmbeddingResponse
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
+from openai.types.chat.completion_create_params import (
+    CompletionCreateParamsNonStreaming,
+    CompletionCreateParamsStreaming,
+)
 from openai.types.responses import Response
 from pydantic import TypeAdapter
 
@@ -26,6 +30,10 @@ _anthropic_event = TypeAdapter(RawMessageStreamEvent)
 _anthropic_request = {
     False: TypeAdapter(MessageCreateParamsNonStreaming),
     True: TypeAdapter(MessageCreateParamsStreaming),
+}
+_chat_completion_request = {
+    False: TypeAdapter(CompletionCreateParamsNonStreaming),
+    True: TypeAdapter(CompletionCreateParamsStreaming),
 }
 
 
@@ -59,14 +67,22 @@ def _materialize(value: Any) -> Any:
 
 
 def validate_anthropic_request(body: dict) -> dict:
-    """Validate a Messages request body against the SDK's request TypedDicts.
+    """Validate a Messages request body against the SDK's request TypedDicts."""
+    return _validate_request(_anthropic_request, body)
 
-    The SDK types `Iterable` fields, which pydantic validates lazily, and its
-    TypedDicts ignore unknown keys. So this consumes every iterator, then
-    requires the validated result to equal the input, which rejects keys the
-    SDK doesn't define and values pydantic had to coerce.
+
+def validate_chat_completion_request(body: dict) -> dict:
+    """Validate a Chat Completions request body against the SDK's request TypedDicts."""
+    return _validate_request(_chat_completion_request, body)
+
+
+def _validate_request(adapters: dict, body: dict) -> dict:
+    """The SDKs type `Iterable` fields, which pydantic validates lazily, and
+    their TypedDicts ignore unknown keys. So this consumes every iterator,
+    then requires the validated result to equal the input, which rejects keys
+    the SDK doesn't define and values pydantic had to coerce.
     """
-    adapter = _anthropic_request[bool(body.get("stream"))]
+    adapter = adapters[bool(body.get("stream"))]
     validated = _materialize(adapter.validate_python(body))
     if validated != body:
         raise ValueError(

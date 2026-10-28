@@ -1,0 +1,65 @@
+{
+  "meta": {
+    "backend": "vllm",
+    "scenario": "reasoning_effort",
+    "recorded_at": "2026-10-28T23:15:57+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/chat/completions",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 17 * 23? Reply with just the number."
+        }
+      ],
+      "max_tokens": 2048,
+      "reasoning_effort": "low",
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-a3447dcae21b15d0",
+      "object": "chat.completion",
+      "created": 1793229357,
+      "model": "gpt-oss-20b",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "391",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "reasoning": "Compute 17*23 = 391."
+          },
+          "logprobs": null,
+          "finish_reason": "stop",
+          "stop_reason": null,
+          "token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.24.0+rhaiv.13-aa47e83a",
+      "usage": {
+        "prompt_tokens": 81,
+        "total_tokens": 101,
+        "completion_tokens": 20,
+        "prompt_tokens_details": null
+      },
+      "prompt_logprobs": null,
+      "prompt_token_ids": null,
+      "prompt_text": null,
+      "kv_transfer_params": null
+    }
+  }
+}

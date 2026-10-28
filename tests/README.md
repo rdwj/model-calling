@@ -38,18 +38,24 @@ The harness lives in `harness/`:
   `gateway_embeddings`) run in `test_gateway_grid.py`, which also checks
   that every gateway answer equals the library's for the same cell. The
   library's `library_completion`, `library_messages`, and
-  `library_embedding` run in `test_library_grid.py`. `sdk_messages`, in
-  `test_sdk_grid.py`, drives the gateway with the official
-  `anthropic.AsyncAnthropic` client (over an httpx2 ASGI transport, since
-  anthropic 2.x uses httpx2) and streams through its `messages.stream`
-  helper, checking the message the SDK assembles. Embeddings have their
+  `library_embedding` run in `test_library_grid.py`. In
+  `test_sdk_grid.py`, `sdk_messages` drives the gateway with the official
+  `anthropic.AsyncAnthropic` client and streams through its
+  `messages.stream` helper, and `sdk_completion` drives it with
+  `openai.AsyncOpenAI` and streams through the SDK's own iterator. Both
+  SDKs run on httpx2, so they get an httpx2 ASGI transport, and both
+  cells check the message or completion the SDK assembles from a stream. Embeddings have their
   own backends and scenarios (`EMBEDDING_BACKENDS`, `embedding_grid`).
   `KNOWN_FAILURES` lists the cells that are expected to fail as strict
   xfails, each naming the epic phase that fixes it (or the backend
   limitation behind it). When a fix lands, the run fails until the entry
   is removed. Chat Completions ingresses skip scenarios with no Chat
-  Completions form, and a backend that `lacks` a capability a scenario
-  `needs` (vLLM's gpt-oss has no vision) makes that cell a strict xfail.
+  Completions form, Messages ingresses skip scenarios with no Messages
+  form, and a backend that `lacks` a capability a scenario `needs`
+  (vLLM's gpt-oss has no vision) makes that cell a strict xfail. A
+  backend that `refuses` a scenario (Ollama can't force a tool call) has
+  no fixture for it: the cell checks that strict mode refuses the request,
+  naming the parameters, without calling the backend.
 - `scenarios.py` defines the requests and backends shared by the tests and
   the recorder. A scenario is written in both wire forms where both can
   express it; `native_form` picks the one the backend body is built from,

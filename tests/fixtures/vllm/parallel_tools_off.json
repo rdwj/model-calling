@@ -1,0 +1,97 @@
+{
+  "meta": {
+    "backend": "vllm",
+    "scenario": "parallel_tools_off",
+    "recorded_at": "2026-10-28T23:16:38+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/chat/completions",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris and in Tokyo. Call it once for each city, in the same turn."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "tool_choice": "auto",
+      "parallel_tool_calls": false,
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-af49bf2a685405e4",
+      "object": "chat.completion",
+      "created": 1793229398,
+      "model": "gpt-oss-20b",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-b9f6c21a9fab0e3a",
+                "type": "function",
+                "function": {
+                  "name": "get_weather",
+                  "arguments": "{\"location\": \"Paris\"}"
+                }
+              }
+            ],
+            "reasoning": "We need to call the get_weather function twice, once for each city. I must format the JSON arguments accordingly. I do not see restrictions on formatting, just call it. I should send two separate calls: one with location \"Paris\", second with \"Tokyo\"."
+          },
+          "logprobs": null,
+          "finish_reason": "tool_calls",
+          "stop_reason": 200012,
+          "token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.24.0+rhaiv.13-aa47e83a",
+      "usage": {
+        "prompt_tokens": 152,
+        "total_tokens": 229,
+        "completion_tokens": 77,
+        "prompt_tokens_details": null
+      },
+      "prompt_logprobs": null,
+      "prompt_token_ids": null,
+      "prompt_text": null,
+      "kv_transfer_params": null
+    }
+  }
+}

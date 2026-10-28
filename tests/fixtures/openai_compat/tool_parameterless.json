@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "backend": "openai_compat",
+    "scenario": "tool_parameterless",
+    "recorded_at": "2026-10-28T23:16:03+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/chat/completions",
+    "json": {
+      "model": "mistralai/mistral-nemo",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_time tool to look up the current time."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "get_time",
+            "description": "Get the current UTC time",
+            "parameters": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        }
+      ],
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "gen-1793229362-iWu5yMY4kLw9Y46d5Hvx",
+      "object": "chat.completion",
+      "created": 1793229362,
+      "model": "mistralai/mistral-nemo",
+      "provider": "Io Net",
+      "system_fingerprint": "vllm-0.25.1-30d24b8b",
+      "service_tier": null,
+      "choices": [
+        {
+          "index": 0,
+          "logprobs": null,
+          "finish_reason": "tool_calls",
+          "native_finish_reason": "tool_calls",
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "refusal": null,
+            "reasoning": null,
+            "tool_calls": [
+              {
+                "type": "function",
+                "index": 0,
+                "id": "yYhXgzAdJ",
+                "function": {
+                  "name": "get_time",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 125,
+        "completion_tokens": 16,
+        "total_tokens": 141,
+        "cost": 1.77048e-06,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 112,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 1.77048e-06,
+          "upstream_inference_prompt_cost": 1.42488e-06,
+          "upstream_inference_completions_cost": 3.456e-07
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  }
+}

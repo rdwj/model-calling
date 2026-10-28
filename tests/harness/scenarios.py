@@ -37,8 +37,32 @@ ANTHROPIC_WEATHER_TOOL = {
     "input_schema": WEATHER_TOOL["function"]["parameters"],
 }
 
+# A tool with no parameters, and the same as a Messages tool. Chat
+# Completions may omit `parameters`; Messages needs an object schema, which
+# is what an omitted one becomes.
+TIME_TOOL = {
+    "type": "function",
+    "function": {"name": "get_time", "description": "Get the current UTC time"},
+}
+ANTHROPIC_TIME_TOOL = {
+    "name": TIME_TOOL["function"]["name"],
+    "description": TIME_TOOL["function"]["description"],
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+# WEATHER_TOOL with strict schema adherence, which needs a closed schema.
+STRICT_WEATHER_TOOL = {
+    "type": "function",
+    "function": {
+        **WEATHER_TOOL["function"],
+        "parameters": {**WEATHER_TOOL["function"]["parameters"], "additionalProperties": False},
+        "strict": True,
+    },
+}
+
 TEXT_PROMPT = "Reply with exactly one word: pong"
 TOOL_PROMPT = "Use the get_weather tool to look up the weather in Paris."
+TIME_PROMPT = "Use the get_time tool to look up the current time."
 PARALLEL_TOOL_PROMPT = (
     "Use the get_weather tool to look up the weather in Paris and in Tokyo. "
     "Call it once for each city, in the same turn."
@@ -62,6 +86,9 @@ TOOL_ERROR_TEXT = "Weather service unavailable: upstream timeout."
 # A 64x64 solid red PNG.
 IMAGE_PNG = (Path(__file__).parent / "red-square.png").read_bytes()
 IMAGE_B64 = base64.b64encode(IMAGE_PNG).decode("ascii")
+
+REQUIRED_TOOL_CHOICE = "required"
+SEED = 7
 
 # Backend capabilities a scenario can need beyond text and tools.
 VISION = "vision"
@@ -100,6 +127,8 @@ class Scenario:
     native_form: str = CHAT_COMPLETIONS
     # False when Chat Completions has no faithful form of the request.
     chat_form: bool = True
+    # False when Anthropic Messages has no faithful form of the request.
+    messages_form: bool = True
     # A capability the backend's model needs (VISION, REASONING), if any.
     needs: Optional[str] = None
     # Replay another scenario's fixture: the native exchange is identical,
@@ -119,11 +148,16 @@ class Scenario:
             "stream": self.stream,
             **self.chat_extra,
         }
+        if "max_completion_tokens" in body:
+            # The current field replaces the deprecated one.
+            del body["max_tokens"]
         if self.tools:
             body["tools"] = list(self.tools)
         return body
 
     def messages_body(self, model: str) -> dict:
+        if not self.messages_form:
+            raise ValueError(f"scenario {self.name!r} has no Anthropic Messages form")
         body = {
             "model": model,
             "messages": list(self.anthropic_messages) or self.messages(),
@@ -322,6 +356,67 @@ SCENARIOS = {
             chat_extra={"stream_options": {"include_usage": True}},
             fixture="stream",
         ),
+        # Chat Completions' own reasoning_effort. Messages says the same with
+        # adaptive thinking and an effort level.
+        Scenario(
+            "reasoning_effort",
+            THINKING_PROMPT,
+            max_tokens=2048,
+            chat_extra={"reasoning_effort": "low"},
+            messages_extra={"thinking": {"type": "adaptive"}, "output_config": {"effort": "low"}},
+            needs=REASONING,
+        ),
+        # A forced tool call: any tool, then the named one of two.
+        Scenario(
+            "tool_required",
+            TOOL_PROMPT,
+            tools=(WEATHER_TOOL,),
+            anthropic_tools=(ANTHROPIC_WEATHER_TOOL,),
+            chat_extra={"tool_choice": REQUIRED_TOOL_CHOICE},
+            messages_extra={"tool_choice": {"type": "any"}},
+        ),
+        Scenario(
+            "tool_named",
+            TOOL_PROMPT,
+            tools=(WEATHER_TOOL, TIME_TOOL),
+            anthropic_tools=(ANTHROPIC_WEATHER_TOOL, ANTHROPIC_TIME_TOOL),
+            chat_extra={"tool_choice": {"type": "function", "function": {"name": "get_weather"}}},
+            messages_extra={"tool_choice": {"type": "tool", "name": "get_weather"}},
+        ),
+        # parallel_tools' request, limited to one call per turn.
+        Scenario(
+            "parallel_tools_off",
+            PARALLEL_TOOL_PROMPT,
+            max_tokens=1024,
+            tools=(WEATHER_TOOL,),
+            anthropic_tools=(ANTHROPIC_WEATHER_TOOL,),
+            chat_extra={"parallel_tool_calls": False},
+            messages_extra={"tool_choice": {"type": "auto", "disable_parallel_tool_use": True}},
+        ),
+        # Messages' tool `strict` isn't translated to Chat Completions
+        # backends, so no Messages form.
+        Scenario(
+            "tool_strict",
+            TOOL_PROMPT,
+            # qwen3 thinks for a while first.
+            max_tokens=1024,
+            tools=(STRICT_WEATHER_TOOL,),
+            messages_form=False,
+        ),
+        Scenario(
+            "tool_parameterless",
+            TIME_PROMPT,
+            max_tokens=1024,
+            tools=(WEATHER_TOOL, TIME_TOOL),
+            anthropic_tools=(ANTHROPIC_WEATHER_TOOL, ANTHROPIC_TIME_TOOL),
+        ),
+        # The current max-tokens field, and a seed; Messages has no seed.
+        Scenario(
+            "max_completion_tokens",
+            TEXT_PROMPT,
+            chat_extra={"max_completion_tokens": 256, "seed": SEED},
+            messages_form=False,
+        ),
     )
 }
 
@@ -354,10 +449,15 @@ class Backend:
     lacks: Mapping[str, str] = field(default_factory=dict)
     # Scenarios recorded for this backend, if not all of them.
     only_scenarios: Optional[Tuple[str, ...]] = None
+    # Scenario -> the parameters strict mode refuses for this backend. The
+    # refusal is the cell's result, so these scenarios are never recorded.
+    refuses: Mapping[str, Tuple[str, ...]] = field(default_factory=dict)
 
     def runs(self, scenario: Scenario) -> bool:
-        return self.unsupported(scenario) is None and (
-            self.only_scenarios is None or scenario.name in self.only_scenarios
+        return (
+            self.unsupported(scenario) is None
+            and scenario.name not in self.refuses
+            and (self.only_scenarios is None or scenario.name in self.only_scenarios)
         )
 
     def unsupported(self, scenario: Scenario) -> Optional[str]:
@@ -413,6 +513,13 @@ BACKENDS = {
             gateway_config={"base_url": OLLAMA_URL},
             provider=OllamaProvider,
             capability_models={VISION: OLLAMA_VISION_MODEL},
+            # Ollama has no tool_choice, parallel switch, or strict tools.
+            refuses={
+                "tool_required": ("tool_choice",),
+                "tool_named": ("tool_choice",),
+                "parallel_tools_off": ("parallel_tool_calls",),
+                "tool_strict": ("tools.strict",),
+            },
         ),
         Backend(
             name="openai_compat",
@@ -553,6 +660,22 @@ EMBEDDING_BACKENDS = {
 # Every recorded backend and scenario, chat and embeddings.
 ALL_BACKENDS = {**BACKENDS, **EMBEDDING_BACKENDS}
 ALL_SCENARIOS = {**SCENARIOS, **EMBEDDING_SCENARIOS}
+
+
+def refused_params(backend_name: str, scenario_name: str) -> Optional[Tuple[str, ...]]:
+    """The parameters strict mode refuses for this cell, or None if it runs."""
+    refuses = getattr(ALL_BACKENDS[backend_name], "refuses", {})
+    return refuses.get(scenario_name)
+
+
+def exchanges_for(backend_name: str, scenario_name: str) -> list:
+    """The recorded exchanges a cell replays: none for a refused one, which
+    must never reach the backend."""
+    from tests.harness.replay import Exchange
+
+    if refused_params(backend_name, scenario_name):
+        return []
+    return [Exchange.load(fixture_for(backend_name, scenario_name))]
 
 
 def fixture_for(backend_name: str, scenario_name: str) -> Path:

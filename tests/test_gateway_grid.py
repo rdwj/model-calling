@@ -20,7 +20,7 @@ from tests.harness.grid import (
 )
 from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
 from tests.harness.replay import Exchange, ReplayTransport, fixture_path
-from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS
+from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, refused_params
 from tests.harness.sdk import (
     SSE_DONE,
     parse_sse,
@@ -161,11 +161,31 @@ CHECKS = {
     ("gateway_embeddings", "embedding_error"): check_embeddings_error,
 }
 GATEWAY_GRID = grid(ingresses=GATEWAY_INGRESSES) + embedding_grid(GATEWAY_EMBEDDING_INGRESSES)
+ERROR_TYPES = {"chat_completions": chat.error_body, "gateway_messages": anthropic.error_body}
+BAD_REQUEST = 400
+
+
+async def check_refused(gateway, cell, replay, monkeypatch):
+    """In strict mode, a 400 naming what the backend can't honor, and no
+    backend call. (By default the gateway drops such parameters.)"""
+    from model_calling import server
+
+    monkeypatch.setattr(server, "DROP_PARAMS", False)
+    resp = await post(gateway, cell)
+    assert resp.status_code == BAD_REQUEST, resp.text
+    error = resp.json()["error"]
+    assert error["type"] == ERROR_TYPES[cell.ingress](BAD_REQUEST, "")["error"]["type"]
+    params = ", ".join(refused_params(cell.backend, cell.scenario))
+    assert error["message"] == f"{cell.backend} cannot honor {params}"
+    assert not replay.requests, "a refused request reached the backend"
 
 
 @pytest.mark.parametrize("cell", GATEWAY_GRID)
-async def test_cell(gateway, cell: Cell):
+async def test_cell(gateway, cell: Cell, monkeypatch):
     replay = gateway.use(cell.backend, cell.scenario)
+    if refused_params(cell.backend, cell.scenario):
+        await check_refused(gateway, cell, replay, monkeypatch)
+        return
     await CHECKS[(cell.ingress, cell.scenario)](gateway, cell, replay)
     assert_backend_auth(cell, replay)
 
@@ -205,9 +225,14 @@ def gateway_answer(resp, cell: Cell):
     return [e for e in parse_sse(resp.text) if e != SSE_DONE]
 
 
+# Refused cells never produce a body; test_cell checks both refusals.
 @pytest.mark.parametrize(
     "cell",
-    grid(ingresses=GATEWAY_INGRESSES, known_failures=False)
+    [
+        p
+        for p in grid(ingresses=GATEWAY_INGRESSES, known_failures=False)
+        if not refused_params(p.values[0].backend, p.values[0].scenario)
+    ]
     + embedding_grid(GATEWAY_EMBEDDING_INGRESSES, known_failures=False),
 )
 async def test_gateway_body_matches_library(gateway, library, cell: Cell):

@@ -1,0 +1,96 @@
+{
+  "meta": {
+    "backend": "vllm",
+    "scenario": "tool_required",
+    "recorded_at": "2026-10-28T23:15:58+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/chat/completions",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "tool_choice": "required",
+      "max_tokens": 256,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-a761ccd0ebe85e00",
+      "object": "chat.completion",
+      "created": 1793229358,
+      "model": "gpt-oss-20b",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-b08994109287ea71",
+                "type": "function",
+                "function": {
+                  "name": "get_weather",
+                  "arguments": "{\"location\": \"Paris\"}"
+                }
+              }
+            ],
+            "reasoning": "We need to call get_weather."
+          },
+          "logprobs": null,
+          "finish_reason": "tool_calls",
+          "stop_reason": 200012,
+          "token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.24.0+rhaiv.13-aa47e83a",
+      "usage": {
+        "prompt_tokens": 137,
+        "total_tokens": 168,
+        "completion_tokens": 31,
+        "prompt_tokens_details": null
+      },
+      "prompt_logprobs": null,
+      "prompt_token_ids": null,
+      "prompt_text": null,
+      "kv_transfer_params": null
+    }
+  }
+}

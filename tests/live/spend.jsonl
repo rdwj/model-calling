@@ -48,3 +48,10 @@
 {"ts": "2026-10-28T22:57:01+00:00", "source": "tests/live", "endpoint": "chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793228221-0gh7uxjNnaSsto7lhsfZ", "cost_usd": 2.88e-07}
 {"ts": "2026-10-28T22:57:02+00:00", "source": "tests/live", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_VHPj0GB9GrJAUhq90a32", "cost_usd": 2.88e-07}
 {"ts": "2026-10-28T22:57:03+00:00", "source": "tests/live", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793228222-x1AXpWpxRFz0GcTzZBrQ", "cost_usd": 2.88e-07}
+{"ts": "2026-10-28T23:15:59+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793229359-MUbtYEXM6ZU4HrWZpZrT", "cost_usd": 2.88e-07}
+{"ts": "2026-10-28T23:16:01+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793229359-PvfYqIXMUFNpOxLECDgk", "cost_usd": 2.4228e-06}
+{"ts": "2026-10-28T23:16:02+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "openai/gpt-oss-20b", "id": "gen-1793229361-q39uCk81rLGysFy1p36L", "cost_usd": 8.67e-06}
+{"ts": "2026-10-28T23:16:02+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793229362-5X7GZHaRdMdkG82OFIYI", "cost_usd": 2.20536e-06}
+{"ts": "2026-10-28T23:16:03+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793229362-iWu5yMY4kLw9Y46d5Hvx", "cost_usd": 1.77048e-06}
+{"ts": "2026-10-28T23:16:03+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793229363-QQqjosFZD8FZHp6s4FPI", "cost_usd": 1.39536e-06}
+{"ts": "2026-10-28T23:16:04+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793229363-6xON2fIcWxfeJ0dzGTEI", "cost_usd": 1.59192e-06}

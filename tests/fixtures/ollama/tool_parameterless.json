@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "backend": "ollama",
+    "scenario": "tool_parameterless",
+    "recorded_at": "2026-10-28T23:15:43+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:11434/api/chat",
+    "json": {
+      "model": "qwen3:4b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_time tool to look up the current time."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            },
+            "description": "Get the current weather for a city"
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "get_time",
+            "parameters": {
+              "type": "object",
+              "properties": {}
+            },
+            "description": "Get the current UTC time"
+          }
+        }
+      ],
+      "options": {
+        "num_predict": 1024
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "model": "qwen3:4b",
+      "created_at": "2026-10-28T23:15:43.823729Z",
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "thinking": "Okay, the user wants me to use the get_time tool to look up the current time. Let me check the tools provided.\n\nFirst, there's the get_weather function, which requires a city name. But the user didn't mention weather, so I can ignore that. Then there's get_time, which gets the current UTC time. The description says it takes no arguments. The function signature shows it's an object with empty arguments, so I don: pass any parameters.\n\nWait, the user specifically said \"use the get_time tool\", so I just need to call that function with no arguments. The tool's arguments are an empty list, so in the tool_call JSON, arguments should be an empty object or maybe just {}.\n\nLet me make sure. The function definition for get_time is: {object <nil> <nil> [] {}}. So the arguments array is empty. So in the tool_call, the arguments would be an empty JSON object.\n\nSo the correct tool call is get_time with no arguments. I need to output that in the specified XML format.\n\nNo other functions are needed here. The user isn't asking for weather, so just get_time.\n",
+        "tool_calls": [
+          {
+            "id": "call_la0l98ty",
+            "function": {
+              "index": 0,
+              "name": "get_time",
+              "arguments": {}
+            }
+          }
+        ]
+      },
+      "done": true,
+      "done_reason": "stop",
+      "total_duration": 3306295666,
+      "load_duration": 7532125,
+      "prompt_eval_count": 177,
+      "prompt_eval_cached_count": 161,
+      "prompt_eval_duration": 57020000,
+      "eval_count": 256,
+      "eval_duration": 3223140000
+    }
+  }
+}

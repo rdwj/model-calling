@@ -1,0 +1,48 @@
+{
+  "meta": {
+    "backend": "ollama",
+    "scenario": "max_completion_tokens",
+    "recorded_at": "2026-10-28T23:13:53+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:11434/api/chat",
+    "json": {
+      "model": "qwen3:4b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with exactly one word: pong"
+        }
+      ],
+      "options": {
+        "num_predict": 256,
+        "seed": 7
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "model": "qwen3:4b",
+      "created_at": "2026-10-28T23:13:53.050911Z",
+      "message": {
+        "role": "assistant",
+        "content": "pong",
+        "thinking": "Hmm, the user just asked me to reply with exactly one word: \"pong\". \n\nOkay, let me think about this. They're being very specific - they want just the word \"pong\" with nothing else. No explanations, no extra text. \n\nI recall that in some contexts like gaming or networking, \"pong\" is a simple response message. But here they're clearly testing if I follow instructions precisely. \n\nThe user seems to be checking my ability to obey strict formatting rules. Maybe they're a developer testing API responses, or just someone playing with chatbots. \n\nImportant to note: they said \"exactly one word\" and specified \"pong\" - so I shouldn't even consider adding a space or anything. Just the raw word. \n\n*checks mental note* Must not add any punctuation, no extra spaces. Just the string \"pong\". \n\nThis is actually a fun test of precision. User knows what they want and I'm not supposed to overthink it. \n\nAlright, response locked in: exactly \"pong\" with no modifications. \n\n*double-checks* Yep, that's one word, matches their request perfectly. No room for error here.\n"
+      },
+      "done": true,
+      "done_reason": "stop",
+      "total_duration": 4929130250,
+      "load_duration": 1815501042,
+      "prompt_eval_count": 17,
+      "prompt_eval_cached_count": 0,
+      "prompt_eval_duration": 101684000,
+      "eval_count": 242,
+      "eval_duration": 3008584000
+    }
+  }
+}

@@ -5,7 +5,7 @@ calls against replayed backend fixtures. See tests/harness/grid.py.
 
 import pytest
 
-from model_calling.errors import APIStatusError
+from model_calling.errors import APIStatusError, UnsupportedParamsError
 from tests.harness.grid import (
     LIBRARY_EMBEDDING_INGRESSES,
     LIBRARY_INGRESSES,
@@ -21,6 +21,7 @@ from tests.harness.scenarios import (
     EMBEDDING_INPUTS,
     EMBEDDING_SCENARIOS,
     SCENARIOS,
+    refused_params,
 )
 from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
 from tests.harness.sdk import validate_embedding_response
@@ -46,6 +47,13 @@ async def check_backend_error(call, library, cell):
         await call(library, cell)
     assert err.value.status == recorded.status
     assert err.value.body == recorded.response_json
+
+
+async def check_refused(call, library, cell):
+    """Strict mode refuses what the backend can't honor, before calling it."""
+    with pytest.raises(UnsupportedParamsError) as err:
+        await call(library, cell)
+    assert tuple(err.value.params) == refused_params(cell.backend, cell.scenario)
 
 
 async def result(call, library, cell):
@@ -106,6 +114,10 @@ async def test_cell(library, cell: Cell):
     replay = library.use(cell.backend, cell.scenario)
     if cell.ingress in LIBRARY_EMBEDDING_INGRESSES:
         await EMBEDDING_CHECKS[cell.scenario](library, cell)
+    elif refused_params(cell.backend, cell.scenario):
+        await check_refused(CALLS[cell.ingress][0], library, cell)
+        assert not replay.requests, "a refused request reached the backend"
+        return
     elif cell.scenario == "backend_error":
         await check_backend_error(CALLS[cell.ingress][0], library, cell)
     else:

@@ -15,9 +15,16 @@ from tests.harness.scenarios import (
     BACKENDS,
     EMBEDDING_BACKENDS,
     EMBEDDING_SCENARIOS,
+    GRID_BACKENDS,
+    SEED,
     recorded_scenarios,
 )
-from tests.harness.sdk import SSE_DONE, parse_sse, validate_anthropic_request
+from tests.harness.sdk import (
+    SSE_DONE,
+    parse_sse,
+    validate_anthropic_request,
+    validate_chat_completion_request,
+)
 
 URL = "https://backend.test/v1/chat"
 
@@ -149,6 +156,70 @@ def test_every_grid_cell_has_a_fixture():
     assert expected <= set(ALL_FIXTURES), sorted(map(str, expected - set(ALL_FIXTURES)))
 
 
+def test_refused_cells_have_no_fixture():
+    """A refused cell never reaches the backend, so a fixture for it is stale."""
+    stale = [
+        FIXTURES_DIR / name / f"{scenario}.json"
+        for name, b in BACKENDS.items()
+        for scenario in b.refuses
+    ]
+    assert not [p for p in stale if p.exists()], stale
+
+
+OPENAI_COMPAT_BACKENDS = ("openai_compat", "vllm")
+# (scenario, backends) -> (path into the recorded native body, expected value):
+# the Chat Completions-only fields reach each backend that can take them.
+NATIVE_FIELDS = {
+    ("reasoning_effort", OPENAI_COMPAT_BACKENDS): (("reasoning_effort",), "low"),
+    ("reasoning_effort", ("ollama",)): (("think",), True),
+    ("tool_required", OPENAI_COMPAT_BACKENDS): (("tool_choice",), "required"),
+    ("tool_named", OPENAI_COMPAT_BACKENDS): (
+        ("tool_choice",),
+        {"type": "function", "function": {"name": "get_weather"}},
+    ),
+    ("parallel_tools_off", OPENAI_COMPAT_BACKENDS): (("parallel_tool_calls",), False),
+    ("tool_strict", OPENAI_COMPAT_BACKENDS): (("tools", 0, "function", "strict"), True),
+    ("tool_parameterless", GRID_BACKENDS): (
+        ("tools", 1, "function", "parameters"),
+        {"type": "object", "properties": {}},
+    ),
+    ("max_completion_tokens", OPENAI_COMPAT_BACKENDS): (("max_tokens",), 256),
+    ("max_completion_tokens", ("openai_compat", "vllm", "ollama")): (
+        ("seed",),
+        SEED,
+    ),
+}
+# Ollama takes sampling settings under `options`.
+OLLAMA_OPTION_FIELDS = {"seed": "seed", "max_tokens": "num_predict"}
+
+
+def _dig(body, path):
+    for key in path:
+        body = body[key]
+    return body
+
+
+@pytest.mark.parametrize(
+    "backend, scenario, path, expected",
+    [
+        (backend, scenario, path, expected)
+        for (scenario, backends), (path, expected) in NATIVE_FIELDS.items()
+        for backend in backends
+    ],
+)
+def test_native_body_carries_field(backend, scenario, path, expected):
+    sent = Exchange.load(FIXTURES_DIR / backend / f"{scenario}.json").request_json
+    if backend == "ollama" and path[0] in OLLAMA_OPTION_FIELDS:
+        path = ("options", OLLAMA_OPTION_FIELDS[path[0]])
+    assert _dig(sent, path) == expected, sent
+
+
+@pytest.mark.parametrize("path", ALL_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.stem}")
+def test_no_native_body_uses_legacy_function_calling(path):
+    sent = Exchange.load(path).request_json or {}
+    assert not {"functions", "function_call"} & set(sent), sent
+
+
 @pytest.mark.parametrize("path", ALL_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.stem}")
 def test_fixture_is_scrubbed_and_loads(path):
     text = path.read_text(encoding="utf-8")
@@ -170,6 +241,19 @@ def test_validate_anthropic_request_is_strict(message, match):
     body = {"model": "m", "max_tokens": 1, "messages": [message]}
     with pytest.raises(ValueError, match=match):
         validate_anthropic_request(body)
+
+
+@pytest.mark.parametrize(
+    "extra, match",
+    [
+        ({"typo": 1}, "unknown or coerced fields"),
+        ({"tool_choice": {"type": "function"}}, "function"),
+    ],
+)
+def test_validate_chat_completion_request_is_strict(extra, match):
+    body = {"model": "m", "messages": [{"role": "user", "content": "hi"}], **extra}
+    with pytest.raises(ValueError, match=match):
+        validate_chat_completion_request(body)
 
 
 def test_replay_check_reports_unused_exchanges():

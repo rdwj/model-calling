@@ -1,0 +1,65 @@
+{
+  "meta": {
+    "backend": "vllm",
+    "scenario": "max_completion_tokens",
+    "recorded_at": "2026-10-28T23:15:50+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/chat/completions",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with exactly one word: pong"
+        }
+      ],
+      "max_tokens": 256,
+      "seed": 7,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-965bbafa73a956ab",
+      "object": "chat.completion",
+      "created": 1793229350,
+      "model": "gpt-oss-20b",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "pong",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "reasoning": "The user says: \"Reply with exactly one word: pong\". They want the word \"pong\". Should respond with exactly one word: pong. There's no other constraints. Just output pong.\n\nBut careful: They want exactly one word: pong. So output \"pong\". No punctuation? Likely just pong. So answer: pong.\n\nThey ask: Reply with exactly one word: pong. So produce just pong.\n\nThus reply: pong."
+          },
+          "logprobs": null,
+          "finish_reason": "stop",
+          "stop_reason": null,
+          "token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.24.0+rhaiv.13-aa47e83a",
+      "usage": {
+        "prompt_tokens": 74,
+        "total_tokens": 173,
+        "completion_tokens": 99,
+        "prompt_tokens_details": null
+      },
+      "prompt_logprobs": null,
+      "prompt_token_ids": null,
+      "prompt_text": null,
+      "kv_transfer_params": null
+    }
+  }
+}

@@ -10,8 +10,8 @@ from typing import List, Optional
 import pytest
 
 from model_calling.library import Client
-from tests.harness.replay import Exchange, ReplayTransport
-from tests.harness.scenarios import ALL_BACKENDS, fixture_for
+from tests.harness.replay import ReplayTransport
+from tests.harness.scenarios import ALL_BACKENDS, exchanges_for
 
 
 @dataclass
@@ -27,7 +27,7 @@ class Library:
         if self.client is not None:
             raise RuntimeError("use() a backend once per test")
         backend = ALL_BACKENDS[backend_name]
-        replay = ReplayTransport([Exchange.load(fixture_for(backend_name, scenario_name))])
+        replay = ReplayTransport(exchanges_for(backend_name, scenario_name))
         config = {**backend.gateway_config, "transport": replay}
         self.client = Client(config={backend.config_prefix: config})
         self.replays.append(replay)

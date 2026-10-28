@@ -23,22 +23,33 @@ from tests.harness.scenarios import (
 # The gateway's HTTP ingresses, and the library API's two call families.
 GATEWAY_INGRESSES = ("chat_completions", "gateway_messages")
 LIBRARY_INGRESSES = ("library_completion", "library_messages")
-# The gateway's Messages ingress driven by the official `anthropic` client.
-SDK_INGRESSES = ("sdk_messages",)
+# The gateway driven by the official `anthropic` and `openai` clients.
+SDK_INGRESSES = ("sdk_messages", "sdk_completion")
 INGRESSES = GATEWAY_INGRESSES + LIBRARY_INGRESSES + SDK_INGRESSES
 # Ingresses that send Chat Completions; they skip scenarios with no such form.
-CHAT_COMPLETIONS_INGRESSES = ("chat_completions", "library_completion")
+CHAT_COMPLETIONS_INGRESSES = ("chat_completions", "library_completion", "sdk_completion")
+# Likewise for Anthropic Messages.
+MESSAGES_INGRESSES = ("gateway_messages", "library_messages", "sdk_messages")
 # Embeddings run over their own backends and scenarios (`embedding_grid`).
 GATEWAY_EMBEDDING_INGRESSES = ("gateway_embeddings",)
 LIBRARY_EMBEDDING_INGRESSES = ("library_embedding",)
 
 # (ingress, backend, scenario) -> reason, naming the phase that fixes it.
 KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
-    (ingress, "vllm", "parallel_tools"): (
-        "gpt-oss-20b on vLLM 0.24 makes one tool call per turn even when asked for "
-        "two (backend limitation, found in Phase 5)"
-    )
-    for ingress in INGRESSES
+    **{
+        (ingress, "vllm", "parallel_tools"): (
+            "gpt-oss-20b on vLLM 0.24 makes one tool call per turn even when asked for "
+            "two (backend limitation, found in Phase 5)"
+        )
+        for ingress in INGRESSES
+    },
+    **{
+        (ingress, "openai_compat", "parallel_tools_off"): (
+            "mistral-nemo on OpenRouter makes both calls although the request carries "
+            "parallel_tool_calls: false (backend limitation, found in Phase 4)"
+        )
+        for ingress in INGRESSES
+    },
 }
 
 
@@ -68,6 +79,8 @@ def grid(
             for scenario in scenarios:
                 spec = ALL_SCENARIOS[scenario]
                 if ingress in CHAT_COMPLETIONS_INGRESSES and not spec.chat_form:
+                    continue
+                if ingress in MESSAGES_INGRESSES and not spec.messages_form:
                     continue
                 cell = Cell(ingress, backend, scenario)
                 known = KNOWN_FAILURES.get((ingress, backend, scenario)) if known_failures else None

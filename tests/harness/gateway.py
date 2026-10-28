@@ -10,8 +10,8 @@ from typing import List
 import httpx
 import pytest
 
-from tests.harness.replay import Exchange, ReplayTransport
-from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, fixture_for
+from tests.harness.replay import ReplayTransport
+from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, exchanges_for
 
 GATEWAY_BASE_URL = "http://gateway.test"
 
@@ -43,7 +43,7 @@ class Gateway:
         from model_calling.capability_cache import capability_cache
 
         backend = ALL_BACKENDS[backend_name]
-        replay = ReplayTransport([Exchange.load(fixture_for(backend_name, scenario_name))])
+        replay = ReplayTransport(exchanges_for(backend_name, scenario_name))
 
         config = self.registry.default_configs[backend.config_prefix]
         config.update(backend.gateway_config, transport=replay)

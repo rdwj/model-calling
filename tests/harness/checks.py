@@ -19,6 +19,7 @@ from tests.harness.sdk import (
 
 EXPECTED_TEXT = "pong"
 EXPECTED_TOOL = ("get_weather", {"location": "Paris"})
+EXPECTED_PARAMETERLESS_TOOL = ("get_time", {})
 EXPECTED_PARALLEL_TOOLS = [
     ("get_weather", {"location": "Paris"}),
     ("get_weather", {"location": "Tokyo"}),
@@ -53,6 +54,11 @@ def completion_image(resp, model: str):
     _completion_text(resp, model, EXPECTED_COLOR)
 
 
+def completion_reasoning(resp, model: str):
+    _completion_text(resp, model, EXPECTED_PRODUCT)
+    assert (resp.choices[0].message.reasoning or "").strip(), "no reasoning returned"
+
+
 def completion_json_schema(resp, model: str):
     validate_chat_completion(resp.to_dict())
     choice = resp.choices[0]
@@ -73,8 +79,17 @@ def completion_tools(resp, model: str):
     assert _completion_calls(resp)[0] == EXPECTED_TOOL
 
 
+def completion_parameterless_tool(resp, model: str):
+    assert _completion_calls(resp)[0] == EXPECTED_PARAMETERLESS_TOOL
+
+
 def completion_parallel_tools(resp, model: str):
     assert sorted(_completion_calls(resp), key=str) == EXPECTED_PARALLEL_TOOLS
+
+
+def completion_parallel_tools_off(resp, model: str):
+    calls = _completion_calls(resp)
+    assert len(calls) == 1 and calls[0] in EXPECTED_PARALLEL_TOOLS, calls
 
 
 def completion_tool_error(resp, model: str):
@@ -131,6 +146,14 @@ def completion_stream_usage(chunks, model: str):
     assert usage[0].prompt_tokens > 0 and usage[0].completion_tokens > 0
 
 
+def completion_assembled_text(resp, model: str):
+    """A completion assembled from a stream that didn't ask for usage."""
+    validate_chat_completion(resp.to_dict())
+    assert EXPECTED_TEXT in (resp.choices[0].message.content or "").lower()
+    assert resp.choices[0].finish_reason == "stop"
+    assert resp.model == model
+
+
 COMPLETION_CHECKS = {
     "text": completion_text,
     "system_blocks": completion_text,
@@ -142,6 +165,21 @@ COMPLETION_CHECKS = {
     "stream": completion_stream,
     "stream_tools": completion_stream_tools,
     "stream_usage": completion_stream_usage,
+    "reasoning_effort": completion_reasoning,
+    "tool_required": completion_tools,
+    "tool_named": completion_tools,
+    "tool_strict": completion_tools,
+    "tool_parameterless": completion_parameterless_tool,
+    "parallel_tools_off": completion_parallel_tools_off,
+    "max_completion_tokens": completion_text,
+}
+
+
+# What the SDK's stream state must assemble from each stream scenario.
+FINAL_COMPLETION_CHECKS = {
+    "stream": completion_assembled_text,
+    "stream_tools": completion_tools,
+    "stream_usage": completion_text,
 }
 
 
@@ -190,8 +228,17 @@ def message_tools(msg, model: str):
     assert _message_calls(msg)[0] == EXPECTED_TOOL
 
 
+def message_parameterless_tool(msg, model: str):
+    assert _message_calls(msg)[0] == EXPECTED_PARAMETERLESS_TOOL
+
+
 def message_parallel_tools(msg, model: str):
     assert sorted(_message_calls(msg), key=str) == EXPECTED_PARALLEL_TOOLS
+
+
+def message_parallel_tools_off(msg, model: str):
+    calls = _message_calls(msg)
+    assert len(calls) == 1 and calls[0] in EXPECTED_PARALLEL_TOOLS, calls
 
 
 def message_tool_error(msg, model: str):
@@ -274,6 +321,11 @@ MESSAGE_CHECKS = {
     "stream": message_stream,
     "stream_tools": message_stream_tools,
     "stream_usage": message_stream_usage,
+    "reasoning_effort": message_thinking,
+    "tool_required": message_tools,
+    "tool_named": message_tools,
+    "tool_parameterless": message_parameterless_tool,
+    "parallel_tools_off": message_parallel_tools_off,
 }
 
 # What the SDK's stream helper must assemble from each stream scenario.
