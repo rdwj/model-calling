@@ -38,7 +38,11 @@ The harness lives in `harness/`:
   `gateway_embeddings`) run in `test_gateway_grid.py`, which also checks
   that every gateway answer equals the library's for the same cell. The
   library's `library_completion`, `library_messages`, and
-  `library_embedding` run in `test_library_grid.py`. Embeddings have their
+  `library_embedding` run in `test_library_grid.py`. `sdk_messages`, in
+  `test_sdk_grid.py`, drives the gateway with the official
+  `anthropic.AsyncAnthropic` client (over an httpx2 ASGI transport, since
+  anthropic 2.x uses httpx2) and streams through its `messages.stream`
+  helper, checking the message the SDK assembles. Embeddings have their
   own backends and scenarios (`EMBEDDING_BACKENDS`, `embedding_grid`).
   `KNOWN_FAILURES` lists the cells that are expected to fail as strict
   xfails, each naming the epic phase that fixes it (or the backend

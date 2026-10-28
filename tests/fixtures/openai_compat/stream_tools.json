@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "backend": "openai_compat",
+    "scenario": "stream_tools",
+    "recorded_at": "2026-10-28T22:34:47+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/chat/completions",
+    "json": {
+      "model": "mistralai/mistral-nemo",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "max_tokens": 256,
+      "stream_options": {
+        "include_usage": true
+      },
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "text/event-stream",
+    "lines": [
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"choices\":[{\"index\":0,\"delta\":{\"content\":null,\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"83k4dR8iS\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"\"}}]},\"finish_reason\":null,\"native_finish_reason\":null}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"choices\":[{\"index\":0,\"delta\":{\"content\":null,\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"\"}}]},\"finish_reason\":null,\"native_finish_reason\":null}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"choices\":[{\"index\":0,\"delta\":{\"content\":null,\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"location\"}}]},\"finish_reason\":null,\"native_finish_reason\":null}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"choices\":[{\"index\":0,\"delta\":{\"content\":null,\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\":\"}}]},\"finish_reason\":null,\"native_finish_reason\":null}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"choices\":[{\"index\":0,\"delta\":{\"content\":null,\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\" \\\"\"}}]},\"finish_reason\":null,\"native_finish_reason\":null}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"choices\":[{\"index\":0,\"delta\":{\"content\":null,\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"Paris\"}}]},\"finish_reason\":null,\"native_finish_reason\":null}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"choices\":[{\"index\":0,\"delta\":{\"content\":null,\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"}\"}}]},\"finish_reason\":null,\"native_finish_reason\":null}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"system_fingerprint\":\"vllm-0.25.1-30d24b8b\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\",\"role\":\"assistant\"},\"finish_reason\":\"tool_calls\",\"native_finish_reason\":\"tool_calls\"}]}",
+      "",
+      "data: {\"id\":\"gen-1793226886-x9k1n6o4pV4sQgzr9D5w\",\"object\":\"chat.completion.chunk\",\"created\":1793226886,\"model\":\"mistralai/mistral-nemo\",\"provider\":\"Io Net\",\"system_fingerprint\":\"vllm-0.25.1-30d24b8b\",\"service_tier\":null,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\",\"role\":\"assistant\"},\"finish_reason\":\"tool_calls\",\"native_finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":86,\"completion_tokens\":21,\"total_tokens\":107,\"cost\":0.0000017856,\"is_byok\":false,\"prompt_tokens_details\":{\"cached_tokens\":16,\"cache_write_tokens\":0,\"audio_tokens\":0,\"video_tokens\":0},\"cost_details\":{\"upstream_inference_cost\":0.0000017856,\"upstream_inference_prompt_cost\":0.000001332,\"upstream_inference_completions_cost\":4.536e-7},\"completion_tokens_details\":{\"reasoning_tokens\":0,\"image_tokens\":0,\"audio_tokens\":0}}}",
+      "",
+      "data: [DONE]",
+      ""
+    ]
+  }
+}

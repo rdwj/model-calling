@@ -147,6 +147,14 @@ SCENARIOS = {
             "tools", TOOL_PROMPT, tools=(WEATHER_TOOL,), anthropic_tools=(ANTHROPIC_WEATHER_TOOL,)
         ),
         Scenario("stream", TEXT_PROMPT, stream=True),
+        # A streamed tool call: Messages clients get it as input_json_delta.
+        Scenario(
+            "stream_tools",
+            TOOL_PROMPT,
+            stream=True,
+            tools=(WEATHER_TOOL,),
+            anthropic_tools=(ANTHROPIC_WEATHER_TOOL,),
+        ),
         Scenario("backend_error", TEXT_PROMPT, missing_model=True),
         # System prompt as two blocks. The Messages form also carries fields
         # every backend here ignores: cache_control and metadata.

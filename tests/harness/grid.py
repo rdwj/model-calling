@@ -23,7 +23,9 @@ from tests.harness.scenarios import (
 # The gateway's HTTP ingresses, and the library API's two call families.
 GATEWAY_INGRESSES = ("chat_completions", "gateway_messages")
 LIBRARY_INGRESSES = ("library_completion", "library_messages")
-INGRESSES = GATEWAY_INGRESSES + LIBRARY_INGRESSES
+# The gateway's Messages ingress driven by the official `anthropic` client.
+SDK_INGRESSES = ("sdk_messages",)
+INGRESSES = GATEWAY_INGRESSES + LIBRARY_INGRESSES + SDK_INGRESSES
 # Ingresses that send Chat Completions; they skip scenarios with no such form.
 CHAT_COMPLETIONS_INGRESSES = ("chat_completions", "library_completion")
 # Embeddings run over their own backends and scenarios (`embedding_grid`).

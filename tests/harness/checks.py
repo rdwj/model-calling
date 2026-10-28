@@ -92,6 +92,24 @@ def completion_stream(chunks, model: str):
     _completion_stream(chunks, model)
 
 
+def completion_stream_tools(chunks, model: str):
+    validate_chat_completion_chunks([c.to_dict() for c in chunks])
+    finish = [
+        c.choices[0].finish_reason for c in chunks if c.choices and c.choices[0].finish_reason
+    ]
+    assert finish == ["tool_calls"], finish
+    assert {c.model for c in chunks} == {model}
+    calls: dict = {}
+    for c in chunks:
+        for d in (c.choices[0].delta.tool_calls or []) if c.choices else []:
+            name, args = calls.get(d.index, ("", ""))
+            fn = d.function
+            calls[d.index] = (name + (fn.name or ""), args + (fn.arguments or ""))
+    assert calls, "no tool_calls deltas"
+    name, args = calls[min(calls)]
+    assert (name, json.loads(args)) == EXPECTED_TOOL
+
+
 def completion_stream_usage(chunks, model: str):
     _completion_stream(chunks, model)
     usage = [c.usage for c in chunks if c.usage is not None]
@@ -108,6 +126,7 @@ COMPLETION_CHECKS = {
     "tool_error": completion_tool_error,
     "image": completion_image,
     "stream": completion_stream,
+    "stream_tools": completion_stream_tools,
     "stream_usage": completion_stream_usage,
 }
 
@@ -165,7 +184,8 @@ def message_tool_error(msg, model: str):
         assert "".join(b.text for b in msg.content if b.type == "text").strip(), msg.content
 
 
-def _message_stream(events, model: str):
+def _message_stream_structure(events, model: str):
+    """A well-formed event sequence: start, balanced blocks, delta, stop."""
     validate_anthropic_stream([e.to_dict() for e in events])
     kinds = [e.type for e in events]
     assert kinds[0] == "message_start" and kinds[-2:] == ["message_delta", "message_stop"], kinds
@@ -180,6 +200,10 @@ def _message_stream(events, model: str):
             if e.type == "content_block_stop":
                 open_blocks.remove(e.index)
     assert not open_blocks, f"blocks never stopped: {open_blocks}"
+
+
+def _message_stream(events, model: str):
+    _message_stream_structure(events, model)
     text = "".join(
         e.delta.text
         for e in events
@@ -191,6 +215,22 @@ def _message_stream(events, model: str):
 
 def message_stream(events, model: str):
     _message_stream(events, model)
+
+
+def message_stream_tools(events, model: str):
+    _message_stream_structure(events, model)
+    starts = {
+        e.index: e.content_block
+        for e in events
+        if e.type == "content_block_start" and e.content_block.type == "tool_use"
+    }
+    assert starts, "no tool_use block"
+    index = min(starts)
+    partial = "".join(
+        e.delta.partial_json for e in events if e.type == "content_block_delta" and e.index == index
+    )
+    assert (starts[index].name, json.loads(partial)) == EXPECTED_TOOL
+    assert events[-2].delta.stop_reason == "tool_use"
 
 
 def message_stream_usage(events, model: str):
@@ -211,5 +251,13 @@ MESSAGE_CHECKS = {
     "image": message_image,
     "thinking": message_thinking,
     "stream": message_stream,
+    "stream_tools": message_stream_tools,
     "stream_usage": message_stream_usage,
+}
+
+# What the SDK's stream helper must assemble from each stream scenario.
+FINAL_MESSAGE_CHECKS = {
+    "stream": message_text,
+    "stream_tools": message_tools,
+    "stream_usage": message_text,
 }
