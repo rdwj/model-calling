@@ -154,12 +154,19 @@ ENVELOPE_ERRORS = {
     "messages_not_object": ("/v1/messages", [], "JSON object"),
     "messages_no_model": ("/v1/messages", {"model": None}, "model is required"),
     "messages_unported": ("/v1/messages", {"model": "cohere/command-a"}, "no provider"),
+    "messages_no_max_tokens": ("/v1/messages", {"max_tokens": None}, "max_tokens is required"),
+    "embeddings_no_input": ("/v1/embeddings", {"input": None}, "input is required"),
 }
 
 
 @pytest.mark.parametrize("path, fields, match", ENVELOPE_ERRORS.values(), ids=ENVELOPE_ERRORS)
-async def test_envelope_errors_are_400_in_the_ingress_format(gateway, path, fields, match):
+async def test_envelope_errors_are_400_in_the_ingress_format(
+    gateway, monkeypatch, path, fields, match
+):
     """Reserved Client arguments would point the gateway's key at another host."""
+    from model_calling import server
+
+    monkeypatch.setattr(server, "DROP_PARAMS", False)
     body = {"model": "ollama/m", "messages": [], "input": "x", "max_tokens": 8}
     body = {**body, **fields} if isinstance(fields, dict) else fields
     resp = await gateway.client.post(path, json=body)
@@ -167,6 +174,33 @@ async def test_envelope_errors_are_400_in_the_ingress_format(gateway, path, fiel
     error = resp.json()["error"]
     assert match in error["message"]
     assert error["type"] == "invalid_request_error"
+
+
+async def test_a_body_field_named_self_is_just_a_field(gateway):
+    """It once collided with Client's `self` and crashed the call with a 502."""
+    import httpx
+
+    sent = []
+    answer = {
+        "id": "x",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "m",
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+        ],
+    }
+
+    def backend(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=answer)
+
+    config = gateway.registry.default_configs["vllm"]
+    config.update(transport=httpx.MockTransport(backend))
+    body = {"model": "vllm/m", "messages": [{"role": "user", "content": "x"}], "self": 1}
+    resp = await gateway.client.post("/v1/chat/completions", json=body)
+    assert resp.status_code == 200, resp.text
+    assert sent[0]["self"] == 1
 
 
 async def test_messages_stream_error_after_start_is_an_error_event(gateway):

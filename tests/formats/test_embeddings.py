@@ -26,6 +26,7 @@ INVALID = {
     "not_an_object": ([], "JSON object"),
     "no_model": ({"input": "x"}, "model is required"),
     "no_input": ({"model": "m"}, "input is required"),
+    "null_input": ({"model": "m", "input": None}, "input is required"),
     "empty_list": ({"model": "m", "input": []}, "input must be"),
     "mixed": ({"model": "m", "input": ["a", 1]}, "input must be"),
     "empty_token_array": ({"model": "m", "input": [[1], []]}, "input must be"),
@@ -34,6 +35,7 @@ INVALID = {
     "string_dimensions": ({"model": "m", "input": "x", "dimensions": "8"}, "dimensions"),
     "numeric_user": ({"model": "m", "input": "x", "user": 7}, "user"),
     "bad_encoding": ({"model": "m", "input": "x", "encoding_format": "int8"}, "encoding_format"),
+    "falsy_encoding": ({"model": "m", "input": "x", "encoding_format": 0}, "encoding_format"),
 }
 
 
@@ -69,3 +71,9 @@ def test_response_round_trips_through_the_sdk(fmt):
 def test_missing_usage_reports_zero_tokens():
     body = embeddings.response_from_internal(EmbeddingResponse(model="m", vectors=[[1.0]]), "m")
     assert body["usage"] == {"prompt_tokens": 0, "total_tokens": 0}
+
+
+def test_a_value_outside_float32_cannot_be_base64():
+    internal = EmbeddingResponse(model="m", vectors=[[1e39]])
+    with pytest.raises(TranslationError, match="float32"):
+        embeddings.response_from_internal(internal, "m", "base64")

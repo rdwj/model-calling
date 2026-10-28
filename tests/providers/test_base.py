@@ -172,6 +172,12 @@ async def test_error_carries_the_raw_body(backend):
         (APIConnectionError("x"), 502),
         (APIError("x"), 502),
         (APITimeoutError("x"), 504),
+        # No backend status: a library refusal, or an error reported in a stream.
+        (BadRequestError("x"), 400),
+        (NotFoundError("x"), 404),
+        (RateLimitError("x"), 429),
+        (AuthenticationError("x"), 502),
+        (InternalServerError("x"), 502),
     ],
     ids=lambda v: type(v).__name__ if isinstance(v, Exception) else str(v),
 )
@@ -215,16 +221,22 @@ async def test_consumer_closing_early_ends_as_cancelled(backend):
     assert recorder.hooks == ["start", "chunk", "cancelled"]
 
 
-async def test_cancelled_consumer_task_ends_as_cancelled(backend):
-    started = asyncio.Event()
+def stalled_stream(req, started: asyncio.Event | None = None) -> httpx.Response:
+    """A stream that sends one line, then stalls."""
 
     class Stalled(httpx.AsyncByteStream):
         async def __aiter__(self):
             yield (TEXT_LINE + "\n").encode()
-            started.set()
+            if started is not None:
+                started.set()
             await asyncio.sleep(60)
 
-    backend["handler"] = lambda req: httpx.Response(200, stream=Stalled())
+    return httpx.Response(200, stream=Stalled())
+
+
+async def test_cancelled_consumer_task_ends_as_cancelled(backend):
+    started = asyncio.Event()
+    backend["handler"] = lambda req: stalled_stream(req, started)
     recorder = Recorder()
 
     async def consume():
@@ -238,6 +250,34 @@ async def test_cancelled_consumer_task_ends_as_cancelled(backend):
         await task
     assert recorder.hooks[0] == "start" and recorder.hooks[-1] == "cancelled"
     assert "error" not in recorder.hooks
+
+
+async def test_cancel_scope_still_lets_the_cancelled_callback_finish(backend):
+    """Starlette cancels a disconnected client's stream through an anyio cancel
+    scope, which cancels every later await too, the callback's included."""
+    import anyio
+
+    log = []
+
+    class Slow(Callback):
+        async def on_request_end(self, model, messages, response, **kwargs):
+            log.append("end-start")
+            await asyncio.sleep(0.01)
+            log.append(("end-done", kwargs.get("cancelled")))
+
+    backend["handler"] = lambda req: stalled_stream(req)
+    events = make_provider(backend, Slow()).stream(request(stream=True))
+
+    async def consume():
+        async for _ in events:
+            pass
+
+    async with anyio.create_task_group() as group:
+        group.start_soon(consume)
+        await asyncio.sleep(0.05)
+        group.cancel_scope.cancel()
+    await asyncio.sleep(0.05)
+    assert log == ["end-start", ("end-done", True)]
 
 
 async def test_chunk_callbacks_see_internal_events(backend):

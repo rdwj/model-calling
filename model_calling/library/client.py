@@ -58,6 +58,9 @@ class Client:
         httpx transport, mostly for tests). `callbacks` run for every prefix,
         before the prefix's own.
 
+        The call methods take `self` positionally only, so any request field,
+        `self` included, can be passed as a keyword.
+
         A request using a parameter the backend can't honor (Ollama can't
         force a tool call) raises `BadRequestError` naming it. With
         `drop_params=True`, here or per call, it is dropped instead.
@@ -76,6 +79,7 @@ class Client:
 
     async def acompletion(
         self,
+        /,
         model: str,
         messages: list[dict],
         *,
@@ -97,6 +101,7 @@ class Client:
 
     def completion(
         self,
+        /,
         model: str,
         messages: list[dict],
         *,
@@ -135,6 +140,7 @@ class Client:
 
     async def amessages(
         self,
+        /,
         model: str,
         messages: list[dict],
         *,
@@ -158,6 +164,7 @@ class Client:
 
     def messages(
         self,
+        /,
         model: str,
         messages: list[dict],
         *,
@@ -195,6 +202,12 @@ class Client:
             "stream": stream,
         }
         provider = self._provider(http, model, api_base, api_key)
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens < 1:
+            # Messages requires it; the gateway passes None when a client left it out.
+            raise BadRequestError(
+                f"max_tokens is required and must be a positive integer, not {max_tokens!r}",
+                provider=provider.name,
+            )
         request = _translate(provider, lambda: anthropic.request_to_internal(body))
         self._check_params(provider, request, drop_params)
         if not stream:
@@ -213,6 +226,7 @@ class Client:
 
     async def aembedding(
         self,
+        /,
         model: str,
         input: str | list[str] | list[int] | list[list[int]],
         *,
@@ -230,6 +244,7 @@ class Client:
 
     def embedding(
         self,
+        /,
         model: str,
         input: str | list[str] | list[int] | list[list[int]],
         *,

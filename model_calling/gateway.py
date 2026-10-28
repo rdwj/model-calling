@@ -15,7 +15,16 @@ from typing import Any
 
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from model_calling.errors import APIError, APITimeoutError, BadRequestError, UnsupportedParamsError
+from model_calling.errors import (
+    APIError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+    UnsupportedParamsError,
+)
 from model_calling.formats import anthropic
 from model_calling.formats import chat_completions as chat
 from model_calling.library import Client
@@ -30,6 +39,16 @@ GATEWAY_TIMEOUT = 504
 # The backend refused the gateway's credential: a gateway fault, not the
 # client's, so it is reported as a bad gateway.
 _CREDENTIAL_REFUSED = (401, 403)
+# The status a typed error stands for when no backend response carried one:
+# a request the library refused before sending, or an error the backend
+# reported inside a stream.
+_IMPLIED_STATUS = (
+    (BadRequestError, BAD_REQUEST),
+    (AuthenticationError, 401),
+    (PermissionDeniedError, 403),
+    (NotFoundError, 404),
+    (RateLimitError, 429),
+)
 # `Client` keyword arguments a request body must not reach: they would send
 # the gateway's credentials elsewhere or override its parameter policy.
 RESERVED_FIELDS = ("api_base", "api_key", "drop_params")
@@ -43,9 +62,8 @@ def client_status(error: APIError) -> int:
     if isinstance(error, APITimeoutError):
         return GATEWAY_TIMEOUT
     status = error.status
-    if status is None and isinstance(error, BadRequestError):
-        # The library refused the request without a backend response.
-        return BAD_REQUEST
+    if status is None:
+        status = next((s for cls, s in _IMPLIED_STATUS if isinstance(error, cls)), None)
     if status is None or status < BAD_REQUEST or status >= INTERNAL_ERROR:
         return BAD_GATEWAY
     if status in _CREDENTIAL_REFUSED:

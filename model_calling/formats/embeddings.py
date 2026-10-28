@@ -47,7 +47,7 @@ def request_to_internal(body: dict) -> EmbeddingRequest:
     model = body.get("model")
     if not isinstance(model, str) or not model:
         raise TranslationError("model is required")
-    if "input" not in body:
+    if body.get("input") is None:
         raise TranslationError("input is required")
     dimensions = body.get("dimensions")
     if dimensions is not None and (
@@ -70,7 +70,9 @@ def request_to_internal(body: dict) -> EmbeddingRequest:
 
 def encoding_format(body: dict) -> str:
     """The client's `encoding_format`, `float` when unset."""
-    value = body.get("encoding_format") or "float"
+    value = body.get("encoding_format")
+    if value is None:
+        return "float"
     if value not in ENCODING_FORMATS:
         raise TranslationError(
             f"encoding_format must be one of {', '.join(ENCODING_FORMATS)}, not {value!r}"
@@ -81,7 +83,11 @@ def encoding_format(body: dict) -> str:
 def _encode(vector: list[float], fmt: str) -> list[float] | str:
     if fmt == "float":
         return vector
-    return base64.b64encode(struct.pack(f"<{len(vector)}f", *vector)).decode("ascii")
+    try:
+        packed = struct.pack(f"<{len(vector)}f", *vector)
+    except (OverflowError, struct.error) as e:
+        raise TranslationError(f"an embedding value doesn't fit in float32: {e}") from e
+    return base64.b64encode(packed).decode("ascii")
 
 
 def response_from_internal(response: EmbeddingResponse, model: str, fmt: str = "float") -> dict:

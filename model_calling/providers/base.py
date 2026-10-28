@@ -308,7 +308,7 @@ class Provider(ABC):
             yield failed.event
             return
         except (GeneratorExit, asyncio.CancelledError):
-            await self._notify("on_request_end", body, last_event, cancelled=True)
+            await _shielded(self._notify("on_request_end", body, last_event, cancelled=True))
             raise
         except BaseException as e:
             await self._notify("on_error", body, e)
@@ -393,6 +393,23 @@ class Provider(ABC):
                 await getattr(callback, hook)(self.model, request.input, *args, **params)
             except Exception:
                 logger.exception("callback %s.%s failed", type(callback).__name__, hook)
+
+
+# Callbacks finishing after a cancellation, held so they aren't collected.
+_finishing: set[asyncio.Task] = set()
+
+
+async def _shielded(coro) -> None:
+    """Await `coro` in its own task, so a cancellation that keeps arriving
+    (an anyio cancel scope, as Starlette uses when a client disconnects)
+    can't cut it short. If the wait is cancelled, the task still finishes."""
+    task = asyncio.ensure_future(coro)
+    _finishing.add(task)
+    task.add_done_callback(_finishing.discard)
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        pass
 
 
 class _StreamFailed(Exception):
