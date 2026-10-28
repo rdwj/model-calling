@@ -10,7 +10,24 @@ so `server.py` makes no backend HTTP calls, and fix the remaining Phase 2 bugs.
    `vllm` backend to `tests/harness/scenarios.py` and record its four
    scenarios with `uv run python -m tests.harness.record`. The endpoint,
    model, and optional key come from `VLLM_BASE_URL`, `VLLM_MODEL`, and
-   `VLLM_API_KEY` in the environment, rdwj's existing vLLM. Never put them in a file.
+   `VLLM_API_KEY` in the environment. Never put them in a repo file.
+   The endpoint is rdwj's `gpt-oss-20b` on OpenShift AI (vLLM 0.24), checked
+   2026-10-28:
+   - It has no external route yet: the gateway needs Red Hat Connectivity
+     Link's `AuthPolicy`, which isn't installed. It's reached through an
+     `oc port-forward` to `localhost:18000`, run in a reconnect loop under
+     `nohup` (log in `/tmp/model-calling-vllm-pf.log`). rdwj's shell
+     profile has the command and the variables. No key is needed.
+   - It serves HTTPS with the cluster's service certificate, which doesn't
+     match `localhost`. Add an opt-in `VLLM_VERIFY_TLS=false` switch to the
+     recorder, scoped to the vLLM backend and off by default.
+   - All four scenarios' prerequisites were checked by hand: text
+     (`pong`), streaming (ends with `[DONE]`), and tools (`finish_reason:
+     tool_calls`). Tools work because vLLM runs with
+     `--enable-auto-tool-choice --tool-call-parser openai`, set through
+     `VLLM_ADDITIONAL_ARGS` on the LLMInferenceService. Without the parser,
+     gpt-oss leaves its call in the reasoning. Reasoning arrives as
+     `reasoning`, not `reasoning_content`.
    Scrub and gitleaks the fixtures, and record any divergence from the SDK
    types (for example `reasoning_content`) in `tests/fixtures/README.md`.
    Fix the stale comment saying `Backend.native_request` mirrors the old
@@ -64,15 +81,18 @@ independent, so it's the filler if 1 stalls.
   "Test Package" CI on that commit is green (the anthropic 2.0.0 upgrade
   hadn't been CI-verified at planning time). `HOME=$(mktemp -d) uv run
   pytest` shows 163 passed and 4 xfailed. `VLLM_BASE_URL` and `VLLM_MODEL`
-  are set and `curl -s "$VLLM_BASE_URL/v1/models"` answers. If not, ask
-  rdwj before starting item 1.
+  are set, the port-forward is running, and
+  `curl -sk "$VLLM_BASE_URL/v1/models"` answers. If the port-forward loop
+  isn't running or the model is down, ask rdwj before starting item 1.
 - Rules with history:
   - Never loosen a grid check to make a cell pass; strict xfails decide.
   - Read sub-agent test code before committing. On 2026-10-28 a
     sub-agent hardcoded a home-directory fixture path that passed locally
     and broke CI. `tests/test_isolation.py` now catches that one case only.
   - Check installed SDK types before writing translators, not memory.
-- Stop-and-ask before: any OpenRouter spend (recording `openai_compat`
+- Stop-and-ask before: any change to the vLLM deployment (it's rdwj's,
+  on a shared cluster; on one GPU, a rolling update deadlocks and needs
+  `replicas` 0 → 1 on the LLMInferenceService), any OpenRouter spend (recording `openai_compat`
   fixtures again costs money; the existing ones should suffice), changing
   `[project] dependencies`, moving the dependency cutoff, or force-pushing.
 - Close ritual: `/session-close`, then `/plan-next-session`. Phase 3
