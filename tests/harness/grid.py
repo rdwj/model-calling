@@ -51,6 +51,17 @@ KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
         for ingress in INGRESSES
     },
 }
+# Known failures in what we send: replay rejects the request, so these fail
+# every test of the cell, and stay marked when `known_failures=False`.
+KNOWN_REQUEST_FAILURES: Dict[Tuple[str, str, str], str] = {
+    (ingress, backend, "tool_strict"): (
+        "a Messages tool's strict is dropped on the way to Chat Completions backends, "
+        "even in strict mode (found in Phase 4 review)"
+    )
+    for ingress in MESSAGES_INGRESSES
+    for backend in ("openai_compat", "vllm")
+}
+KNOWN_FAILURES.update(KNOWN_REQUEST_FAILURES)
 
 
 @dataclass(frozen=True)
@@ -71,8 +82,9 @@ def grid(
     known_failures: bool = True,
 ) -> list:
     """Cells as pytest params. `known_failures=False` leaves KNOWN_FAILURES
-    unmarked, for tests that hold even where a cell's checks fail (the
-    gateway still answers as the library does)."""
+    other than KNOWN_REQUEST_FAILURES unmarked, for tests that hold even
+    where a cell's checks fail (the gateway still answers as the library
+    does)."""
     params = []
     for ingress in ingresses:
         for backend in backends:
@@ -83,7 +95,9 @@ def grid(
                 if ingress in MESSAGES_INGRESSES and not spec.messages_form:
                     continue
                 cell = Cell(ingress, backend, scenario)
-                known = KNOWN_FAILURES.get((ingress, backend, scenario)) if known_failures else None
+                known = (KNOWN_FAILURES if known_failures else KNOWN_REQUEST_FAILURES).get(
+                    (ingress, backend, scenario)
+                )
                 reason = known or _unsupported(backend, spec)
                 marks = [pytest.mark.xfail(reason=reason, strict=True)] if reason else []
                 params.append(pytest.param(cell, id=cell.id, marks=marks))

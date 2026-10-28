@@ -167,28 +167,29 @@ def test_refused_cells_have_no_fixture():
 
 
 OPENAI_COMPAT_BACKENDS = ("openai_compat", "vllm")
-# (scenario, backends) -> (path into the recorded native body, expected value):
+# (scenario, backends, path into the recorded native body, expected value):
 # the Chat Completions-only fields reach each backend that can take them.
-NATIVE_FIELDS = {
-    ("reasoning_effort", OPENAI_COMPAT_BACKENDS): (("reasoning_effort",), "low"),
-    ("reasoning_effort", ("ollama",)): (("think",), True),
-    ("tool_required", OPENAI_COMPAT_BACKENDS): (("tool_choice",), "required"),
-    ("tool_named", OPENAI_COMPAT_BACKENDS): (
+NATIVE_FIELDS = [
+    ("reasoning_effort", OPENAI_COMPAT_BACKENDS, ("reasoning_effort",), "low"),
+    ("reasoning_effort", ("ollama",), ("think",), True),
+    ("tool_required", OPENAI_COMPAT_BACKENDS, ("tool_choice",), "required"),
+    (
+        "tool_named",
+        OPENAI_COMPAT_BACKENDS,
         ("tool_choice",),
         {"type": "function", "function": {"name": "get_weather"}},
     ),
-    ("parallel_tools_off", OPENAI_COMPAT_BACKENDS): (("parallel_tool_calls",), False),
-    ("tool_strict", OPENAI_COMPAT_BACKENDS): (("tools", 0, "function", "strict"), True),
-    ("tool_parameterless", GRID_BACKENDS): (
+    ("parallel_tools_off", OPENAI_COMPAT_BACKENDS, ("parallel_tool_calls",), False),
+    ("tool_strict", OPENAI_COMPAT_BACKENDS, ("tools", 0, "function", "strict"), True),
+    (
+        "tool_parameterless",
+        GRID_BACKENDS,
         ("tools", 1, "function", "parameters"),
         {"type": "object", "properties": {}},
     ),
-    ("max_completion_tokens", OPENAI_COMPAT_BACKENDS): (("max_tokens",), 256),
-    ("max_completion_tokens", ("openai_compat", "vllm", "ollama")): (
-        ("seed",),
-        SEED,
-    ),
-}
+    ("max_completion_tokens", GRID_BACKENDS, ("max_tokens",), 256),
+    ("max_completion_tokens", GRID_BACKENDS, ("seed",), SEED),
+]
 # Ollama takes sampling settings under `options`.
 OLLAMA_OPTION_FIELDS = {"seed": "seed", "max_tokens": "num_predict"}
 
@@ -203,7 +204,7 @@ def _dig(body, path):
     "backend, scenario, path, expected",
     [
         (backend, scenario, path, expected)
-        for (scenario, backends), (path, expected) in NATIVE_FIELDS.items()
+        for scenario, backends, path, expected in NATIVE_FIELDS
         for backend in backends
     ],
 )

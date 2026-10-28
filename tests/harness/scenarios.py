@@ -393,15 +393,19 @@ SCENARIOS = {
             chat_extra={"parallel_tool_calls": False},
             messages_extra={"tool_choice": {"type": "auto", "disable_parallel_tool_use": True}},
         ),
-        # Messages' tool `strict` isn't translated to Chat Completions
-        # backends, so no Messages form.
         Scenario(
             "tool_strict",
             TOOL_PROMPT,
             # qwen3 thinks for a while first.
             max_tokens=1024,
             tools=(STRICT_WEATHER_TOOL,),
-            messages_form=False,
+            anthropic_tools=(
+                {
+                    **ANTHROPIC_WEATHER_TOOL,
+                    "input_schema": STRICT_WEATHER_TOOL["function"]["parameters"],
+                    "strict": True,
+                },
+            ),
         ),
         Scenario(
             "tool_parameterless",

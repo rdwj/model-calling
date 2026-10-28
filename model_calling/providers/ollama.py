@@ -116,7 +116,8 @@ class OllamaProvider(Provider):
         choice = request.tool_choice
         if choice is not None and choice.mode in FORCED_TOOL_CHOICES:
             names.append("tool_choice")
-        if choice is not None and choice.parallel is False:
+        sends_tools = bool(request.tools) and not (choice and choice.mode == "none")
+        if sends_tools and choice is not None and choice.parallel is False:
             # Ollama has no switch for it; the model may still call several tools.
             names.append("parallel_tool_calls")
         if any(_strict(t) for t in request.tools or ()):

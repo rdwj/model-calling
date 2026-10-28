@@ -173,6 +173,7 @@ def test_build_request_tool_choice_none_drops_tools(provider):
 
 
 STRICT_WEATHER = {"name": "get_weather", "parameters": {"type": "object"}, "strict": True}
+WEATHER = {"type": "function", "function": {"name": "get_weather"}}
 HI = [{"role": "user", "content": "Hi"}]
 
 
@@ -182,10 +183,21 @@ HI = [{"role": "user", "content": "Hi"}]
         (chat_completions.request_to_internal, {"tool_choice": "required"}, ["tool_choice"]),
         (
             chat_completions.request_to_internal,
-            {"parallel_tool_calls": False},
+            {"tools": [WEATHER], "parallel_tool_calls": False},
             ["parallel_tool_calls"],
         ),
-        (chat_completions.request_to_internal, {"parallel_tool_calls": True}, []),
+        # Without tools sent, one call per turn holds anyway.
+        (chat_completions.request_to_internal, {"parallel_tool_calls": False}, []),
+        (
+            chat_completions.request_to_internal,
+            {"tools": [WEATHER], "tool_choice": "none", "parallel_tool_calls": False},
+            [],
+        ),
+        (
+            chat_completions.request_to_internal,
+            {"tools": [WEATHER], "parallel_tool_calls": True},
+            [],
+        ),
         (
             chat_completions.request_to_internal,
             {"tools": [{"type": "function", "function": STRICT_WEATHER}]},
