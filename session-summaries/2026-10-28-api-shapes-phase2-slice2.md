@@ -39,7 +39,7 @@ Filed none · Closed none · Phase 9 migration-guide list extended in the plan (
 
 ## For the reviewer
 - Sanity-check: the `base_url` convention change and the 401/403 → 502 mapping, both user-visible breaks.
-- Thin verification: `OpenAIProvider` (no fixture or live call); pool limit change (untested by design); `/v1/models/refresh` regression for vllm.
+- Thin verification: vLLM was exercised only through its OpenAI Chat Completions endpoint; its native Anthropic `/v1/messages` was probed by hand after close (text, tools, and streaming all work) and is queued for recording in Phase 3 slice 1. `OpenAIProvider` (no fixture or live call); pool limit change (untested by design); `/v1/models/refresh` regression for vllm.
 - Wants guidance: whether the grid should compare request bodies against recorded ones before Phase 3/4 add more cells.
 
 ## Risks / watch-fors

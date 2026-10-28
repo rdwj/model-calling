@@ -1,102 +1,114 @@
 # Next Session — api-shapes
 
-## Next: Phase 2, slice 2: OpenAI-compatible providers and the legacy chat path's removal
+## Next: Phase 3, slice 1: the library API in both formats, with streaming
 
-Finish Phase 2. Port vLLM, OpenAI, and OpenRouter onto the provider
-interface that slice 1 proved on Ollama. Then delete `server.stream_response`
-so `server.py` makes no backend HTTP calls, and fix the remaining Phase 2 bugs.
+Make model-calling importable in place of LiteLLM: a `Client` with
+`completion`/`acompletion` (OpenAI types) and `messages`/`amessages`
+(Anthropic types), streaming and non-streaming, over the providers Phase 2
+built. Tighten the grid first so the new cells prove what they claim.
+rdwj confirmed all four Phase 3 design proposals on 2026-10-28 and chose to
+include streaming in this slice, which pulls the Anthropic SSE encoder
+forward from Phase 5.
 
-1. **Record vLLM fixtures** (needs rdwj, mechanical once set up). Add a
-   `vllm` backend to `tests/harness/scenarios.py` and record its four
-   scenarios with `uv run python -m tests.harness.record`. The endpoint,
-   model, and optional key come from `VLLM_BASE_URL`, `VLLM_MODEL`, and
-   `VLLM_API_KEY` in the environment. Never put them in a repo file.
-   The endpoint is rdwj's `gpt-oss-20b` on OpenShift AI (vLLM 0.24), checked
-   2026-10-28:
-   - It has no external route yet: the gateway needs Red Hat Connectivity
-     Link's `AuthPolicy`, which isn't installed. It's reached through an
-     `oc port-forward` to `localhost:18000`, run in a reconnect loop under
-     `nohup` (log in `/tmp/model-calling-vllm-pf.log`). rdwj's shell
-     profile has the command and the variables. No key is needed.
-   - It serves HTTPS with the cluster's service certificate, which doesn't
-     match `localhost`. Add an opt-in `VLLM_VERIFY_TLS=false` switch to the
-     recorder, scoped to the vLLM backend and off by default.
-   - All four scenarios' prerequisites were checked by hand: text
-     (`pong`), streaming (ends with `[DONE]`), and tools (`finish_reason:
-     tool_calls`). Tools work because vLLM runs with
-     `--enable-auto-tool-choice --tool-call-parser openai`, set through
-     `VLLM_ADDITIONAL_ARGS` on the LLMInferenceService. Without the parser,
-     gpt-oss leaves its call in the reasoning. Reasoning arrives as
-     `reasoning`, not `reasoning_content`.
-   Scrub and gitleaks the fixtures, and record any divergence from the SDK
-   types (for example `reasoning_content`) in `tests/fixtures/README.md`.
-   Fix the stale comment saying `Backend.native_request` mirrors the old
-   Ollama adapter. The recorder should build native bodies with
-   `OllamaProvider.build_request` so recordings match what the gateway sends.
+0. **Grid blind spots** (mechanical, do first). Replay matches on URL only,
+   so the body a provider sends is never checked. Make `ReplayTransport`
+   compare the sent JSON to the fixture's recorded request, with an
+   explicit, short ignore list for fields that legitimately vary. Older
+   Ollama and OpenRouter fixtures were recorded with `max_tokens: 64` and
+   no `stream_options`. Re-record Ollama (free, needs `ollama pull
+   qwen3:4b`) rather than widening the ignore list. Ask before
+   re-recording OpenRouter (paid); if declined, ignore those two fields
+   for `openai_compat` only and say so in `tests/fixtures/README.md`. Run
+   `assert_backend_auth` for every backend that has a key.
 
-2. **OpenAI-compatible provider.** One provider for `/v1/chat/completions`
-   backends: request out, response in, an SSE stream parser, bearer auth.
-   `openai/` and `vllm/` route to it, and `openrouter/` becomes a named
-   provider with its own base URL. Accept `reasoning` and
-   `reasoning_content` on the way in. Drop vLLM's legacy `/generate`
-   prompt mode (decided 2026-10-28) and note it for the migration guide.
-   Reuse `providers/base.py` unchanged where possible. Two review leftovers
-   belong here: add a shared `httpx.AsyncClient` per provider with an
-   injectable transport, which lets the grid stop monkeypatching
-   `httpx.AsyncClient.__init__`, and map backend 401/403 to 502 so a
-   gateway credential problem doesn't look like the client's.
+0b. **Record vLLM's Anthropic Messages endpoint** (free, needs the
+   port-forward). vLLM serves `POST /v1/messages` natively; probed by hand
+   2026-10-28 on gpt-oss-20b: text (a `thinking` block with a hex
+   `signature`, then `pong`, `end_turn`), tools (`tool_use` for
+   get_weather/Paris), and streaming (the full `message_start` …
+   `message_stop` event sequence). Teach the recorder a Messages-shaped
+   native body and add a `vllm_messages` backend with the four scenarios,
+   same placeholder scrubbing as `vllm`. Validate the bodies and events
+   against the `anthropic` SDK types and record divergences in
+   `tests/fixtures/README.md` (for example `chatcmpl-` ids and
+   vLLM-minted signatures). These fixtures can't join the grid until an
+   Anthropic provider exists (Phase 6); this session they are the
+   reference for item 3's encoder.
 
-3. **Delete the legacy chat streaming path.** Remove
-   `server.stream_response`. Non-streaming `anthropic/` and `cohere/` keep
-   the legacy adapter path until Phase 6, and streaming requests for them
-   return 501 naming Phase 6 (decided 2026-10-28). Remove the keyword
-   "reasoning" heuristic.
+1. **Errors and `Client`.** An exception hierarchy with OpenAI-style names
+   (`AuthenticationError`, `PermissionDeniedError`, `NotFoundError`,
+   `RateLimitError`, `BadRequestError`, `APIConnectionError`,
+   `APITimeoutError`, `InternalServerError`), each carrying provider,
+   status, and raw body. `BackendError` maps onto it. The library raises
+   the backend's real status; the gateway's 401/403 → 502 stays a server
+   concern. `Client(...)` owns per-prefix config, callbacks, and an
+   `HttpClients` pool (reuse `providers.HttpClients`, don't add a second
+   one), with `async with` / `aclose`. It routes with `provider_for` and
+   takes per-call `api_base` / `api_key`. Module-level functions use a
+   lazily created default client.
 
-4. **Remaining Phase 2 bugs**, each with a test that fails first: unprefixed
-   model names hijack `/v1/moderations` (moderation defaults to
-   `granite-guardian`, which `registry.get_adapter` resolves to Ollama);
-   `logging.basicConfig` in `embedding_adapter.py` and
-   `ollama_embedding_adapter.py` (`__main__.py` may keep it, since it's the
-   entry point); `int(time.time())` ids in legacy code that's still reachable.
+2. **`completion` / `acompletion`.** Chat Completions in and out, reusing
+   `formats/chat_completions.py` and `ChatCompletionsStreamEncoder`.
+   Typed pydantic responses of our own that validate against
+   `openai.types.chat.ChatCompletion` / `ChatCompletionChunk` in tests.
+   The `openai` and `anthropic` SDKs stay dev-only. Streaming returns an
+   async iterator of chunks; the sync form returns a sync iterator.
 
-**Sequencing.** Do 1 first because 2's exit needs the fixtures. If the vLLM
-endpoint is unreachable, start 2 against the OpenRouter fixtures and record
-vLLM when it comes back. Then 3, which needs 2, and 4 last. 4 is
-independent, so it's the filler if 1 stalls.
+3. **`messages` / `amessages` and the Anthropic SSE encoder.** Messages in
+   via `formats/anthropic.py`, out as Anthropic types. A new encoder turns
+   internal events into the full event sequence (`message_start`,
+   `content_block_start`, `content_block_delta` with `text_delta` /
+   `input_json_delta` / `thinking_delta`, `content_block_stop`,
+   `message_delta`, `message_stop`), validated against the `anthropic`
+   SDK's stream event types. The open item from slice 1, thinking with no
+   signature on Anthropic egress, surfaces here; decide it with rdwj if it
+   blocks a cell rather than inventing a signature.
+
+4. **Strict by default.** Where a provider can't honor a parameter today
+   it warns or drops it. Ollama's forced `tool_choice` and
+   `cache_control`, and the OpenAI-compatible providers' token-budget
+   thinking, are known cases. Make each a `BadRequestError` naming the
+   parameter, with `drop_params=True` on the client or call as the opt-in.
+   The gateway keeps its current behavior until slice 2 decides how the
+   server exposes it.
+
+**Sequencing.** 0 and 0b, then 1 (2 and 3 need it), then 2, then 3. 4 last: it is
+small once the error types exist. If the session runs long, stop after 3
+with 4 written up; don't cut streaming from 2 or 3.
 
 **Constraints for the session:**
-- Exit predicate: `HOME=$(mktemp -d) uv run pytest` is green;
-  `KNOWN_FAILURES` is empty for `chat_completions` × {`ollama`,
-  `openai_compat`, `vllm`}; `grep -n "httpx" model_calling/server.py`
-  returns nothing; each item 4 bug has a test that failed before its fix.
-  That satisfies Phase 2's definition of done.
-- Scope: Chat Completions ingress only. Anthropic and Responses ingress are
-  Phases 5 and 7, and the Anthropic and Cohere backends are Phase 6.
-- Dependency policy and clean-room rule as in "Watch out for". No new
-  runtime dependencies.
+- Exit predicate: `HOME=$(mktemp -d) uv run pytest` is green. The grid has
+  `library_completion` and `library_messages` ingresses over every
+  backend and scenario, with no `KNOWN_FAILURES` entries for them. Replay
+  rejects a body mismatch, shown by a test that fails on a tampered
+  fixture. `git grep -nE "^(import|from) (openai|anthropic)" model_calling`
+  returns nothing.
+- Scope: library only. The `[server]` extra, server-over-core refactor,
+  and `POST /v1/messages` are slice 2. Don't change gateway behavior
+  except where item 0's stricter replay exposes a real bug.
+- No new runtime dependencies (httpx and pydantic only for this code).
 
 **Session start protocol:**
-- Premise checks (before item 1, report before acting): `main` matches
-  `origin/main` at `7e4e44c` plus the 2026-10-28 session summary, and the
-  "Test Package" CI on that commit is green (the anthropic 2.0.0 upgrade
-  hadn't been CI-verified at planning time). `HOME=$(mktemp -d) uv run
-  pytest` shows 163 passed and 4 xfailed. `VLLM_BASE_URL` and `VLLM_MODEL`
-  are set, the port-forward is running, and
-  `curl -sk "$VLLM_BASE_URL/v1/models"` answers. If the port-forward loop
-  isn't running or the model is down, ask rdwj before starting item 1.
+- Premise checks (before item 0, report before acting): `main` matches
+  `origin/main` at the plan commit after `2847c81`. "Test Package" is green
+  on `21c44fb` or later (it was still running at planning time).
+  `HOME=$(mktemp -d) uv run pytest` shows 275 passed. `ollama list`
+  shows `qwen3:4b` if item 0 re-records Ollama.
 - Rules with history:
-  - Never loosen a grid check to make a cell pass; strict xfails decide.
-  - Read sub-agent test code before committing. On 2026-10-28 a
-    sub-agent hardcoded a home-directory fixture path that passed locally
-    and broke CI. `tests/test_isolation.py` now catches that one case only.
-  - Check installed SDK types before writing translators, not memory.
-- Stop-and-ask before: any change to the vLLM deployment (it's rdwj's,
-  on a shared cluster; on one GPU, a rolling update deadlocks and needs
-  `replicas` 0 → 1 on the LLMInferenceService), any OpenRouter spend (recording `openai_compat`
-  fixtures again costs money; the existing ones should suffice), changing
-  `[project] dependencies`, moving the dependency cutoff, or force-pushing.
-- Close ritual: `/session-close`, then `/plan-next-session`. Phase 3
-  starts by confirming its design proposals with rdwj.
+  - Never loosen a grid check or widen replay's ignore list to make a cell
+    pass; strict xfails decide.
+  - Read sub-agent test code before committing. Last session a sub-agent
+    asserted a double-slash URL as correct, hardcoded recording-specific
+    ids, and misreported its file sizes.
+  - Check installed SDK types (openai 3.35.1, anthropic 2.0.0) before
+    writing the response models and the Anthropic encoder, not memory.
+- Stop-and-ask before: any OpenRouter spend (re-recording `openai_compat`
+  included); if the vLLM port-forward or model is down, ask rdwj rather
+  than skipping 0b, changing `[project] dependencies`, moving the dependency
+  cutoff, force-pushing, or any change to the vLLM deployment.
+- Close ritual: `/session-close`, then `/plan-next-session` (slice 2:
+  `[server]` extra, server as a thin layer over `Client`, `POST
+  /v1/messages`, docs).
 
 ## Remaining epic phases
 
@@ -203,7 +215,7 @@ format with no loss. Each listed bug has a test that failed before the fix.
 
 The near-term use case: import model-calling in place of LiteLLM, with no
 server running. Familiar to LiteLLM users where that costs nothing, better
-where it matters. Confirm these design proposals with rdwj at phase start:
+where it matters. rdwj confirmed these design proposals on 2026-10-28:
 
 - **Explicit client, no global state.** `Client(...)` owns config,
   callbacks, and a pooled httpx client. Module-level functions are
@@ -302,7 +314,10 @@ Messages → Chat Completions translation.
    `cache_control` pass-through. Drop the hardcoded Claude 3 model tables.
 2. Rewrite the Cohere chat and embedding adapters against the v2 API.
 3. Point the Anthropic backend at OpenRouter `/api/v1/messages` for live
-   tests (confirm the auth header it expects).
+   tests (confirm the auth header it expects). vLLM also serves
+   `/v1/messages` natively (checked 2026-10-28), so the same provider
+   should run against vLLM; its `vllm_messages` fixtures (Phase 3 slice 1)
+   give the column a free, offline second backend.
 4. Add the Anthropic and Cohere columns to the grid for every ingress that
    exists so far.
 
@@ -364,8 +379,8 @@ run's spend is committed to `tests/live/spend.jsonl`.
 **Work:**
 1. Pass-through mode: when the backend natively speaks the ingress format
    (for example vLLM or OpenRouter Messages/Responses), forward without
-   round-tripping through the internal format. Verify vLLM and Ollama native
-   support before relying on it.
+   round-tripping through the internal format. vLLM's native Messages
+   endpoint is confirmed (2026-10-28); verify Ollama's before relying on it.
 2. Switch PyPI publishing to trusted publishing (OIDC) and drop the token
    secret.
 3. Write a "Migrating from LiteLLM" doc in `docs/` (nominative mention
@@ -415,23 +430,31 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-28): Phase 2 slice 1
+## What landed last session (2026-10-28): Phase 2 slice 2, Phase 2 complete
 
-Every slice 1 item and the anthropic 2.0.0 upgrade landed, `b067f38..7e4e44c`.
-The internal format is in `model_calling/core/`. Anthropic round trips are
-lossless and SDK-validated at both ends (`formats/anthropic.py`). Chat
-Completions ingress is in `formats/chat_completions*.py` and the provider
-interface in `providers/base.py`. Ollama runs on the new path, and the
-`ollama` stream, backend_error, and tools grid cells pass. No OpenRouter
-spend. Full record, including judgment calls and the deferred review
-items: `session-summaries/2026-10-28-api-shapes-phase2-slice1.md`.
+All four slice 2 items plus review fixes, `fd2679c..2847c81`. One
+OpenAI-compatible provider serves `vllm/`, `openai/`, and `openrouter/`.
+`server.py` makes no HTTP calls. `KNOWN_FAILURES` is empty, and every
+remaining Phase 2 bug has a regression test. No OpenRouter spend; vLLM
+fixtures were recorded from rdwj's gpt-oss-20b. Full record, including
+judgment calls and the grid's known blind spots:
+`session-summaries/2026-10-28-api-shapes-phase2-slice2.md`.
 
-Deferred to later phases:
+Still open from earlier slices:
 - Document and Refusal block types (Phases 5 and 7).
 - `reasoning_effort` strings for Ollama `think` (Phase 4).
-- Anthropic egress of thinking with no signature (Phase 5).
+- Anthropic egress of thinking with no signature (now item 3 above).
 - Responses stream structure (Phase 7).
 - `on_stream_chunk` receiving a raw str (Phase 3, with the callback API).
+- `/v1/models/refresh` returns 404 for `vllm/` models since the legacy
+  adapter was deleted (fold into slice 2's server work).
+
+## What landed earlier (2026-10-28): Phase 2 slice 1
+
+The internal format (`model_calling/core/`), lossless Anthropic round
+trips, Chat Completions ingress, and Ollama on the provider interface,
+`b067f38..7e4e44c`. Record:
+`session-summaries/2026-10-28-api-shapes-phase2-slice1.md`.
 
 ## What landed earlier (2026-10-26, evening): Phase 1 complete
 
@@ -504,13 +527,13 @@ of 23 files.
 
 ## If blocked
 
-- If the vLLM endpoint is unavailable, build the OpenAI-compatible provider
-  against the `openai_compat` (OpenRouter) fixtures and do item 4's bug
-  fixes. Leave the `vllm` grid cells unwritten rather than inventing
-  fixtures. Recording waits for the endpoint.
-
+- If the stricter replay (item 0) turns up a real gateway bug that takes
+  more than a small fix, record it as a strict xfail naming Phase 3 and
+  move on to item 1.
+- If the Anthropic SDK's stream event types make the encoder's shape
+  ambiguous (for example thinking without a signature), finish
+  `completion`/`acompletion` with streaming first and bring the question
+  to rdwj with the concrete event sequence.
 - If an OpenRouter endpoint diverges from the native provider API (auth
   header, beta fields), record it in the fixture README and test the native
   shape from SDK types offline.
-- If Claude Code can't complete the task on `qwen3-coder:30b`, try
-  `gpt-oss:20b` before treating it as a translation bug.
