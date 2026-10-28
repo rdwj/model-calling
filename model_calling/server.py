@@ -36,8 +36,28 @@ app = FastAPI(title="Model Calling Service", version=__version__, lifespan=lifes
 logger = logging.getLogger(__name__)
 
 NOT_IMPLEMENTED = 501
-# Unsupported parameters are dropped, as the gateway always has.
-DROP_PARAMS = True
+# Set to true for strict mode: a parameter the backend can't honor gets a
+# 400 naming it. By default the gateway drops such parameters.
+STRICT_PARAMS_ENV = "MODEL_CALLING_STRICT_PARAMS"
+_BOOLEANS = {
+    "true": True,
+    "1": True,
+    "yes": True,
+    "false": False,
+    "0": False,
+    "no": False,
+    "": False,
+}
+
+
+def strict_params(environ=os.environ) -> bool:
+    value = environ.get(STRICT_PARAMS_ENV, "").strip().lower()
+    if value not in _BOOLEANS:
+        raise RuntimeError(f"{STRICT_PARAMS_ENV} must be true or false, not {value!r}")
+    return _BOOLEANS[value]
+
+
+DROP_PARAMS = not strict_params()
 
 
 def _ported(body: Any) -> bool:

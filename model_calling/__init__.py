@@ -22,6 +22,7 @@ from model_calling.errors import (
     NotFoundError,
     PermissionDeniedError,
     RateLimitError,
+    UnsupportedParamsError,
 )
 from model_calling.library import (
     Client,
@@ -48,6 +49,7 @@ __all__ = [
     "NotFoundError",
     "PermissionDeniedError",
     "RateLimitError",
+    "UnsupportedParamsError",
     "acompletion",
     "aembedding",
     "amessages",

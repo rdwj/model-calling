@@ -18,7 +18,11 @@ from pydantic import ValidationError
 
 from model_calling.callbacks import Callback
 from model_calling.core import Request, Response, StreamError, StreamEvent, Usage
-from model_calling.errors import APIResponseValidationError, BadRequestError
+from model_calling.errors import (
+    APIResponseValidationError,
+    BadRequestError,
+    UnsupportedParamsError,
+)
 from model_calling.formats import TranslationError
 from model_calling.formats import anthropic, embeddings
 from model_calling.formats import chat_completions as chat
@@ -286,9 +290,10 @@ class Client:
         """Raise for parameters the backend can't honor, unless dropping them."""
         drop = self.drop_params if drop_params is None else drop_params
         if names and not drop:
-            raise BadRequestError(
+            raise UnsupportedParamsError(
                 f"{provider.name} cannot honor {', '.join(names)}; pass "
                 "drop_params=True to send the request without them",
+                params=names,
                 provider=provider.name,
             )
 

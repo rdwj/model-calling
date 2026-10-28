@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from model_calling.errors import APIError, APITimeoutError, BadRequestError
+from model_calling.errors import APIError, APITimeoutError, BadRequestError, UnsupportedParamsError
 from model_calling.formats import anthropic
 from model_calling.formats import chat_completions as chat
 from model_calling.library import Client
@@ -107,6 +107,9 @@ async def _serve(body, call, error_body: ErrorBody, encode, end: str | None):
         return error(BAD_REQUEST, f"the gateway does not accept {', '.join(reserved)}")
     try:
         result = await call(model, params)
+    except UnsupportedParamsError as e:
+        # Strict mode. The library's hint (drop_params) isn't the gateway client's to use.
+        return error(BAD_REQUEST, f"{e.provider} cannot honor {', '.join(e.params)}")
     except APIError as e:
         return error(client_status(e), e.message)
     except Exception as e:

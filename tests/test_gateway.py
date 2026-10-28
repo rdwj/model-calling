@@ -5,6 +5,7 @@ import json
 import pytest
 
 from model_calling.callbacks import Callback
+from model_calling.core import MessageStart, MessageStop
 from tests.harness.replay import fixture_path
 from tests.harness.scenarios import BACKENDS, SCENARIOS
 
@@ -97,9 +98,7 @@ async def test_callbacks_run_on_backend_error(gateway):
 
 @pytest.mark.asyncio
 async def test_callbacks_run_on_stream(gateway):
-    """on_stream_chunk should be called for each NDJSON line."""
-    import json
-
+    """on_stream_chunk gets each internal event; on_request_end the last."""
     callback = RecordingCallback()
     gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "stream")
@@ -110,14 +109,11 @@ async def test_callbacks_run_on_stream(gateway):
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
     assert resp.status_code == 200
-    # Count on_stream_chunk calls
-    chunk_calls = [c for c in callback.calls if c[0] == "on_stream_chunk"]
-
-    # Load the fixture to count expected lines
-    fixture = json.loads(fixture_path("ollama", "stream").read_text())
-    expected_lines = len(fixture["response"]["lines"])
-
-    assert len(chunk_calls) == expected_lines
+    chunks = [c[3] for c in callback.calls if c[0] == "on_stream_chunk"]
+    assert [type(c) for c in chunks[:1]] == [MessageStart]
+    assert [type(c) for c in chunks[-1:]] == [MessageStop]
+    assert callback.calls[-1][0] == "on_request_end"
+    assert callback.calls[-1][3] is chunks[-1]
 
 
 @pytest.mark.asyncio
@@ -197,3 +193,59 @@ async def test_refresh_reports_capabilities_for_a_vllm_model(gateway):
     resp = await gateway.client.post("/v1/models/refresh", json={"model": "vllm/gpt-oss-20b"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "refreshed"
+
+
+FORCED_TOOL = {
+    "chat": ("/v1/chat/completions", {"tool_choice": "required"}, "tools"),
+    "messages": ("/v1/messages", {"tool_choice": {"type": "any"}}, "anthropic_tools"),
+}
+
+
+def forced_tool_body(choice: dict, tools: str) -> dict:
+    scenario = SCENARIOS["tools"]
+    return {
+        "model": BACKENDS["ollama"].gateway_model,
+        "messages": scenario.messages(),
+        "max_tokens": 16,
+        "tools": list(getattr(scenario, tools)),
+        **choice,
+    }
+
+
+@pytest.mark.parametrize("path, choice, tools", FORCED_TOOL.values(), ids=FORCED_TOOL)
+async def test_strict_mode_refuses_a_parameter_the_backend_cannot_honor(
+    gateway, monkeypatch, path, choice, tools
+):
+    from model_calling import server
+
+    monkeypatch.setattr(server, "DROP_PARAMS", False)
+    resp = await gateway.client.post(path, json=forced_tool_body(choice, tools))
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"]["message"] == "ollama cannot honor tool_choice"
+
+
+@pytest.mark.parametrize("path, choice, tools", FORCED_TOOL.values(), ids=FORCED_TOOL)
+async def test_default_mode_drops_it_and_sends_the_rest(gateway, path, choice, tools):
+    """Without tool_choice the body is exactly the recorded tools request."""
+    gateway.use("ollama", "tools")
+    body = {**forced_tool_body(choice, tools), "max_tokens": SCENARIOS["tools"].max_tokens}
+    resp = await gateway.client.post(path, json=body)
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize(
+    "value, strict",
+    [(None, False), ("", False), ("false", False), ("0", False), ("TRUE", True), ("1", True)],
+)
+def test_strict_params_setting(value, strict):
+    from model_calling.server import STRICT_PARAMS_ENV, strict_params
+
+    environ = {} if value is None else {STRICT_PARAMS_ENV: value}
+    assert strict_params(environ) is strict
+
+
+def test_strict_params_setting_rejects_other_values():
+    from model_calling.server import STRICT_PARAMS_ENV, strict_params
+
+    with pytest.raises(RuntimeError, match=STRICT_PARAMS_ENV):
+        strict_params({STRICT_PARAMS_ENV: "maybe"})

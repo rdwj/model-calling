@@ -48,6 +48,15 @@ class BadRequestError(APIStatusError):
     """HTTP 400, or a request the library itself rejects before sending."""
 
 
+class UnsupportedParamsError(BadRequestError):
+    """The backend can't honor these request parameters, and the caller did
+    not ask to drop them. `params` names them."""
+
+    def __init__(self, message: str, *, params: list[str], provider: str | None = None):
+        super().__init__(message, provider=provider)
+        self.params = params
+
+
 class AuthenticationError(APIStatusError):
     """HTTP 401."""
 
@@ -101,5 +110,6 @@ __all__ = [
     "NotFoundError",
     "PermissionDeniedError",
     "RateLimitError",
+    "UnsupportedParamsError",
     "error_for_status",
 ]

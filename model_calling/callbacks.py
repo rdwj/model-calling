@@ -29,20 +29,23 @@ class Callback:
         Args:
             model: Name of the model being called
             messages: List of messages in the request
-            response: The model's response
-            **kwargs: Additional request parameters
+            response: The backend's response body, or for a stream the last
+                internal event (`model_calling.core.StreamEvent`)
+            **kwargs: Additional request parameters. A stream the consumer
+                stopped early also gets `cancelled=True`.
         """
         pass
 
     async def on_stream_chunk(
         self, model: str, messages: List[Dict[str, Any]], chunk: Dict[str, Any], **kwargs
     ) -> None:
-        """Called for each chunk in a streaming response
+        """Called for each event in a streaming response, before it is yielded
 
         Args:
             model: Name of the model being called
             messages: List of messages in the request
-            chunk: The streaming chunk from the model
+            chunk: The internal event (`model_calling.core.StreamEvent`), the
+                same shape for every backend
             **kwargs: Additional request parameters
         """
         pass

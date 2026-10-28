@@ -272,12 +272,15 @@ class Provider(ABC):
         """Yield internal events. A refused request raises before the first one.
 
         Every call ends with exactly one `on_request_end` or `on_error`
-        callback, including when the consumer stops early (`aclose`).
+        callback. A consumer that stops early (`aclose`, or cancelling the
+        task) gets `on_request_end` with `cancelled=True`. `on_stream_chunk`
+        sees each internal event before it is yielded, and `on_request_end`
+        gets the last one.
         """
         body = self.build_request(request)
         body["stream"] = True
         await self._notify("on_request_start", body)
-        last_chunk: Any = None
+        last_event: StreamEvent | None = None
         try:
             async with self._client() as client:
                 req = client.build_request(
@@ -290,16 +293,12 @@ class Provider(ABC):
                         raise self._backend_error(resp.status_code, _json_or_text(raw))
                     parser = self.stream_parser()
                     async for line in self._lines(resp):
-                        last_chunk = line
-                        await self._notify("on_stream_chunk", body, line)
                         events = self._unreadable_as_backend_error(lambda: parser.feed(line))
                         for event in events:
-                            if isinstance(event, StreamError):
-                                raise _StreamFailed(event)
+                            last_event = await self._emit(body, event)
                             yield event
                     for event in parser.close():
-                        if isinstance(event, StreamError):
-                            raise _StreamFailed(event)
+                        last_event = await self._emit(body, event)
                         yield event
                 finally:
                     await resp.aclose()
@@ -308,10 +307,21 @@ class Provider(ABC):
             await self._notify("on_error", body, self.stream_error(failed.event))
             yield failed.event
             return
+        except (GeneratorExit, asyncio.CancelledError):
+            await self._notify("on_request_end", body, last_event, cancelled=True)
+            raise
         except BaseException as e:
             await self._notify("on_error", body, e)
             raise
-        await self._notify("on_request_end", body, last_chunk)
+        await self._notify("on_request_end", body, last_event)
+
+    async def _emit(self, body: dict, event: StreamEvent) -> StreamEvent:
+        """Run `on_stream_chunk` for an event about to be yielded; a backend
+        error event instead ends the stream as a failure."""
+        if isinstance(event, StreamError):
+            raise _StreamFailed(event)
+        await self._notify("on_stream_chunk", body, event)
+        return event
 
     def _client(self):
         if self.http_client is not None:
@@ -358,13 +368,14 @@ class Provider(ABC):
         logger.warning(message)
         return error_for_status(status, message, provider=self.name, body=body)
 
-    async def _notify(self, hook: str, body: dict, *args: Any) -> None:
+    async def _notify(self, hook: str, body: dict, *args: Any, **extra: Any) -> None:
         """Run one callback hook for every registered callback.
 
         `model` and `messages` go positionally, so the rest of the body is
-        passed as keywords without them.
+        passed as keywords without them, along with `extra`.
         """
         params = {k: v for k, v in body.items() if k not in ("model", "messages")}
+        params.update(extra)
         for callback in self.callbacks:
             try:
                 await getattr(callback, hook)(self.model, body.get("messages", []), *args, **params)

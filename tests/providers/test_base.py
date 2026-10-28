@@ -4,6 +4,7 @@ Shared provider HTTP behavior: error mapping, stream lifecycle, callbacks.
 Exercised through OllamaProvider against an httpx.MockTransport.
 """
 
+import asyncio
 import json
 
 import httpx
@@ -50,7 +51,7 @@ class Recorder(Callback):
         await self._record("start")
 
     async def on_request_end(self, model, messages, response, **kwargs):
-        await self._record("end")
+        await self._record("cancelled" if kwargs.get("cancelled") else "end")
 
     async def on_stream_chunk(self, model, messages, chunk, **kwargs):
         await self._record("chunk")
@@ -200,17 +201,58 @@ async def test_stream_error_line_is_event_and_error_callback(backend):
     recorder = Recorder()
     events = [e async for e in make_provider(backend, recorder).stream(request(stream=True))]
     assert isinstance(events[-1], StreamError)
-    assert recorder.hooks == ["start", "chunk", "chunk", "error"]
+    # One chunk per event the consumer saw before the error.
+    assert recorder.hooks == ["start", *["chunk"] * (len(events) - 1), "error"]
 
 
-async def test_consumer_closing_early_still_ends_callbacks(backend):
+async def test_consumer_closing_early_ends_as_cancelled(backend):
+    """Stopping early is the consumer's choice, not a failure (decided 2026-10-28)."""
     backend["handler"] = ndjson(TEXT_LINE, TEXT_LINE, DONE_LINE)
     recorder = Recorder()
     events = make_provider(backend, recorder).stream(request(stream=True))
     assert isinstance(await anext(events), MessageStart)
     await events.aclose()
-    assert recorder.hooks[0] == "start" and recorder.hooks[-1] == "error"
-    assert recorder.hooks.count("error") == 1 and "end" not in recorder.hooks
+    assert recorder.hooks == ["start", "chunk", "cancelled"]
+
+
+async def test_cancelled_consumer_task_ends_as_cancelled(backend):
+    started = asyncio.Event()
+
+    class Stalled(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield (TEXT_LINE + "\n").encode()
+            started.set()
+            await asyncio.sleep(60)
+
+    backend["handler"] = lambda req: httpx.Response(200, stream=Stalled())
+    recorder = Recorder()
+
+    async def consume():
+        async for _ in make_provider(backend, recorder).stream(request(stream=True)):
+            pass
+
+    task = asyncio.create_task(consume())
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert recorder.hooks[0] == "start" and recorder.hooks[-1] == "cancelled"
+    assert "error" not in recorder.hooks
+
+
+async def test_chunk_callbacks_see_internal_events(backend):
+    seen = []
+
+    class Chunks(Callback):
+        async def on_stream_chunk(self, model, messages, chunk, **kwargs):
+            seen.append(chunk)
+
+        async def on_request_end(self, model, messages, response, **kwargs):
+            seen.append(("end", response))
+
+    backend["handler"] = ndjson(TEXT_LINE, DONE_LINE)
+    events = [e async for e in make_provider(backend, Chunks()).stream(request(stream=True))]
+    assert seen == [*events, ("end", events[-1])]
 
 
 async def test_broken_callback_does_not_change_outcome(backend):
@@ -218,7 +260,7 @@ async def test_broken_callback_does_not_change_outcome(backend):
     recorder = Recorder(fail=True)
     events = [e async for e in make_provider(backend, recorder).stream(request(stream=True))]
     assert not any(isinstance(e, StreamError) for e in events)
-    assert recorder.hooks == ["start", "chunk", "chunk", "end"]
+    assert recorder.hooks == ["start", *["chunk"] * len(events), "end"]
 
 
 @pytest.mark.parametrize(

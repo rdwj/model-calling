@@ -46,7 +46,7 @@ class Recorder(Callback):
         self.log.append((self.name, "start"))
 
     async def on_request_end(self, model, messages, response, **kwargs):
-        self.log.append((self.name, "end"))
+        self.log.append((self.name, "cancelled" if kwargs.get("cancelled") else "end"))
 
     async def on_error(self, model, messages, error, **kwargs):
         self.log.append((self.name, "error"))
@@ -150,8 +150,7 @@ async def test_stream_closed_early_ends_with_one_callback():
         async for _ in chunks:
             break
         await chunks.aclose()
-    assert log[0] == ("cb", "start")
-    assert [entry for entry in log[1:]] in ([("cb", "end")], [("cb", "error")])
+    assert log == [("cb", "start"), ("cb", "cancelled")]
 
 
 def test_sync_completion_and_stream():
@@ -338,7 +337,7 @@ def test_close_with_an_open_sync_stream_finishes_it():
     chunks = client.completion("ollama/m", USER, stream=True)
     next(chunks)
     client.close()
-    assert log == [("cb", "start"), ("cb", "error")]
+    assert log == [("cb", "start"), ("cb", "cancelled")]
     with pytest.raises(ClosedError):
         next(chunks)
 
