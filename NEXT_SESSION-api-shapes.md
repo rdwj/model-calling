@@ -1,106 +1,86 @@
 # Next Session — api-shapes
 
-## Next: Phase 1, offline test harness and green CI
+## Next: Phase 2, slice 1: internal format, provider interface, and Ollama port
 
-Build the offline test harness from Phase 1 below and get CI fully green.
-Every later phase uses this suite as its exit predicate, so it lands first.
-All items share that one theme.
+Prove the Phase 2 design end to end on one backend. Define the typed
+internal format and the provider interface, then route Ollama through them,
+streaming included. Porting vLLM and OpenAI-compatible is the next slice.
 
-1. **Lint baseline** (mechanical, do first)
-   Fix the two F821 bugs that fail CI lint today, each with a regression
-   test: `re` is used but never imported in
-   `model_calling/ollama_adapter.py` (the tool-call debug logging around
-   line 397 crashes when a model writes a function call as plain text), and
-   `logger` is used before it is defined in the `ImportError` fallback at
-   `model_calling/registry.py:24`. Then make one standalone
-   `style: Apply black` commit over `model_calling/` and `tests/` with no
-   other changes, so the Phase 2 refactor diffs stay readable.
+0. **Move the `exclude-newer` cutoff for `anthropic` 2.x** (gated on time,
+   mechanical). Only once `date -u` is past 2026-10-28T15:51Z, when
+   `anthropic` 2.0.0 turns 7 days old: move the cutoff to no later than 7
+   days before now, run `uv lock --upgrade-package anthropic
+   --upgrade-package openai`, update the `==` pins to match the lock, run
+   `pip-audit` over the full export, and confirm the offline suite stays
+   green. Commit it as a standalone `build:` commit. Before the time gate,
+   skip it and start item 1 against 1.15.0 types. If 2.x changes the
+   Message or stream-event types the harness validates, fix the harness in
+   the same commit.
 
-2. **Test isolation and markers**
-   Add the `integration` and `live` markers to `pyproject.toml`. Move the
-   three existing service-dependent test files under `integration`, and add
-   `requests==2.34.2` (already in `uv.lock`) to the `dev` group, since those
-   tests import it undeclared today. Make `conftest.py` point the capability
-   cache at `tmp_path` and skip dotenv loading for offline tests, so nothing
-   reads `~/.model_calling/`, `.env`, or `tests/models_available.py`.
-   Default `pytest` runs exclude `integration` and `live`.
+1. **Typed internal format** (design). Pydantic models for request,
+   response, and stream events in a new `model_calling/core/` package (keep
+   files under about 500 lines). A turn is a list of typed blocks: text,
+   image, tool call, tool result, and thinking with signature. Per-block
+   metadata such as `cache_control` lives on each block. Look up the
+   current `anthropic` and `openai` type modules in `.venv` before modeling
+   (`anthropic/types/`, `openai/types/chat/`); don't work from memory.
+   Exit: a test round-trips an Anthropic message carrying thinking with a
+   signature, `tool_use`, `tool_result` with `is_error`, and `cache_control`
+   through Anthropic → internal → Anthropic with no loss, validating both
+   ends with `tests/harness/sdk.py`.
 
-3. **SDK validators and replay harness**
-   Add `openai` and `anthropic` to the `dev` group under the dependency
-   policy: exact pins, at or before the `exclude-newer` cutoff, clean
-   audit. Look up their current type modules (via context7 or the installed
-   source, not from memory) and write helpers that parse our output with
-   `openai.types.chat.ChatCompletion` / `ChatCompletionChunk` and
-   `anthropic.types.Message` / stream events. Add an httpx replay transport
-   that serves committed fixtures, run the FastAPI app in-process through
-   ASGI transport, and add the (ingress, backend) grid parametrization
-   helper. Write offline tests covering today's behavior: the server's
-   Chat Completions path against replayed Ollama and OpenAI-compatible
-   responses. Where current behavior is wrong, mark those tests `xfail`
-   with a reason that points at the phase that fixes them. Don't fix them
-   in this session.
+2. **Provider interface plus Chat Completions ingress translators.** The
+   provider interface covers request translation, response translation,
+   stream-event translation, endpoint, and auth. The Chat Completions
+   translators map an OpenAI request to internal form and internal
+   responses and events back to `ChatCompletion` and chunks, ending with
+   `[DONE]`. Response IDs must be unique per response and shared across one
+   stream's chunks; drop the `int(time.time())` IDs.
 
-4. **Fixture recorder, live tests, spend ledger**
-   Add a committed recorder script that captures OpenRouter and Ollama
-   (`qwen3:4b`) responses into `tests/fixtures/` with auth headers
-   scrubbed. Add `-m live` smoke tests (one cheap call per wire format:
-   Chat Completions, Messages, Responses) that append each call's cost to
-   the committed `tests/live/spend.jsonl`, plus a guard that refuses to run
-   once the ledger total reaches $5.
+3. **Port Ollama and fix its bugs.** An Ollama provider maps internal form
+   to `/api/chat`, including the NDJSON stream and the native `thinking`
+   field (see `tests/fixtures/ollama/`). The server sends `ollama/` and
+   unprefixed models through the new path; `openai/`, `vllm/`, and the
+   others stay on the old path until slice 2. While you're in there, fix
+   with regression tests: Ollama skipping callbacks, and backend errors
+   returning HTTP 200 (map backend 4xx/5xx to an error status and body).
 
-5. **CI**
-   Trim the test matrix to Ubuntu on 3.11, 3.12, 3.13, and 3.14 plus macOS
-   and Windows on 3.12. CI runs the offline suite only.
-
-**Sequencing.** Do 1 first so lint and formatting are clean before new code
-lands. Do 2 before 3 so new tests start isolated. Item 4 needs 3's replay
-format. Item 5 goes last, once the suite passes locally.
+**Sequencing.** 0 if the time gate allows, then 1 → 2 → 3. Item 1's
+round-trip test is the design checkpoint: if the block model can't
+round-trip Anthropic losslessly, fix the model before writing translators.
 
 **Constraints for the session:**
-- Dependency policy applies to `openai`, `anthropic`, and anything else
-  added: exact pins, release on or before the `exclude-newer` cutoff, clean
-  `pip-audit`. Do not move the cutoff in this session unless a pinned
-  version has a CVE.
-- Clean-room rule: no LiteLLM source, docs, or types.
-- Harness only: no adapter or server behavior changes beyond the two F821
-  fixes. Wrong behavior gets an `xfail` pointing at its phase.
+- Exit predicate: `HOME=$(mktemp -d) uv run pytest` is green; the
+  round-trip test passes; `KNOWN_FAILURES` no longer lists
+  `chat_completions/ollama/stream` or `chat_completions/ollama/backend_error`;
+  `chat_completions/ollama/text` still passes. If `ollama/tools` starts
+  passing because the new translator emits `finish_reason: tool_calls`, the
+  strict xfail will say so; remove that entry too.
+- Scope: Ollama only. The `openai_compat` cells stay xfailed, and
+  `server.stream_response` keeps its bypass for non-Ollama prefixes until
+  slice 2 deletes it.
+- Clean-room rule and dependency policy as in "Watch out for". `pydantic`
+  is already a core dependency; don't add new runtime dependencies.
 
 **Session start protocol:**
-- Premise checks (before item 1, report before acting):
-  `git status` is clean apart from the untracked `test_model_calling.py`,
-  and `main` matches `origin/main`. `gh run list --limit 3` shows the most
-  recent `Test Package` run: dependencies job green, lint and tests red
-  for the known reasons (F821 and connection refused). Ollama is running
-  and has `qwen3:4b` (`ollama list`). `OPENROUTER_API_KEY` is set, and
-  `GET https://openrouter.ai/api/v1/key` shows roughly $47 remaining.
-  Using OpenRouter's free models endpoint, pick the cheapest tool-capable
-  model for each of chat/completions, messages, and responses, and record
-  the picks in this file before recording fixtures.
+- Premise checks (before item 0, report before acting): `git status` clean
+  apart from the untracked `test_model_calling.py`, and `main` matches
+  `origin/main` at `f0c6d76` or later. `gh run list --limit 1 --workflow
+  "Test Package"` is green. `HOME=$(mktemp -d) uv run pytest` shows 44
+  passed and 7 xfailed. `date -u` decides whether item 0 runs. Ollama only
+  needs to be running if you record new fixtures.
 - Rules with history:
-  - Harness only. When a test exposes a bug, mark it `xfail` and move on.
-    The bug list belongs to Phase 2.
-  - Live spend for this session is capped at $0.50, measured from
-    `tests/live/spend.jsonl`. Stop and ask before exceeding it.
-  - Every new dependency is pinned and audited before it is used.
-- Stop-and-ask before: spending past $0.50 on OpenRouter, moving the
-  `exclude-newer` cutoff, force-pushing, or changing the published
-  `[project] dependencies`.
-- Close ritual: run `/session-close`, update "What landed" here, record
-  session spend from the ledger, and confirm CI is green on the pushed
-  commit with `gh run list`.
-
-**Live model picks (2026-10-26).** `mistralai/mistral-nemo` for all three
-endpoints ($0.029 in / $0.030 out per M tokens). It is the cheapest paid
-model on OpenRouter's model list that supports both `tools` and
-`tool_choice`. A probe call to each of `/chat/completions`, `/messages`,
-and `/responses` succeeded and returned `usage.cost` in the body, which the
-ledger reads. `:free` models were skipped because rate limits and catalog
-churn would make recording and live runs flaky.
-
-**Definition of done for the session:** Phase 1's definition of done, i.e.
-`HOME=$(mktemp -d) uv run pytest` passes offline in under 30s,
-`uv run pytest -m live` passes and the ledger is committed, and every job in
-the latest `Test Package` run is green.
+  - Never loosen a grid check to make a cell pass. Remove a
+    `KNOWN_FAILURES` entry only when the unmodified check passes, which the
+    strict xfail enforces.
+  - The cutoff moves to at most 7 days before now, and only for the
+    anthropic/openai upgrade. No other dependency changes ride along.
+- Stop-and-ask before: changing `[project] dependencies`, moving the cutoff
+  past the 7-day line, any OpenRouter spend (this slice shouldn't need any),
+  or force-pushing.
+- Close ritual: `/session-close`, then `/plan-next-session` for slice 2
+  (port vLLM and OpenAI-compatible, add OpenRouter as a named provider,
+  delete the streaming bypass, fix the remaining Phase 2 bugs).
 
 ## Remaining epic phases
 
@@ -413,7 +393,7 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed this session (2026-10-26, evening): Phase 1 complete
+## What landed last session (2026-10-26, evening): Phase 1 complete
 
 Phase 1's definition of done is met on `8b6120e`. The offline suite passes
 in about 1s with an empty home directory, `pytest -m live` passes on all
@@ -425,8 +405,8 @@ noted earlier. Full record: `session-summaries/2026-10-26-api-shapes-phase1-harn
 The grid's first row has 1 passing cell and 7 strict xfails, which make up
 Phase 2's starting bug list, plus one Phase 4 item. `anthropic` is pinned
 at 1.15.0 because 2.0.0 (2026-10-21) postdates the cutoff; moving the cutoff
-on or after 2026-10-28 makes 2.x eligible, so decide that at Phase 2 start
-before writing translators against the SDK types.
+on or after 2026-10-28 15:51Z makes 2.x eligible (decided: move it, see
+item 0 above).
 
 ## What landed earlier (2026-10-26)
 
@@ -461,8 +441,13 @@ of 23 files.
   separately licensed `enterprise/` directory. Mention LiteLLM only in the
   migration guide.
 - **SDK versions moved.** `openai` is at 3.x and `anthropic` at 2.x
-  (2026-10-26). Check current types via context7 or the SDK source before
-  writing translators; do not rely on memory.
+  (2026-10-26), though the repo pins `anthropic` 1.15.0 until the cutoff
+  moves. Check current types in the installed SDK source before writing
+  translators; do not rely on memory.
+- **The harness is the exit predicate.** New offline coverage goes in the
+  grid (`tests/harness/grid.py`, `tests/test_gateway_grid.py`), with
+  fixtures from `uv run python -m tests.harness.record`. See
+  `tests/README.md`.
 - **Live budget: $5 for the whole epic** on OpenRouter (the key has a $50
   cap), enforced from the committed `tests/live/spend.jsonl`. Use cheap
   models and keep `-m live` out of the default run. Live tests need
@@ -477,6 +462,11 @@ of 23 files.
   also recorded in `CONTRIBUTING.md` and `CLAUDE.md`.
 
 ## If blocked
+
+- If the block model fights the Chat Completions translation (for example
+  thinking blocks or parallel tool calls), keep the Anthropic round-trip
+  lossless and make Chat Completions the lossy side. Record what gets
+  dropped in a docstring on the translator.
 
 - If an OpenRouter endpoint diverges from the native provider API (auth
   header, beta fields), record it in the fixture README and test the native
