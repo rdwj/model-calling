@@ -294,6 +294,12 @@ async def messages(request: Request):
     return await gateway.messages(registry.client, body, drop_params=DROP_PARAMS)
 
 
+@app.post("/v1/messages/count_tokens")
+async def count_tokens(request: Request):
+    """Anthropic token counting, as an estimate: no backend here counts tokens."""
+    return gateway.count_tokens(await request.json())
+
+
 @app.post("/v1/embeddings")
 async def create_embeddings(request: Request):
     """OpenAI-compatible embeddings endpoint"""

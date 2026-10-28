@@ -79,6 +79,19 @@ async def check_backend_error(sdk, cell: Cell):
     assert err.value.body["error"]["type"] == expected
 
 
+# Fields of a Messages request that count_tokens doesn't take.
+NOT_COUNTED = ("max_tokens", "stream", "metadata", "stop_sequences")
+
+
+@pytest.mark.parametrize("scenario", ["system_blocks", "tool_error", "image", "thinking"])
+async def test_count_tokens(sdk, scenario):
+    body = SCENARIOS[scenario].messages_body(BACKENDS["ollama"].model_for(SCENARIOS[scenario]))
+    counted = await sdk.messages.count_tokens(
+        **{k: v for k, v in body.items() if k not in NOT_COUNTED}
+    )
+    assert counted.input_tokens > 0
+
+
 @pytest.mark.parametrize("cell", grid(ingresses=SDK_INGRESSES))
 async def test_cell(gateway, sdk, cell: Cell):
     gateway.use(cell.backend, cell.scenario)

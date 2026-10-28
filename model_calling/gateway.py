@@ -25,10 +25,11 @@ from model_calling.errors import (
     RateLimitError,
     UnsupportedParamsError,
 )
-from model_calling.formats import anthropic
+from model_calling.formats import TranslationError, anthropic
 from model_calling.formats import chat_completions as chat
 from model_calling.library import Client
-from model_calling.providers import split_model
+from model_calling.providers import PROVIDERS, split_model
+from model_calling.token_estimate import estimate_input_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,32 @@ async def embeddings(client: Client, body: Any, *, drop_params: bool):
         )
 
     return await _serve(body, call, chat.error_body, encode=None, end=None)
+
+
+def count_tokens(body: Any):
+    """`POST /v1/messages/count_tokens`, answered locally with an estimate.
+
+    The body is validated as `/v1/messages` validates it, without a backend call.
+    """
+
+    def error(message: str) -> JSONResponse:
+        return JSONResponse(anthropic.error_body(BAD_REQUEST, message), status_code=BAD_REQUEST)
+
+    if not isinstance(body, dict):
+        return error("the request body must be a JSON object")
+    model = body.get("model")
+    if not isinstance(model, str) or not model:
+        return error("model is required")
+    if split_model(model)[0] not in PROVIDERS:
+        return error(
+            f"no provider for {model!r}: the gateway supports the prefixes "
+            f"{', '.join(sorted(PROVIDERS))}"
+        )
+    try:
+        request = anthropic.request_to_internal(body)
+    except TranslationError as e:
+        return error(str(e))
+    return {"input_tokens": estimate_input_tokens(request)}
 
 
 # --- plumbing -----------------------------------------------------------------

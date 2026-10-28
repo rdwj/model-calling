@@ -467,6 +467,31 @@ curl -X POST http://localhost:8000/v1/messages \
   }'
 ```
 
+#### POST /v1/messages/count_tokens
+
+Anthropic token counting. None of the ported backends (Ollama, vLLM, OpenAI-compatible) has a token counter, so the gateway answers with a local estimate and makes no backend request. The request body is `/v1/messages` without `max_tokens` (`MessageCountTokensParams` in the `anthropic` SDK) and is validated the same way; the response is `MessageTokensCount`, `{"input_tokens": int}`.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/v1/messages/count_tokens \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ollama/qwen3:4b",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "system": "You are a helpful assistant.",
+    "tools": [...]
+  }'
+```
+
+Response:
+
+```json
+{"input_tokens": 42}
+```
+
+The estimate is about one token per four characters of text and JSON (system, messages, tool calls and results, thinking, and tool definitions), 1000 tokens per image, and a few tokens of overhead per message, block, and tool. Real counts depend on the model's tokenizer, so treat it as a rough size for budgeting context, not an exact figure.
+
 #### POST /v1/embeddings
 
 OpenAI Embeddings. Request and response match the OpenAI API.
