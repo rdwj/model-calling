@@ -27,7 +27,9 @@ The harness lives in `harness/`:
 
 - `gateway.py` provides the `gateway` fixture: the FastAPI app behind
   `httpx.ASGITransport` with a fresh registry. `gateway.use(backend,
-  scenario)` points it at a backend and replays that fixture.
+  scenario)` points it at a backend and replays that fixture by setting
+  the replay transport as the prefix config's `transport`, which the
+  provider's pooled HTTP client picks up.
 - `grid.py` parametrizes tests over (ingress, backend, scenario) cells.
   `KNOWN_FAILURES` lists the cells that are expected to fail as strict
   xfails, each naming the epic phase that fixes it. When a fix lands, the
@@ -53,8 +55,12 @@ uv run python -m tests.harness.record --backend ollama --scenario tools --force
 ```
 
 Ollama must be running with `qwen3:4b` pulled, and recording OpenRouter
-fixtures needs `OPENROUTER_API_KEY`. Run gitleaks on `tests/fixtures/`
-before committing new recordings.
+fixtures needs `OPENROUTER_API_KEY`. Recording vLLM needs `VLLM_BASE_URL`
+(the server root, without `/v1`) and `VLLM_MODEL`, plus `VLLM_API_KEY` if
+the endpoint wants one; `VLLM_VERIFY_TLS=false` skips certificate checks
+for an endpoint reached through a port-forward. Native request bodies come
+from each backend's provider, so recordings match what the gateway sends.
+Run gitleaks on `tests/fixtures/` before committing new recordings.
 
 ## Live tests and the spend ledger
 
