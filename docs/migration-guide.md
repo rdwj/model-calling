@@ -114,7 +114,7 @@ client.update_config(
     prefix="vllm",
     config={
         "api_key": "your_vllm_token",
-        "base_url": "https://vllm-service.openshift-cluster.com",
+        "base_url": "https://vllm-service.openshift-cluster.com/v1",
         "headers": {  # Optional custom headers
             "X-Project-ID": "your-project-id"
         }
@@ -139,7 +139,7 @@ client.update_config(
     prefix="vllm",
     config={
         "api_key": "your_vllm_token",
-        "base_url": "https://vllm-service.openshift-cluster.com",
+        "base_url": "https://vllm-service.openshift-cluster.com/v1",
         "headers": {
             "Authorization": f"Bearer {vllm_token}"
         }
@@ -167,8 +167,24 @@ client.update_config(
     config={
         "api_key": "your_openai_api_key",
         "org_id": "your_openai_org_id",  # Optional
-        "base_url": "https://api.openai.com/v1/chat/completions"
+        "base_url": "https://api.openai.com/v1"
     }
+)
+```
+
+For `vllm`, `openai`, and `openrouter`, `base_url` is the API root with the
+`/v1` version included, as in the official `openai` SDK. The gateway appends
+`/chat/completions`.
+
+#### OpenRouter
+
+`openrouter/` models use `https://openrouter.ai/api/v1` and read
+`OPENROUTER_API_KEY` from the environment by default:
+
+```python
+response = client.chat_completion(
+    model="openrouter/mistralai/mistral-nemo",
+    messages=[{"role": "user", "content": "Hello"}],
 )
 ```
 
@@ -251,7 +267,7 @@ base_url: https://model-calling-prod.openshift-cluster.com
 default_model: vllm/mistral-7b
 providers:
   vllm:
-    base_url: https://vllm-service.openshift-cluster.com
+    base_url: https://vllm-service.openshift-cluster.com/v1
     api_key: ${VLLM_API_KEY}  # Replaced at runtime
   anthropic:
     api_key: ${ANTHROPIC_API_KEY}
@@ -309,7 +325,7 @@ Model Calling can be configured to work with these setups:
 client.update_config(
     prefix="vllm",
     config={
-        "base_url": "https://vllm-route.openshift-apps.example.com",
+        "base_url": "https://vllm-route.openshift-apps.example.com/v1",
         "headers": {
             "Authorization": f"Bearer {os.environ.get('VLLM_API_KEY')}",
             "X-Request-ID": "unique-request-id"  # Optional for tracking
@@ -327,8 +343,7 @@ If your vLLM deployment uses a default chat template, Model Calling works seamle
 client.update_config(
     prefix="vllm",
     config={
-        "openai_compatible": True,  # Indicates vLLM is using OpenAI-compatible format
-        "base_url": "https://vllm-service.openshift-cluster.com",
+        "base_url": "https://vllm-service.openshift-cluster.com/v1",
         "api_key": os.environ.get("VLLM_API_KEY")
     }
 )
@@ -341,7 +356,7 @@ response = client.chat_completion(
 )
 ```
 
-The VLLMAdapter detects that the server is using an OpenAI-compatible format and minimizes transformations, letting vLLM handle the template application.
+vLLM is reached through its OpenAI-compatible `/v1/chat/completions` endpoint, so the server applies the model's chat template. The legacy `/generate` prompt mode is no longer supported.
 
 ## Complete Examples
 

@@ -18,7 +18,9 @@ class OpenAIEmbeddingAdapter(EmbeddingAdapter):
 
     def __init__(self, model_config: Dict[str, Any]):
         super().__init__(model_config)
-        self.base_url = model_config.get("base_url", "https://api.openai.com/v1/embeddings")
+        # The API root, shared with chat: {base_url}/embeddings.
+        base_url = model_config.get("base_url") or "https://api.openai.com/v1"
+        self.endpoint = f"{base_url.rstrip('/')}/embeddings"
         # Extract model name from the format "openai/model-name"
         full_name = model_config.get("model_name", "")
         self.model_name = full_name.split("/")[-1] if "/" in full_name else full_name
@@ -94,12 +96,12 @@ class OpenAIEmbeddingAdapter(EmbeddingAdapter):
         """Call the OpenAI API and return the raw response"""
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
 
-        logger.debug(f"Sending embedding request to OpenAI: {self.base_url}")
+        logger.debug(f"Sending embedding request to OpenAI: {self.endpoint}")
 
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    self.base_url, json=translated_request, headers=headers, timeout=30.0
+                    self.endpoint, json=translated_request, headers=headers, timeout=30.0
                 )
                 response.raise_for_status()
                 return response.json()

@@ -370,6 +370,12 @@ run's spend is committed to `tests/live/spend.jsonl`.
    secret.
 3. Write a "Migrating from LiteLLM" doc in `docs/` (nominative mention
    only) that lists every intentional difference.
+   Breaking changes collected so far (Phase 2): vLLM's legacy `/generate`
+   prompt mode and the `openai_compatible` switch are gone; `base_url` for
+   `vllm`, `openai`, and `openrouter` is the API root with `/v1` included,
+   as in the `openai` SDK (was the server root for vLLM and the full
+   `/chat/completions` URL for OpenAI); a backend's 401/403 reaches the
+   client as 502.
 4. Tag and release 0.2.0.
 5. Pilot migration: move `src/sanicode/llm/client.py` in
    [rdwj/sanicode](https://github.com/rdwj/sanicode) (private) off LiteLLM,

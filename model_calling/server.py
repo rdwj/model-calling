@@ -2,6 +2,7 @@
 FastAPI server for the model-calling service.
 """
 
+import contextlib
 import json
 import logging
 import asyncio
@@ -25,7 +26,14 @@ from model_calling.embedding_adapter import create_openai_embedding_response, Em
 # Load environment variables from .env file if present
 load_dotenv()
 
-app = FastAPI(title="Model Calling Service", version=__version__)
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await registry.http_clients.aclose()
+
+
+app = FastAPI(title="Model Calling Service", version=__version__, lifespan=lifespan)
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +189,11 @@ async def chat_completions(request: Request):
     # Ported backends go through the provider interface; the rest stay on
     # the legacy adapter path below until they move.
     model = body.get("model") if isinstance(body, dict) else None
-    provider = provider_for(model, registry.default_configs) if isinstance(model, str) else None
+    provider = (
+        provider_for(model, registry.default_configs, registry.http_clients)
+        if isinstance(model, str)
+        else None
+    )
     if provider is not None:
         return await gateway.chat_completions(provider, body)
 

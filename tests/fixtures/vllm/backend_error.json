@@ -2,7 +2,7 @@
   "meta": {
     "backend": "vllm",
     "scenario": "backend_error",
-    "recorded_at": "2026-10-28T18:07:34+00:00",
+    "recorded_at": "2026-10-28T18:14:19+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -16,7 +16,7 @@
           "content": "Reply with exactly one word: pong"
         }
       ],
-      "max_tokens": 64,
+      "max_tokens": 256,
       "stream": false
     }
   },

@@ -12,9 +12,9 @@ from typing import Dict, Any, Optional, Type, List, Set, Tuple
 
 from model_calling.adapter import ModelAdapter
 from model_calling.ollama_adapter import OllamaAdapter
-from model_calling.vllm_adapter import VLLMAdapter
 from model_calling.thinking import ThinkingStyle
 from model_calling.callbacks import DefaultCallback
+from model_calling.providers import HttpClients
 from model_calling.capability_cache import capability_cache
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,6 @@ class ModelRegistry:
         self.model_capabilities = {}
         self.adapter_classes = {
             "ollama": OllamaAdapter,
-            "vllm": VLLMAdapter,
             "openai": OpenAIAdapter,
             "anthropic": AnthropicAdapter,
             "cohere": CohereAdapter,
@@ -109,6 +108,8 @@ class ModelRegistry:
 
         # Create a default callback for logging
         self.default_callback = DefaultCallback()
+        # Pooled HTTP clients for the providers; closed when the server stops.
+        self.http_clients = HttpClients()
 
         # Default configurations
         self.default_configs = {
@@ -116,15 +117,20 @@ class ModelRegistry:
                 "base_url": "http://localhost:11434",
                 "callbacks": [self.default_callback],
             },
+            # OpenAI-compatible base URLs are the API root, /v1 included.
             "vllm": {
-                "base_url": "http://localhost:8000",
-                "openai_compatible": True,
+                "base_url": "http://localhost:8000/v1",
                 "callbacks": [self.default_callback],
             },
             "openai": {
-                "base_url": "https://api.openai.com/v1/chat/completions",
+                "base_url": "https://api.openai.com/v1",
                 "api_key": os.environ.get("OPENAI_API_KEY", ""),
                 "org_id": os.environ.get("OPENAI_ORG_ID", ""),
+                "callbacks": [self.default_callback],
+            },
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "api_key": os.environ.get("OPENROUTER_API_KEY", ""),
                 "callbacks": [self.default_callback],
             },
             "anthropic": {
@@ -654,7 +660,7 @@ class ModelRegistry:
             # List vLLM models
             vllm_url = self.default_configs["vllm"]["base_url"]
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{vllm_url}/v1/models", timeout=10.0)
+                response = await client.get(f"{vllm_url}/models", timeout=10.0)
                 if response.status_code == 200:
                     for model in response.json().get("data", []):
                         model_id = model.get("id")

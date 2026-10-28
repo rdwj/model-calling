@@ -2,7 +2,7 @@
   "meta": {
     "backend": "vllm",
     "scenario": "text",
-    "recorded_at": "2026-10-28T18:07:35+00:00",
+    "recorded_at": "2026-10-28T18:14:20+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -16,7 +16,7 @@
           "content": "Reply with exactly one word: pong"
         }
       ],
-      "max_tokens": 64,
+      "max_tokens": 256,
       "stream": false
     }
   },
@@ -24,9 +24,9 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "chatcmpl-9d16ea2d21982b69",
+      "id": "chatcmpl-af687b2a86e0d9b6",
       "object": "chat.completion",
-      "created": 1793210855,
+      "created": 1793211260,
       "model": "gpt-oss-20b",
       "choices": [
         {
@@ -38,7 +38,7 @@
             "annotations": null,
             "audio": null,
             "function_call": null,
-            "reasoning": "The user instructs reply with exactly one word: \"pong\". The answer should just be the word pong. No other text. Also \"pong\" is lowercase. The instruction is exactly. All good.\n\n"
+            "reasoning": "Task: The user says \"Reply with exactly one word: pong\". They want exactly one word: pong.\n\nBut the instruction: reply with exactly one word: pong. So we must just output \"pong\". No punctuation? Exactly one word. So output pong. So final."
           },
           "logprobs": null,
           "finish_reason": "stop",
@@ -51,8 +51,8 @@
       "system_fingerprint": "vllm-0.24.0+rhaiv.13-aa47e83a",
       "usage": {
         "prompt_tokens": 74,
-        "total_tokens": 126,
-        "completion_tokens": 52,
+        "total_tokens": 141,
+        "completion_tokens": 67,
         "prompt_tokens_details": null
       },
       "prompt_logprobs": null,

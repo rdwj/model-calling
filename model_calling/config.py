@@ -25,8 +25,7 @@ DEFAULT_CONFIG = {
         ],
     },
     "vllm": {
-        "base_url": "http://localhost:8000",
-        "openai_compatible": True,
+        "base_url": "http://localhost:8000/v1",
         # Add any vLLM specific settings here
     },
 }
@@ -44,11 +43,6 @@ def load_config() -> Dict[str, Any]:
     # vLLM settings
     if os.environ.get("VLLM_BASE_URL"):
         config["vllm"]["base_url"] = os.environ.get("VLLM_BASE_URL")
-
-    if os.environ.get("VLLM_OPENAI_COMPATIBLE"):
-        config["vllm"]["openai_compatible"] = (
-            os.environ.get("VLLM_OPENAI_COMPATIBLE").lower() == "true"
-        )
 
     return config
 

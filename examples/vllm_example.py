@@ -11,12 +11,11 @@ async def vllm_example():
     client = ModelCallingClient()
     
     try:
-        # First, update config if your vLLM instance is not on localhost:8000
+        # First, update config if your vLLM instance is not on localhost:8000/v1
         await client.update_config(
             prefix="vllm",
             config={
-                "base_url": "http://your-vllm-server:8000",
-                "openai_compatible": True
+                "base_url": "http://your-vllm-server:8000/v1",
             }
         )
         

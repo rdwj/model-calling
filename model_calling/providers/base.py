@@ -7,11 +7,12 @@ request into a `Request`, hands it to the provider, and translates the
 `Response` or `StreamEvent`s it gets back.
 """
 
+import contextlib
 import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, ClassVar
 
 import httpx
@@ -27,6 +28,9 @@ DEFAULT_TIMEOUT = 300.0
 # Backend 5xx and transport failures reach the client as a bad gateway.
 BAD_GATEWAY = 502
 GATEWAY_TIMEOUT = 504
+# The backend refused the gateway's credential: a gateway fault, not the
+# client's, so it is reported as a bad gateway too.
+_CREDENTIAL_REFUSED = (401, 403)
 
 
 def new_id(prefix: str = "gen-") -> str:
@@ -41,6 +45,30 @@ class BackendError(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+class HttpClients:
+    """One pooled `httpx.AsyncClient` per provider prefix, created on first use.
+
+    A prefix's config may name a `transport` (tests inject a replay one).
+    The client is built once, so a later change to `transport` needs a new
+    `HttpClients`; `base_url` and `api_key` are read per request.
+    """
+
+    def __init__(self) -> None:
+        self._clients: dict[str, httpx.AsyncClient] = {}
+
+    def get(self, prefix: str, config: Mapping[str, Any]) -> httpx.AsyncClient:
+        client = self._clients.get(prefix)
+        if client is None or client.is_closed:
+            client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, transport=config.get("transport"))
+            self._clients[prefix] = client
+        return client
+
+    async def aclose(self) -> None:
+        clients, self._clients = list(self._clients.values()), {}
+        for client in clients:
+            await client.aclose()
 
 
 class StreamParser(ABC):
@@ -65,12 +93,15 @@ class Provider(ABC):
         api_key: str | None = None,
         callbacks: Sequence[Callback] = (),
         timeout: float = DEFAULT_TIMEOUT,
+        http_client: httpx.AsyncClient | None = None,
     ):
+        """Without `http_client`, each call opens and closes its own client."""
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.callbacks = list(callbacks)
         self.timeout = timeout
+        self.http_client = http_client
 
     # --- what each provider defines --------------------------------------
 
@@ -109,9 +140,11 @@ class Provider(ABC):
         body["stream"] = False
         await self._notify("on_request_start", body)
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._client() as client:
                 resp = await self._send(
-                    client.post(self.endpoint(), json=body, headers=self.headers())
+                    client.post(
+                        self.endpoint(), json=body, headers=self.headers(), timeout=self.timeout
+                    )
                 )
                 if resp.status_code >= 400:
                     raise self._backend_error(resp.status_code, _json_or_text(resp.content))
@@ -137,9 +170,9 @@ class Provider(ABC):
         await self._notify("on_request_start", body)
         last_chunk: Any = None
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._client() as client:
                 req = client.build_request(
-                    "POST", self.endpoint(), json=body, headers=self.headers()
+                    "POST", self.endpoint(), json=body, headers=self.headers(), timeout=self.timeout
                 )
                 resp = await self._send(client.send(req, stream=True))
                 try:
@@ -173,6 +206,11 @@ class Provider(ABC):
             raise
         await self._notify("on_request_end", body, last_chunk)
 
+    def _client(self):
+        if self.http_client is not None:
+            return contextlib.nullcontext(self.http_client)
+        return httpx.AsyncClient(timeout=self.timeout)
+
     async def _lines(self, resp: httpx.Response) -> AsyncIterator[str]:
         try:
             async for line in resp.aiter_lines():
@@ -202,7 +240,9 @@ class Provider(ABC):
     def _backend_error(self, status: int, body: Any) -> BackendError:
         message = f"{self.name} returned HTTP {status}: {self.error_message(body)}"
         logger.warning(message)
-        return BackendError(status if status < 500 else BAD_GATEWAY, message)
+        if status >= 500 or status in _CREDENTIAL_REFUSED:
+            return BackendError(BAD_GATEWAY, message)
+        return BackendError(status, message)
 
     async def _notify(self, hook: str, body: dict, *args: Any) -> None:
         """Run one callback hook for every registered callback.

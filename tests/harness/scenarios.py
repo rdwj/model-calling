@@ -9,10 +9,10 @@ exchange.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Tuple
 
 from model_calling.formats import chat_completions
-from model_calling.providers import OllamaProvider, Provider
+from model_calling.providers import OllamaProvider, OpenRouterProvider, Provider, VLLMProvider
 
 WEATHER_TOOL = {
     "type": "function",
@@ -37,7 +37,8 @@ class Scenario:
     prompt: str
     stream: bool = False
     tools: Tuple[dict, ...] = ()
-    max_tokens: int = 64
+    # Room for a reasoning model (gpt-oss) to think before it answers.
+    max_tokens: int = 256
     # When set, the backend is asked for a model that doesn't exist.
     missing_model: bool = False
 
@@ -79,29 +80,26 @@ class Backend:
     endpoint: str
     # Registry prefix and the default_configs entries that point it here.
     config_prefix: str
+    # The provider that builds this backend's native body.
+    provider: type[Provider]
     gateway_config: dict = field(default_factory=dict)
     # Fixture recording needs an OpenRouter key.
     needs_openrouter_key: bool = False
-    # The provider that builds this backend's native body. Backends without
-    # one take the Chat Completions body as is.
-    provider: Optional[type[Provider]] = None
 
     def native_request(self, scenario: Scenario) -> dict:
         """The body the gateway sends this backend for `scenario`."""
         model = self.missing_native_model if scenario.missing_model else self.native_model
-        body = scenario.chat_completions_body(model)
-        if self.provider is None:
-            return body
-        request = chat_completions.request_to_internal(body)
+        request = chat_completions.request_to_internal(scenario.chat_completions_body(model))
         provider = self.provider(model=model, base_url=self.gateway_config["base_url"])
         return {**provider.build_request(request), "stream": scenario.stream}
 
 
 OLLAMA_URL = "http://localhost:11434"
-OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+# The registry's default OpenRouter base URL.
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
 # Where replay expects vLLM. Recording sends to VLLM_BASE_URL and VLLM_MODEL
 # from the environment and stores these in their place.
-VLLM_URL = "http://localhost:8000"
+VLLM_URL = "http://localhost:8000/v1"
 VLLM_MODEL = "gpt-oss-20b"
 # Placeholder credential for replay. Real keys only ever come from the
 # environment, in the recorder and live tests.
@@ -122,22 +120,24 @@ BACKENDS = {
         ),
         Backend(
             name="openai_compat",
-            gateway_model="openai/mistralai/mistral-nemo",
+            gateway_model="openrouter/mistralai/mistral-nemo",
             native_model="mistralai/mistral-nemo",
             missing_native_model="model-calling/does-not-exist",
-            endpoint=OPENROUTER_CHAT_URL,
-            config_prefix="openai",
-            gateway_config={"base_url": OPENROUTER_CHAT_URL, "api_key": REPLAY_API_KEY},
+            endpoint=f"{OPENROUTER_URL}/chat/completions",
+            config_prefix="openrouter",
+            gateway_config={"base_url": OPENROUTER_URL, "api_key": REPLAY_API_KEY},
             needs_openrouter_key=True,
+            provider=OpenRouterProvider,
         ),
         Backend(
             name="vllm",
             gateway_model=f"vllm/{VLLM_MODEL}",
             native_model=VLLM_MODEL,
             missing_native_model="model-calling-missing",
-            endpoint=f"{VLLM_URL}/v1/chat/completions",
+            endpoint=f"{VLLM_URL}/chat/completions",
             config_prefix="vllm",
             gateway_config={"base_url": VLLM_URL},
+            provider=VLLMProvider,
         ),
     )
 }

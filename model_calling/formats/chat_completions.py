@@ -47,8 +47,16 @@ FINISH_REASONS = {
     "tool_use": "tool_calls",
     "refusal": "content_filter",
 }
+# Chat Completions finish_reason -> internal stop reason, for backends.
+STOP_REASONS = {
+    "stop": "end_turn",
+    "length": "max_tokens",
+    "tool_calls": "tool_use",
+    "function_call": "tool_use",
+    "content_filter": "refusal",
+}
 _TOOL_CHOICE_MODES = {"auto": "auto", "none": "none", "required": "any"}
-_REASONING_FIELDS = ("reasoning", "reasoning_content")
+REASONING_FIELDS = ("reasoning", "reasoning_content")
 _DATA_URL_PREFIX = "data:"
 _BASE64_MARKER = ";base64,"
 
@@ -90,7 +98,7 @@ def _text_only(content: Any, role: str) -> list[Text]:
     return blocks
 
 
-def _tool_call_in(raw: dict) -> ToolCall | Opaque:
+def tool_call_in(raw: dict) -> ToolCall | Opaque:
     if raw.get("type", "function") != "function":
         return Opaque(format=FORMAT, data=raw)
     fn = raw["function"]
@@ -110,11 +118,11 @@ def _assistant_in(raw: dict) -> Message:
             "assistant 'function_call' is deprecated and not supported; use 'tool_calls'"
         )
     blocks: list = []
-    reasoning = next((raw[f] for f in _REASONING_FIELDS if raw.get(f)), None)
+    reasoning = next((raw[f] for f in REASONING_FIELDS if raw.get(f)), None)
     if reasoning:
         blocks.append(Thinking(thinking=reasoning))
     blocks.extend(_parts_in(raw.get("content")))
-    blocks.extend(_tool_call_in(tc) for tc in raw.get("tool_calls") or [])
+    blocks.extend(tool_call_in(tc) for tc in raw.get("tool_calls") or [])
     return Message(role="assistant", content=blocks)
 
 
@@ -261,6 +269,21 @@ def include_usage(request: Request) -> bool:
 
 
 # --- response -----------------------------------------------------------
+
+
+def usage_in(raw: dict | None) -> Usage | None:
+    """A backend's Chat Completions `usage` object as internal usage."""
+    if not raw:
+        return None
+    prompt_details = raw.get("prompt_tokens_details") or {}
+    completion_details = raw.get("completion_tokens_details") or {}
+    return Usage(
+        input_tokens=raw.get("prompt_tokens"),
+        output_tokens=raw.get("completion_tokens"),
+        cache_read_tokens=prompt_details.get("cached_tokens"),
+        cache_write_tokens=prompt_details.get("cache_write_tokens"),
+        reasoning_tokens=completion_details.get("reasoning_tokens"),
+    )
 
 
 def usage_out(usage: Usage | None) -> dict | None:
