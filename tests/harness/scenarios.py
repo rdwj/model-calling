@@ -11,7 +11,7 @@ exchange.
 from dataclasses import dataclass, field
 from typing import Tuple
 
-from model_calling.formats import chat_completions
+from model_calling.formats import anthropic, chat_completions
 from model_calling.providers import OllamaProvider, OpenRouterProvider, Provider, VLLMProvider
 
 WEATHER_TOOL = {
@@ -80,11 +80,15 @@ class Backend:
     endpoint: str
     # Registry prefix and the default_configs entries that point it here.
     config_prefix: str
-    # The provider that builds this backend's native body.
-    provider: type[Provider]
+    # The provider that builds this backend's native body. None for an
+    # Anthropic Messages endpoint, whose body comes from formats.anthropic.
+    provider: type[Provider] | None
     gateway_config: dict = field(default_factory=dict)
     # Fixture recording needs an OpenRouter key.
     needs_openrouter_key: bool = False
+    # False for a backend recorded only as a reference, because no provider
+    # can reach it yet. Its fixtures are validated but stay off the grid.
+    in_grid: bool = True
 
     def model_for(self, scenario: Scenario) -> str:
         """The model id a client sends the gateway for `scenario`."""
@@ -96,6 +100,8 @@ class Backend:
         """The body the gateway sends this backend for `scenario`."""
         model = self.missing_native_model if scenario.missing_model else self.native_model
         request = chat_completions.request_to_internal(scenario.chat_completions_body(model))
+        if self.provider is None:
+            return anthropic.request_from_internal(request)
         provider = self.provider(model=model, base_url=self.gateway_config["base_url"])
         return {**provider.build_request(request), "stream": scenario.stream}
 
@@ -145,5 +151,20 @@ BACKENDS = {
             gateway_config={"base_url": VLLM_URL, "api_key": REPLAY_API_KEY},
             provider=VLLMProvider,
         ),
+        # vLLM's native Anthropic Messages endpoint, the reference for our
+        # Messages encoder until an Anthropic provider exists (Phase 6).
+        Backend(
+            name="vllm_messages",
+            gateway_model=f"vllm/{VLLM_MODEL}",
+            native_model=VLLM_MODEL,
+            missing_native_model="model-calling-missing",
+            endpoint=f"{VLLM_URL}/messages",
+            config_prefix="vllm",
+            gateway_config={"base_url": VLLM_URL, "api_key": REPLAY_API_KEY},
+            provider=None,
+            in_grid=False,
+        ),
     )
 }
+
+GRID_BACKENDS = tuple(name for name, b in BACKENDS.items() if b.in_grid)

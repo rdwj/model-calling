@@ -13,11 +13,16 @@ really returns even where our translation is broken.
 | `ollama` | local Ollama, `/api/chat` | `qwen3:4b` |
 | `openai_compat` | OpenRouter, `/api/v1/chat/completions` | `mistralai/mistral-nemo` |
 | `vllm` | vLLM 0.24 on OpenShift AI, `/v1/chat/completions` | `gpt-oss-20b` |
+| `vllm_messages` | the same vLLM, `/v1/messages` | `gpt-oss-20b` |
 
 The `vllm` recordings go to `VLLM_BASE_URL` and `VLLM_MODEL` from the
 environment. The fixtures store the replay URL (`http://localhost:8000`) and
 the model name `gpt-oss-20b` in their place, so deployment details stay out
-of the repo. The served model needs `--enable-auto-tool-choice
+of the repo. `vllm_messages` is recorded the same way. Its request bodies
+come from `formats.anthropic`, since no provider speaks Messages to a
+backend yet, and its fixtures stay off the grid until one does (Phase 6).
+They are validated on their own in `tests/test_vllm_messages_fixtures.py`.
+The served model needs `--enable-auto-tool-choice
 --tool-call-parser openai` for the `tools` scenario; without the parser,
 gpt-oss leaves its call in the reasoning text.
 
@@ -57,3 +62,25 @@ so all of these still validate:
   (`{"error": {"code": 404, "type": "NotFoundError", ...}}`).
 - **Streaming** sends no usage chunk unless the request sets
   `stream_options.include_usage`.
+
+## vLLM Messages divergences
+
+Places where vLLM's Anthropic Messages endpoint (0.24, checked 2026-10-28)
+departs from the `anthropic` 2.0.0 types or from Anthropic's own API:
+
+- **Thinking signatures** are 32 hex characters minted by vLLM, on both
+  the non-streaming block and the stream's `signature_delta`. They
+  validate, but Anthropic would reject them if a client sent them back.
+- **Stream thinking start**: `content_block_start` for a thinking block is
+  `{"type": "thinking", "thinking": ""}` with no `signature`, which
+  `ThinkingBlock` requires. Anthropic sends `"signature": ""` there. The
+  fixture test fills that one field before validating.
+- **Errors**: a missing model is HTTP 404 with
+  `{"type": "error", "error": {"type": "NotFoundError", ...}}`. The SDK
+  expects `not_found_error`, so `ErrorResponse` rejects it (a strict xfail
+  in the fixture test). There is no `request_id`.
+- **Ids**: messages use `chatcmpl-` ids and tool calls `chatcmpl-tool-`
+  ids, where Anthropic uses `msg_` and `toolu_`. Nothing validates the
+  prefix.
+- **Omitted fields**: non-streaming bodies leave out `stop_sequence` and
+  the cache fields of `usage`; the SDK defaults them to null.

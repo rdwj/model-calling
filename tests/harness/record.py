@@ -8,8 +8,9 @@ Sends each scenario's native request straight to the backend (not through
 our code, so fixtures capture the backend's real behavior even where ours
 is broken). Ollama must be running with qwen3:4b pulled. OpenRouter needs
 OPENROUTER_API_KEY in the environment; each paid call is appended to
-tests/live/spend.jsonl and the epic budget guard runs first. vLLM is read
-from VLLM_BASE_URL and VLLM_MODEL (VLLM_API_KEY optional); fixtures store
+tests/live/spend.jsonl and the epic budget guard runs first. vLLM (both its Chat
+Completions and its Anthropic Messages endpoint) is read from
+VLLM_BASE_URL and VLLM_MODEL (VLLM_API_KEY optional); fixtures store
 the replay URL and model from scenarios.py instead, so no deployment
 details reach the repo. VLLM_VERIFY_TLS=false skips certificate checks for
 vLLM only, for an endpoint reached through a port-forward. Request headers
@@ -29,7 +30,7 @@ import httpx
 
 from tests.harness import ledger
 from tests.harness.replay import Exchange, fixture_path
-from tests.harness.scenarios import BACKENDS, SCENARIOS, Backend, Scenario
+from tests.harness.scenarios import BACKENDS, SCENARIOS, VLLM_URL, Backend, Scenario
 
 OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
 VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
@@ -66,7 +67,7 @@ def _require_env(name: str, why: str) -> str:
 
 
 def _target(backend: Backend) -> Target:
-    if backend.name != "vllm":
+    if not backend.endpoint.startswith(VLLM_URL):
         return Target(url=backend.endpoint)
     why = "record vLLM fixtures"
     base_url = _require_env(VLLM_BASE_URL_ENV, why).rstrip("/")
@@ -74,7 +75,7 @@ def _target(backend: Backend) -> Target:
     if verify not in ("true", "false"):
         sys.exit(f"{VLLM_VERIFY_TLS_ENV} must be 'true' or 'false', not {verify!r}.")
     return Target(
-        url=f"{base_url}/v1/chat/completions",
+        url=f"{base_url}/v1{backend.endpoint[len(VLLM_URL):]}",
         model=_require_env(VLLM_MODEL_ENV, why),
         api_key=os.environ.get(VLLM_KEY_ENV) or None,
         verify_tls=verify == "true",

@@ -11,7 +11,7 @@ from typing import Dict, Iterable, Tuple
 
 import pytest
 
-from tests.harness.scenarios import BACKENDS, SCENARIOS
+from tests.harness.scenarios import GRID_BACKENDS, SCENARIOS
 
 INGRESSES = ("chat_completions",)
 
@@ -33,7 +33,7 @@ class Cell:
 def grid(
     scenarios: Iterable[str] = tuple(SCENARIOS),
     ingresses: Iterable[str] = INGRESSES,
-    backends: Iterable[str] = tuple(BACKENDS),
+    backends: Iterable[str] = GRID_BACKENDS,
 ) -> list:
     params = []
     for ingress in ingresses:

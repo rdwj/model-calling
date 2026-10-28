@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "text",
+    "recorded_at": "2026-10-28T18:49:31+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply with exactly one word: pong"
+            }
+          ]
+        }
+      ],
+      "max_tokens": 256,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-b2dbe5df708ea2de",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "The user says: \"Reply with exactly one word: pong\". The user is instructing: \"Reply with exactly one word: pong\". They likely want the assistant to reply with the word \"pong\" only. The reply must be exactly one word: pong. So the correct output is: pong.",
+          "signature": "612d929483144601a9a203d0871a1e27"
+        },
+        {
+          "type": "text",
+          "text": "pong"
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 74,
+        "output_tokens": 72
+      }
+    }
+  }
+}

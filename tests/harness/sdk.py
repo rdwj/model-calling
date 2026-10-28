@@ -10,7 +10,7 @@ import json
 from collections.abc import Iterator
 from typing import Any, List, Union
 
-from anthropic.types import Message, RawMessageStreamEvent
+from anthropic.types import ErrorResponse, Message, RawMessageStreamEvent
 from anthropic.types.message_create_params import (
     MessageCreateParamsNonStreaming,
     MessageCreateParamsStreaming,
@@ -38,6 +38,10 @@ def validate_chat_completion_chunks(chunks: List[dict]) -> List[ChatCompletionCh
 
 def validate_anthropic_message(body: dict) -> Message:
     return Message.model_validate(body)
+
+
+def validate_anthropic_error(body: dict) -> ErrorResponse:
+    return ErrorResponse.model_validate(body)
 
 
 def _materialize(value: Any) -> Any:
