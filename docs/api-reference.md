@@ -129,7 +129,7 @@ Make an Anthropic Messages call over any backend. `model` is `prefix/name`.
 
 `messages` takes plain dicts, and the content blocks a previous call returned can go straight back as an assistant turn (`{"role": "assistant", "content": msg.content}`), as with the `anthropic` SDK. They are serialized as the SDK serializes request models.
 
-Other keyword arguments are Messages request fields: `system` (str or list of content blocks), `tools`, `tool_choice`, `thinking` (dict with `type`, `budget_tokens`), `output_config` (its `effort` sets the reasoning effort when thinking is on), `stop_sequences`, `metadata`, `temperature`, `top_p`, `top_k`.
+Other keyword arguments are Messages request fields: `system` (str or list of content blocks), `tools`, `tool_choice`, `thinking` (dict with `type`, `budget_tokens`), `output_config` (its `effort` sets the reasoning effort when thinking is on, and a `format` of `{"type": "json_schema", "schema": ...}` constrains the output, sent as `response_format` or Ollama's `format`), `stop_sequences`, `metadata`, `temperature`, `top_p`, `top_k`.
 
 On Ollama, vLLM, and OpenAI-compatible backends:
 

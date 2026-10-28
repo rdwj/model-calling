@@ -24,6 +24,7 @@ from model_calling.core import (
     RedactedThinking,
     Request,
     Response,
+    ResponseFormat,
     Text,
     Thinking,
     ThinkingConfig,
@@ -317,25 +318,44 @@ def _thinking_in(rest: dict) -> ThinkingConfig | None:
     return ThinkingConfig(
         mode=mode,
         budget_tokens=_take(th, "budget_tokens"),
-        effort=_effort_in(rest) if mode in _EFFORT_MODES else None,
+        # On the thinking config, where backends that take a reasoning effort read it.
+        effort=_output_config_take(rest, "effort", _is_effort) if mode in _EFFORT_MODES else None,
         extras=_extras(th),
     )
 
 
-def _effort_in(rest: dict) -> str | None:
-    """Move `output_config.effort` onto the thinking config, where backends
-    that take a reasoning effort read it. The rest of `output_config` stays
-    in extras."""
+def _is_effort(value: Any) -> bool:
+    return isinstance(value, str)
+
+
+def _is_json_schema_format(value: Any) -> bool:
+    """A format the internal ResponseFormat holds exactly; others stay in extras."""
+    return (
+        isinstance(value, dict)
+        and value.keys() == {"type", "schema"}
+        and value["type"] == "json_schema"
+        and isinstance(value["schema"], dict)
+    )
+
+
+def _output_config_take(rest: dict, key: str, valid: Callable[[Any], bool]) -> Any:
+    """Pop `output_config[key]` if `valid` accepts it, leaving the rest of
+    `output_config` in extras."""
     config = rest.get("output_config")
-    if not isinstance(config, dict) or not isinstance(config.get("effort"), str):
+    if not isinstance(config, dict) or not valid(config.get(key)):
         return None
     config = dict(config)
-    effort = config.pop("effort")
+    value = config.pop(key)
     if config:
         rest["output_config"] = config
     else:
         del rest["output_config"]
-    return effort
+    return value
+
+
+def _response_format_in(rest: dict) -> ResponseFormat | None:
+    fmt = _output_config_take(rest, "format", _is_json_schema_format)
+    return None if fmt is None else ResponseFormat(type="json_schema", json_schema=fmt["schema"])
 
 
 def _thinking_out(th: ThinkingConfig | None) -> dict | None:
@@ -343,12 +363,17 @@ def _thinking_out(th: ThinkingConfig | None) -> dict | None:
 
 
 def _output_config_out(req: Request) -> dict | None:
-    """`output_config` from extras, with the thinking effort put back."""
-    config = req.extras_for(FORMAT).get("output_config")
-    effort = req.thinking.effort if req.thinking is not None else None
-    if effort is None:
+    """`output_config` from extras, with the thinking effort and a JSON
+    schema response format put back."""
+    taken = {}
+    if req.thinking is not None and req.thinking.effort is not None:
+        taken["effort"] = req.thinking.effort
+    fmt = req.response_format
+    if fmt is not None and fmt.type == "json_schema" and fmt.json_schema is not None:
+        taken["format"] = {"type": "json_schema", "schema": fmt.json_schema}
+    if not taken:
         return None
-    return {**(config or {}), "effort": effort}
+    return {**(req.extras_for(FORMAT).get("output_config") or {}), **taken}
 
 
 def _request_in(body: dict) -> Request:
@@ -371,6 +396,7 @@ def _request_in(body: dict) -> Request:
         top_k=_take(rest, "top_k"),
         stop=_take(rest, "stop_sequences"),
         thinking=_thinking_in(rest),
+        response_format=_response_format_in(rest),
         stream=_take(rest, "stream"),
         extras=_extras(rest),
     )

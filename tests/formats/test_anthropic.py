@@ -179,6 +179,14 @@ def test_output_config_effort_moves_onto_thinking(thinking, output_config, effor
     assert req.extras_for("anthropic").get("output_config", {}) == extras
 
 
+def test_output_config_format_becomes_the_response_format():
+    schema = {"type": "object", "properties": {"a": {"type": "integer"}}}
+    body = {**REQUEST, "output_config": {"format": {"type": "json_schema", "schema": schema}}}
+    req = fmt.request_to_internal(body)
+    assert (req.response_format.type, req.response_format.json_schema) == ("json_schema", schema)
+    assert "output_config" not in req.extras_for("anthropic")
+
+
 def test_response_round_trip_is_lossless():
     original = validate_anthropic_message(RESPONSE)
     out = fmt.response_from_internal(fmt.response_to_internal(RESPONSE))
@@ -283,6 +291,15 @@ EDGE_REQUESTS = {
     "thinking_effort_and_format": {
         **REQUEST,
         "output_config": {"effort": "high", "format": {"type": "json_schema", "schema": {}}},
+    },
+    "json_schema_format": {
+        **REQUEST,
+        "output_config": {"format": {"type": "json_schema", "schema": {"type": "object"}}},
+    },
+    "unknown_format": {**REQUEST, "output_config": {"format": {"type": "regex", "pattern": "x"}}},
+    "format_with_extra_key": {
+        **REQUEST,
+        "output_config": {"format": {"type": "json_schema", "schema": {}, "strict": True}},
     },
     "effort_without_thinking": {
         **{k: v for k, v in REQUEST.items() if k != "thinking"},
