@@ -128,3 +128,13 @@ async def test_invalid_request_returns_400_with_error_body(gateway):
     assert "message" in data["error"]
     assert "type" in data["error"]
     assert data["error"]["type"] == "invalid_request_error"
+
+
+@pytest.mark.parametrize("model", ["anthropic/claude-sonnet-5-5", "cohere/command-a"])
+async def test_streaming_unported_backend_is_501_naming_phase_6(gateway, model):
+    """Anthropic and Cohere streaming went through a legacy bypass that sent no
+    auth and hit the wrong URL. Until Phase 6 ports them it is refused outright."""
+    body = {"model": model, "messages": [{"role": "user", "content": "hi"}], "stream": True}
+    resp = await gateway.client.post("/v1/chat/completions", json=body)
+    assert resp.status_code == 501, resp.text
+    assert "Phase 6" in resp.json()["error"]["message"]

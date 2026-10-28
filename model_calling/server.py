@@ -9,17 +9,15 @@ import asyncio
 import os
 from typing import Dict, Any, List, Optional, Union
 from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-import httpx
-import json
 from model_calling import __version__
 from model_calling import gateway
+from model_calling.formats import chat_completions as chat
 from model_calling.providers import provider_for
 from model_calling.registry import registry
-from model_calling.ollama_adapter import OllamaAdapter
 from model_calling.cache import embedding_cache
 from model_calling.embedding_adapter import create_openai_embedding_response, EmbeddingAdapter
 
@@ -36,6 +34,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Model Calling Service", version=__version__, lifespan=lifespan)
 
 logger = logging.getLogger(__name__)
+
+NOT_IMPLEMENTED = 501
 
 
 # Models for API validation
@@ -204,6 +204,15 @@ async def chat_completions(request: Request):
         logger.error(f"Invalid request format: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid request format: {e}")
 
+    # Only providers stream. The remaining legacy adapters (Anthropic,
+    # Cohere) answer non-streaming requests until Phase 6 ports them.
+    if validated_request.stream:
+        message = (
+            f"streaming is not supported for {validated_request.model!r} yet; "
+            "the Anthropic and Cohere backends gain it in Phase 6"
+        )
+        return JSONResponse(chat.error_body(NOT_IMPLEMENTED, message), status_code=NOT_IMPLEMENTED)
+
     # Get the appropriate adapter
     model_name = validated_request.model
     adapter = registry.get_adapter(model_name)
@@ -225,16 +234,6 @@ async def chat_completions(request: Request):
         warnings.append(warning_msg)
         logger.warning(warning_msg)
 
-    # Check if streaming is requested but not supported
-    if validated_request.stream and not capabilities.supports_streaming:
-        warning_msg = (
-            f"Model {model_name} does not support streaming. Falling back to non-streaming mode."
-        )
-        warnings.append(warning_msg)
-        logger.warning(warning_msg)
-        # Force non-streaming mode
-        validated_request.stream = False
-
     # Check if JSON mode is requested but not supported
     if (
         validated_request.response_format
@@ -247,31 +246,6 @@ async def chat_completions(request: Request):
         warnings.append(warning_msg)
         logger.warning(warning_msg)
 
-    # Check for reasoning capabilities
-    # Look for reasoning-related prompts in the messages
-    reasoning_keywords = [
-        "step by step",
-        "think through",
-        "reasoning",
-        "solve this problem",
-        "explain your thinking",
-    ]
-
-    # Check if any message contains reasoning keywords
-    has_reasoning_prompt = False
-    for message in validated_request.messages:
-        if message.content and any(
-            keyword in message.content.lower() for keyword in reasoning_keywords
-        ):
-            has_reasoning_prompt = True
-            break
-
-    # Warn if reasoning is requested but not well supported
-    if has_reasoning_prompt and not capabilities.supports_reasoning:
-        warning_msg = f"Model {model_name} may not have strong reasoning capabilities. Results may be inconsistent."
-        warnings.append(warning_msg)
-        logger.warning(warning_msg)
-
     # Convert to model-specific format
     try:
         translated_request = await adapter.translate_request(body)
@@ -279,26 +253,19 @@ async def chat_completions(request: Request):
         logger.error(f"Error translating request: {e}")
         raise HTTPException(status_code=500, detail=f"Error translating request: {e}")
 
-    # Stream or normal response
-    if validated_request.stream:
-        return StreamingResponse(
-            stream_response(adapter, translated_request), media_type="text/event-stream"
-        )
-    else:
-        # Call the model
-        try:
-            model_response = await adapter.call_model(translated_request)
-            translated_response = await adapter.translate_response(model_response)
+    try:
+        model_response = await adapter.call_model(translated_request)
+        translated_response = await adapter.translate_response(model_response)
 
-            # Add warnings to response if any
-            if warnings:
-                if "warnings" not in translated_response:
-                    translated_response["warnings"] = []
-                translated_response["warnings"].extend(warnings)
-            return translated_response
-        except Exception as e:
-            logger.error(f"Error calling model: {e}")
-            raise HTTPException(status_code=500, detail=f"Error calling model: {e}")
+        # Add warnings to response if any
+        if warnings:
+            if "warnings" not in translated_response:
+                translated_response["warnings"] = []
+            translated_response["warnings"].extend(warnings)
+        return translated_response
+    except Exception as e:
+        logger.error(f"Error calling model: {e}")
+        raise HTTPException(status_code=500, detail=f"Error calling model: {e}")
 
 
 @app.post("/v1/embeddings")
@@ -443,51 +410,6 @@ async def create_embeddings(request: Request):
     except Exception as e:
         logger.error(f"Error generating embeddings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
-
-
-async def stream_response(adapter, translated_request):
-    """Stream the model response"""
-    try:
-        # Ensure streaming is enabled
-        translated_request["stream"] = True
-
-        # Call the model with streaming
-        async with httpx.AsyncClient() as client:
-            endpoint = (
-                f"{adapter.base_url}/api/chat"
-                if isinstance(adapter, OllamaAdapter)
-                else f"{adapter.base_url}/v1/chat/completions"
-            )
-
-            async with client.stream(
-                "POST", endpoint, json=translated_request, timeout=60.0
-            ) as response:
-                async for chunk in response.aiter_lines():
-                    if not chunk.strip():
-                        continue
-
-                    try:
-                        # For vLLM OpenAI-compatible endpoints, remove "data: " prefix
-                        if chunk.startswith("data: "):
-                            chunk = chunk[6:]
-
-                        if chunk == "[DONE]":
-                            yield f"data: [DONE]\n\n"
-                            break
-
-                        chunk_data = json.loads(chunk)
-                        translated_chunk = await adapter.translate_streaming_chunk(chunk_data)
-
-                        # Format as SSE
-                        yield f"data: {json.dumps(translated_chunk)}\n\n"
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to parse streaming chunk: {chunk}")
-    except Exception as e:
-        logger.error(f"Error in streaming: {e}")
-        error_response = {
-            "error": {"message": f"Error in streaming: {str(e)}", "type": "server_error"}
-        }
-        yield f"data: {json.dumps(error_response)}\n\n"
 
 
 @app.post("/v1/config/update")
