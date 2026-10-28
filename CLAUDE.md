@@ -36,3 +36,11 @@ tracked in git.
   remove the entry when the fix lands. OpenRouter diverges from the SDK
   types in small ways; record each one in `tests/fixtures/README.md`
   instead of loosening validators.
+
+## Lessons
+
+- **anthropic 2.x runs on `httpx2`**, its fork of httpx. `AsyncAnthropic(http_client=...)`
+  rejects an `httpx.AsyncClient`; give it `httpx2.AsyncClient(transport=httpx2.ASGITransport(app=...))`
+  to drive the in-process gateway, as `tests/test_sdk_grid.py` does.
+- **OpenRouter's generation cost lookup can lag over 10s.** The ledger polls up to 30s;
+  a `0.05` entry in `spend.jsonl` is the unknown-cost placeholder, not a real charge.
