@@ -12,7 +12,9 @@ client with `aclose()` / `async with` after async use and `close()` /
 import copy
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
-from typing import Any
+from typing import Any, TypeVar
+
+from pydantic import ValidationError
 
 from model_calling.callbacks import Callback
 from model_calling.core import Request, Response, StreamError, StreamEvent, Usage
@@ -33,6 +35,8 @@ from model_calling.providers import (
 )
 from model_calling.types.chat import ChatCompletion, ChatCompletionChunk
 from model_calling.types.messages import Message, MessageStreamEvent, parse_stream_event
+
+T = TypeVar("T")
 
 
 class Client:
@@ -114,10 +118,13 @@ class Client:
         self._check_params(provider, request, drop_params)
         if not stream:
             response = await _complete(provider, request)
-            return ChatCompletion.model_validate(chat.response_from_internal(response, model))
+            return _typed(
+                provider,
+                lambda: ChatCompletion.model_validate(chat.response_from_internal(response, model)),
+            )
         encoder = ChatCompletionsStreamEncoder(model, chat.include_usage(request))
         events = await _open_stream(provider, request)
-        return _encoded(events, encoder.encode, ChatCompletionChunk.model_validate)
+        return _encoded(provider, events, encoder.encode, ChatCompletionChunk.model_validate)
 
     # --- Anthropic Messages -------------------------------------------------
 
@@ -190,10 +197,12 @@ class Client:
             # Messages always carries usage; a backend that reports none gets zeros.
             usage = response.usage or Usage(input_tokens=0, output_tokens=0)
             response = response.model_copy(update={"model": model, "usage": usage})
-            return Message.model_validate(anthropic.response_from_internal(response))
+            return _typed(
+                provider, lambda: Message.model_validate(anthropic.response_from_internal(response))
+            )
         encoder = AnthropicStreamEncoder(model)
         events = await _open_stream(provider, request)
-        return _encoded(events, encoder.encode, parse_stream_event)
+        return _encoded(provider, events, encoder.encode, parse_stream_event)
 
     # --- plumbing -------------------------------------------------------------
 
@@ -253,8 +262,7 @@ class Client:
         with self._sync_lock:
             runner, self._sync = self._sync, None
         if runner is not None:
-            runner.run(self._sync_http.aclose())
-            runner.close()
+            runner.close(final=self._sync_http.aclose)
 
     async def __aenter__(self) -> "Client":
         return self
@@ -300,6 +308,9 @@ async def _open_stream(provider: Provider, request: Request) -> AsyncIterator[St
     except BaseException:
         await events.aclose()
         raise
+    if isinstance(first, StreamError):
+        await events.aclose()
+        raise provider.stream_error(first)
     return _from(first, events, provider)
 
 
@@ -319,14 +330,26 @@ async def _from(
         await rest.aclose()
 
 
+def _typed(provider: Provider, build: Callable[[], T]) -> T:
+    """Our output as a typed object. A failure means the backend sent
+    something our formats can't express, so it is typed as such."""
+    try:
+        return build()
+    except (ValidationError, TranslationError, RuntimeError) as e:
+        raise APIResponseValidationError(
+            f"{provider.name} sent a response we could not express: {e}", provider=provider.name
+        ) from e
+
+
 async def _encoded(
+    provider: Provider,
     events: AsyncIterator[StreamEvent],
     encode: Callable[[StreamEvent], list[dict]],
     parse: Callable[[dict], Any],
 ) -> AsyncIterator[Any]:
     try:
         async for event in events:
-            for item in encode(event):
-                yield parse(item)
+            for item in _typed(provider, lambda: encode(event)):
+                yield _typed(provider, lambda: parse(item))
     finally:
         await events.aclose()

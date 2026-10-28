@@ -6,20 +6,33 @@ API, stream lifecycle, and the module-level functions.
 import asyncio
 import json
 import re
+import subprocess
+import sys
+import textwrap
+import threading
+from pathlib import Path
 
 import httpx
 import pytest
 
 import model_calling.library as library_module
 from model_calling.callbacks import Callback
-from model_calling.errors import APIError, BadRequestError, InternalServerError, NotFoundError
+from model_calling.errors import (
+    APIError,
+    BadRequestError,
+    InternalServerError,
+    NotFoundError,
+    RateLimitError,
+)
 from model_calling.library import Client
+from model_calling.library._sync import ClosedError
 from model_calling.types.chat import ChatCompletion
 from model_calling.types.messages import Message
 from tests.harness.replay import Exchange, ReplayTransport, fixture_path
 from tests.harness.scenarios import BACKENDS, SCENARIOS, VLLM_URL
 
 OLLAMA = BACKENDS["ollama"]
+REPO_ROOT = Path(__file__).parents[2]
 TEXT_LINE = json.dumps({"model": "m", "message": {"role": "assistant", "content": "hi"}})
 USER = [{"role": "user", "content": "x"}]
 
@@ -298,3 +311,82 @@ async def test_request_the_backend_cannot_express_is_bad_request(stream):
         with pytest.raises(BadRequestError, match="top_k") as err:
             await client.acompletion("openai/m", USER, top_k=5, stream=stream)
     assert err.value.provider == "openai"
+
+
+# --- review regressions: sync shutdown, typed stream errors -----------------
+
+
+def slow_stream(started: threading.Event):
+    """An Ollama stream that sends one line, then stalls."""
+
+    class Stalled(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield (TEXT_LINE + "\n").encode()
+            started.set()
+            await asyncio.sleep(60)
+
+    return mock(lambda req: httpx.Response(200, stream=Stalled()))
+
+
+def test_close_with_an_open_sync_stream_finishes_it():
+    log = []
+    client = ollama_client(slow_stream(threading.Event()), callbacks=[Recorder(log=log)])
+    chunks = client.completion("ollama/m", USER, stream=True)
+    next(chunks)
+    client.close()
+    assert log == [("cb", "start"), ("cb", "error")]
+    with pytest.raises(ClosedError):
+        next(chunks)
+
+
+def test_close_cancels_a_call_in_flight_on_another_thread():
+    started, outcome = threading.Event(), []
+
+    def worker():
+        try:
+            for _ in client.completion("ollama/m", USER, stream=True):
+                pass
+        except BaseException as e:  # noqa: BLE001 - recording whatever ends the call
+            outcome.append(e)
+
+    client = ollama_client(slow_stream(started))
+    thread = threading.Thread(target=worker)
+    thread.start()
+    assert started.wait(5)
+    client.close()
+    thread.join(5)
+    assert not thread.is_alive(), "worker hung after close()"
+    assert outcome, "worker finished without an error"
+
+
+def test_exit_with_an_open_sync_stream_does_not_hang():
+    script = textwrap.dedent("""
+        import json, httpx
+        from model_calling import Client
+        line = json.dumps({"model": "m", "message": {"role": "assistant", "content": "hi"}})
+        lines = (line + "\\n") * 3
+        transport = httpx.MockTransport(lambda req: httpx.Response(200, text=lines))
+        client = Client(config={"ollama": {"transport": transport}})
+        chunks = client.completion("ollama/m", [{"role": "user", "content": "x"}], stream=True)
+        next(chunks)
+        print("exiting")
+        """)
+    done = subprocess.run(
+        [sys.executable, "-c", script], cwd=REPO_ROOT, capture_output=True, text=True, timeout=30
+    )
+    assert (done.returncode, done.stdout.strip()) == (0, "exiting"), done.stderr
+
+
+@pytest.mark.parametrize(
+    "kind, error_type", [("rate_limit_error", RateLimitError), (None, APIError)]
+)
+async def test_mid_stream_error_kind_picks_the_class(kind, error_type):
+    error = {"message": "slow down", **({"type": kind} if kind else {})}
+    sse = f"data: {json.dumps({'error': error})}\n\n"
+    transport = mock(
+        lambda req: httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+    )
+    async with strict_client(transport) as client:
+        with pytest.raises(APIError, match="slow down") as err:
+            await client.acompletion("openrouter/m", USER, stream=True)
+    assert type(err.value) is error_type
