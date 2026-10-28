@@ -11,7 +11,7 @@ import pytest
 
 from model_calling.library import Client
 from tests.harness.replay import Exchange, ReplayTransport, fixture_path
-from tests.harness.scenarios import BACKENDS
+from tests.harness.scenarios import ALL_BACKENDS
 
 
 @dataclass
@@ -26,7 +26,7 @@ class Library:
         """
         if self.client is not None:
             raise RuntimeError("use() a backend once per test")
-        backend = BACKENDS[backend_name]
+        backend = ALL_BACKENDS[backend_name]
         replay = ReplayTransport([Exchange.load(fixture_path(backend_name, scenario_name))])
         config = {**backend.gateway_config, "transport": replay}
         self.client = Client(config={backend.config_prefix: config})

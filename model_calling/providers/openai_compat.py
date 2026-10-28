@@ -29,7 +29,9 @@ from model_calling.core import (
     ToolCall,
     ToolResult,
 )
+from model_calling.core.embeddings import EmbeddingRequest, EmbeddingResponse
 from model_calling.formats import TranslationError
+from model_calling.formats.embeddings import FORMAT as EMBEDDINGS_FORMAT
 from model_calling.formats.chat_completions import (
     FORMAT,
     REASONING_FIELDS,
@@ -44,6 +46,7 @@ from model_calling.providers.openai_compat_stream import ChatCompletionsStreamPa
 logger = logging.getLogger(__name__)
 
 CHAT_PATH = "/chat/completions"
+EMBEDDINGS_PATH = "/embeddings"
 # Ingress fields this provider sets itself rather than passing through.
 _MANAGED_FIELDS = ("stream", "stream_options")
 _TOOL_CHOICE_MODES = {"auto": "auto", "none": "none", "any": "required"}
@@ -287,6 +290,32 @@ class OpenAICompatProvider(Provider):
 
     def stream_parser(self) -> StreamParser:
         return ChatCompletionsStreamParser(self.name, self.model)
+
+    # --- embeddings -------------------------------------------------------
+
+    def embedding_endpoint(self) -> str:
+        return f"{self.base_url}{EMBEDDINGS_PATH}"
+
+    def build_embedding_request(self, request: EmbeddingRequest) -> dict:
+        # Floats always; formats.embeddings applies a client's base64.
+        body: dict[str, Any] = {
+            **request.extras_for(EMBEDDINGS_FORMAT),
+            "model": self.model,
+            "input": request.input,
+        }
+        if request.dimensions is not None:
+            body["dimensions"] = request.dimensions
+        if request.user is not None:
+            body["user"] = request.user
+        return body
+
+    def parse_embedding_response(self, body: dict) -> EmbeddingResponse:
+        data = sorted(body["data"], key=lambda item: item["index"])
+        return EmbeddingResponse(
+            model=body.get("model", self.model),
+            vectors=[item["embedding"] for item in data],
+            input_tokens=(body.get("usage") or {}).get("prompt_tokens"),
+        )
 
 
 class OpenAIProvider(OpenAICompatProvider):

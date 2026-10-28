@@ -11,7 +11,7 @@ import pytest
 from tests.harness import ledger
 from tests.harness.grid import Cell
 from tests.harness.replay import FIXTURES_DIR, Exchange, ReplayTransport
-from tests.harness.scenarios import BACKENDS, SCENARIOS
+from tests.harness.scenarios import BACKENDS, EMBEDDING_BACKENDS, EMBEDDING_SCENARIOS, SCENARIOS
 from tests.harness.sdk import SSE_DONE, parse_sse, validate_anthropic_request
 
 URL = "https://backend.test/v1/chat"
@@ -134,6 +134,9 @@ SECRET_PATTERNS = [
 
 def test_every_grid_cell_has_a_fixture():
     expected = {FIXTURES_DIR / b / f"{s}.json" for b in BACKENDS for s in SCENARIOS}
+    expected |= {
+        FIXTURES_DIR / b / f"{s}.json" for b in EMBEDDING_BACKENDS for s in EMBEDDING_SCENARIOS
+    }
     assert expected <= set(ALL_FIXTURES), sorted(map(str, expected - set(ALL_FIXTURES)))
 
 

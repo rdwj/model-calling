@@ -6,7 +6,8 @@ Record backend exchanges into tests/fixtures/ for offline replay.
 
 Sends each scenario's native request straight to the backend (not through
 our code, so fixtures capture the backend's real behavior even where ours
-is broken). Ollama must be running with qwen3:4b pulled. OpenRouter needs
+is broken). Ollama must be running with qwen3:4b and nomic-embed-text
+pulled. OpenRouter needs
 OPENROUTER_API_KEY in the environment; each paid call is appended to
 tests/live/spend.jsonl and the epic budget guard runs first. vLLM (both its Chat
 Completions and its Anthropic Messages endpoint) is read from
@@ -30,7 +31,23 @@ import httpx
 
 from tests.harness import ledger
 from tests.harness.replay import Exchange, fixture_path
-from tests.harness.scenarios import BACKENDS, SCENARIOS, VLLM_URL, Backend, Scenario
+from tests.harness.scenarios import (
+    ALL_BACKENDS,
+    EMBEDDING_SCENARIOS,
+    SCENARIOS,
+    VLLM_URL,
+    Backend,
+    EmbeddingBackend,
+    EmbeddingScenario,
+    Scenario,
+)
+
+ALL_SCENARIOS = {**SCENARIOS, **EMBEDDING_SCENARIOS}
+
+
+def _scenarios_for(backend) -> dict:
+    return EMBEDDING_SCENARIOS if isinstance(backend, EmbeddingBackend) else SCENARIOS
+
 
 OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
 VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
@@ -110,7 +127,10 @@ def _stream_cost(lines) -> tuple[Optional[str], Optional[float]]:
 
 
 def record_one(
-    client: httpx.Client, backend: Backend, scenario: Scenario, target: Target
+    client: httpx.Client,
+    backend: Backend | EmbeddingBackend,
+    scenario: Scenario | EmbeddingScenario,
+    target: Target,
 ) -> Exchange:
     body = backend.native_request(scenario)
     sent = body
@@ -188,18 +208,19 @@ def record_one(
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--backend", choices=sorted(BACKENDS), action="append")
-    parser.add_argument("--scenario", choices=sorted(SCENARIOS), action="append")
+    parser.add_argument("--backend", choices=sorted(ALL_BACKENDS), action="append")
+    parser.add_argument("--scenario", choices=sorted(ALL_SCENARIOS), action="append")
     parser.add_argument("--force", action="store_true", help="re-record existing fixtures")
     args = parser.parse_args(argv)
 
-    backends = [BACKENDS[n] for n in (args.backend or sorted(BACKENDS))]
-    scenarios = [SCENARIOS[n] for n in (args.scenario or sorted(SCENARIOS))]
+    backends = [ALL_BACKENDS[n] for n in (args.backend or sorted(ALL_BACKENDS))]
     spent_before = ledger.total_spend()
 
     for backend in backends:
+        family = _scenarios_for(backend)
+        names = [n for n in (args.scenario or sorted(family)) if n in family]
         todo = []
-        for scenario in scenarios:
+        for scenario in (family[n] for n in names):
             path = fixture_path(backend.name, scenario.name)
             if path.exists() and not args.force:
                 print(f"skip   {path} (exists; --force to re-record)")

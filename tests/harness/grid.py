@@ -11,12 +11,19 @@ from typing import Dict, Iterable, Tuple
 
 import pytest
 
-from tests.harness.scenarios import GRID_BACKENDS, SCENARIOS
+from tests.harness.scenarios import (
+    EMBEDDING_BACKENDS,
+    EMBEDDING_SCENARIOS,
+    GRID_BACKENDS,
+    SCENARIOS,
+)
 
 # The gateway's HTTP ingress, and the library API's two call families.
 GATEWAY_INGRESSES = ("chat_completions",)
 LIBRARY_INGRESSES = ("library_completion", "library_messages")
 INGRESSES = GATEWAY_INGRESSES + LIBRARY_INGRESSES
+# Embeddings run over their own backends and scenarios (EMBEDDING_GRID).
+LIBRARY_EMBEDDING_INGRESSES = ("library_embedding",)
 
 # (ingress, backend, scenario) -> reason, naming the phase that fixes it.
 KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {}
@@ -47,3 +54,7 @@ def grid(
                 marks = [pytest.mark.xfail(reason=reason, strict=True)] if reason else []
                 params.append(pytest.param(cell, id=cell.id, marks=marks))
     return params
+
+
+def embedding_grid(ingresses: Iterable[str]) -> list:
+    return grid(EMBEDDING_SCENARIOS, ingresses, EMBEDDING_BACKENDS)

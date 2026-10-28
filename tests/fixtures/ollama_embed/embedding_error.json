@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "backend": "ollama_embed",
+    "scenario": "embedding_error",
+    "recorded_at": "2026-10-28T19:55:48+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:11434/api/embed",
+    "json": {
+      "model": "model-calling-missing:latest",
+      "input": [
+        "The sky is blue.",
+        "Grass is green."
+      ]
+    }
+  },
+  "response": {
+    "status": 404,
+    "content_type": "application/json",
+    "json": {
+      "error": "model 'model-calling-missing:latest' not found"
+    }
+  }
+}

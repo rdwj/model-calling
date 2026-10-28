@@ -35,7 +35,9 @@ from model_calling.core import (
     ToolResult,
     Usage,
 )
+from model_calling.core.embeddings import EmbeddingRequest, EmbeddingResponse
 from model_calling.formats import TranslationError
+from model_calling.formats.embeddings import FORMAT as EMBEDDINGS_FORMAT
 from model_calling.providers.base import (
     BAD_GATEWAY,
     Provider,
@@ -46,6 +48,7 @@ from model_calling.providers.base import (
 logger = logging.getLogger(__name__)
 
 CHAT_PATH = "/api/chat"
+EMBED_PATH = "/api/embed"
 # Ollama has no tool_choice, so it can't make the model call a tool.
 FORCED_TOOL_CHOICES = ("any", "tool")
 # Ollama's done_reason -> internal stop reason. Ollama reports "stop" even
@@ -209,6 +212,30 @@ class OllamaProvider(Provider):
 
     def stream_parser(self) -> StreamParser:
         return _OllamaStreamParser(self.model)
+
+    # --- embeddings -------------------------------------------------------
+
+    def embedding_endpoint(self) -> str:
+        return f"{self.base_url}{EMBED_PATH}"
+
+    def unsupported_embedding_params(self, request: EmbeddingRequest) -> list[str]:
+        # `user` only labels the caller, so it is dropped silently, as for chat.
+        return sorted(request.extras_for(EMBEDDINGS_FORMAT))
+
+    def build_embedding_request(self, request: EmbeddingRequest) -> dict:
+        if not all(isinstance(x, str) for x in request.input):
+            raise TranslationError("Ollama embeds text only, not token arrays")
+        body: dict[str, Any] = {"model": self.model, "input": request.input}
+        if request.dimensions is not None:
+            body["dimensions"] = request.dimensions
+        return body
+
+    def parse_embedding_response(self, body: dict) -> EmbeddingResponse:
+        return EmbeddingResponse(
+            model=body.get("model", self.model),
+            vectors=body["embeddings"],
+            input_tokens=body.get("prompt_eval_count"),
+        )
 
 
 class _OllamaStreamParser(StreamParser):

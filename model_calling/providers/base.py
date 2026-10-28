@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 from model_calling.callbacks import Callback
 from model_calling.core import Request, Response, StreamError, StreamEvent
+from model_calling.core.embeddings import EmbeddingRequest, EmbeddingResponse
 from model_calling.errors import (
     APIConnectionError,
     APIError,
@@ -184,6 +185,24 @@ class Provider(ABC):
     def stream_parser(self) -> StreamParser:
         """A parser for one streamed response."""
 
+    # Embeddings are optional: a provider without them inherits these.
+
+    def embedding_endpoint(self) -> str:
+        """Full URL of the backend's embeddings endpoint."""
+        raise TranslationError(f"{self.name} does not serve embeddings")
+
+    def build_embedding_request(self, request: EmbeddingRequest) -> dict:
+        """Internal embedding request to the backend's native body."""
+        raise TranslationError(f"{self.name} does not serve embeddings")
+
+    def unsupported_embedding_params(self, request: EmbeddingRequest) -> list[str]:
+        """As `unsupported_params`, for embedding requests."""
+        return []
+
+    def parse_embedding_response(self, body: dict) -> EmbeddingResponse:
+        """Backend's native embeddings body to an internal response."""
+        raise TranslationError(f"{self.name} does not serve embeddings")
+
     def error_message(self, body: Any) -> str:
         """Pull the backend's own error message out of an error response body."""
         if isinstance(body, dict):
@@ -200,29 +219,54 @@ class Provider(ABC):
         body["stream"] = False
         await self._notify("on_request_start", body)
         try:
-            async with self._client() as client:
-                resp = await self._send(
-                    client.post(
-                        self.endpoint(), json=body, headers=self.headers(), timeout=self.timeout
-                    )
-                )
-                if resp.status_code >= 400:
-                    raise self._backend_error(resp.status_code, _json_or_text(resp.content))
-                try:
-                    native = resp.json()
-                except ValueError as e:
-                    raise APIResponseValidationError(
-                        f"{self.name} sent a non-JSON body",
-                        provider=self.name,
-                        status=resp.status_code,
-                        body=resp.text,
-                    ) from e
+            native = await self._post_json(self.endpoint(), body)
             result = self._unreadable_as_backend_error(lambda: self.parse_response(native))
         except Exception as e:
             await self._notify("on_error", body, e)
             raise
         await self._notify("on_request_end", body, native)
         return result
+
+    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        body = self.build_embedding_request(request)
+        url = self.embedding_endpoint()
+        await self._notify_embedding("on_embedding_request_start", request, body)
+        try:
+            native = await self._post_json(url, body)
+            result = self._unreadable_as_backend_error(
+                lambda: self.parse_embedding_response(native)
+            )
+            if len(result.vectors) != len(request.input):
+                raise APIResponseValidationError(
+                    f"{self.name} returned {len(result.vectors)} embeddings "
+                    f"for {len(request.input)} inputs",
+                    provider=self.name,
+                    body=native,
+                )
+        except Exception as e:
+            await self._notify_embedding("on_error", request, body, e)
+            raise
+        await self._notify_embedding("on_embedding_request_end", request, body, native)
+        return result
+
+    async def _post_json(self, url: str, body: dict) -> Any:
+        """POST `body` and return the backend's JSON answer, raising the
+        typed error for a failure status or an unreadable body."""
+        async with self._client() as client:
+            resp = await self._send(
+                client.post(url, json=body, headers=self.headers(), timeout=self.timeout), url
+            )
+            if resp.status_code >= 400:
+                raise self._backend_error(resp.status_code, _json_or_text(resp.content))
+            try:
+                return resp.json()
+            except ValueError as e:
+                raise APIResponseValidationError(
+                    f"{self.name} sent a non-JSON body",
+                    provider=self.name,
+                    status=resp.status_code,
+                    body=resp.text,
+                ) from e
 
     async def stream(self, request: Request) -> AsyncIterator[StreamEvent]:
         """Yield internal events. A refused request raises before the first one.
@@ -239,7 +283,7 @@ class Provider(ABC):
                 req = client.build_request(
                     "POST", self.endpoint(), json=body, headers=self.headers(), timeout=self.timeout
                 )
-                resp = await self._send(client.send(req, stream=True))
+                resp = await self._send(client.send(req, stream=True), self.endpoint())
                 try:
                     if resp.status_code >= 400:
                         raw = await resp.aread()
@@ -299,14 +343,14 @@ class Provider(ABC):
                 f"{self.name} sent a response we could not read: {e}", provider=self.name
             ) from e
 
-    async def _send(self, pending) -> httpx.Response:
+    async def _send(self, pending, url: str) -> httpx.Response:
         try:
             return await pending
         except httpx.TimeoutException as e:
             raise APITimeoutError(f"{self.name} timed out: {e}", provider=self.name) from e
         except httpx.TransportError as e:
             raise APIConnectionError(
-                f"cannot reach {self.name} at {self.endpoint()}: {e}", provider=self.name
+                f"cannot reach {self.name} at {url}: {e}", provider=self.name
             ) from e
 
     def _backend_error(self, status: int, body: Any) -> APIError:
@@ -326,6 +370,17 @@ class Provider(ABC):
                 await getattr(callback, hook)(self.model, body.get("messages", []), *args, **params)
             except Exception:
                 # A broken callback must not change the request's outcome.
+                logger.exception("callback %s.%s failed", type(callback).__name__, hook)
+
+    async def _notify_embedding(
+        self, hook: str, request: EmbeddingRequest, body: dict, *args: Any
+    ) -> None:
+        """As `_notify`, with the inputs in place of messages."""
+        params = {k: v for k, v in body.items() if k not in ("model", "input")}
+        for callback in self.callbacks:
+            try:
+                await getattr(callback, hook)(self.model, request.input, *args, **params)
+            except Exception:
                 logger.exception("callback %s.%s failed", type(callback).__name__, hook)
 
 

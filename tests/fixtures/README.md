@@ -14,6 +14,8 @@ really returns even where our translation is broken.
 | `openai_compat` | OpenRouter, `/api/v1/chat/completions` | `mistralai/mistral-nemo` |
 | `vllm` | vLLM 0.24 on OpenShift AI, `/v1/chat/completions` | `gpt-oss-20b` |
 | `vllm_messages` | the same vLLM, `/v1/messages` | `gpt-oss-20b` |
+| `ollama_embed` | local Ollama 0.40, `/api/embed` | `nomic-embed-text` |
+| `openai_compat_embed` | local Ollama 0.40, `/v1/embeddings` | `nomic-embed-text` |
 
 The `vllm` recordings go to `VLLM_BASE_URL` and `VLLM_MODEL` from the
 environment. The fixtures store the replay URL (`http://localhost:8000`) and
@@ -25,6 +27,13 @@ They are validated on their own in `tests/test_vllm_messages_fixtures.py`.
 The served model needs `--enable-auto-tool-choice
 --tool-call-parser openai` for the `tools` scenario; without the parser,
 gpt-oss leaves its call in the reasoning text.
+
+`openai_compat_embed` stands in for vLLM's `/v1/embeddings`. The vLLM
+deployment serves a generative model, which has no embeddings endpoint, so
+these fixtures come from Ollama's OpenAI-compatible root instead: the same
+wire format, recorded for free. The grid reaches them through the `vllm/`
+prefix with `base_url` set to Ollama's `/v1`, which exercises the
+OpenAI-compatible provider shared by `vllm/`, `openai/`, and `openrouter/`.
 
 ## Scrubbing
 

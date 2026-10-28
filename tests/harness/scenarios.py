@@ -9,9 +9,9 @@ exchange.
 """
 
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import ClassVar, Tuple
 
-from model_calling.formats import anthropic, chat_completions
+from model_calling.formats import anthropic, chat_completions, embeddings
 from model_calling.providers import OllamaProvider, OpenRouterProvider, Provider, VLLMProvider
 
 WEATHER_TOOL = {
@@ -190,3 +190,90 @@ BACKENDS = {
 }
 
 GRID_BACKENDS = tuple(name for name, b in BACKENDS.items() if b.in_grid)
+
+
+# --- embeddings ---------------------------------------------------------------
+
+EMBEDDING_INPUTS = ("The sky is blue.", "Grass is green.")
+
+
+@dataclass(frozen=True)
+class EmbeddingScenario:
+    name: str
+    inputs: Tuple[str, ...] = EMBEDDING_INPUTS
+    missing_model: bool = False
+    # Embeddings never stream; the recorder reads this off any scenario.
+    stream: ClassVar[bool] = False
+
+    def body(self, model: str) -> dict:
+        return {"model": model, "input": list(self.inputs)}
+
+
+EMBEDDING_SCENARIOS = {
+    s.name: s
+    for s in (
+        EmbeddingScenario("embedding"),
+        EmbeddingScenario("embedding_error", missing_model=True),
+    )
+}
+
+OLLAMA_EMBED_MODEL = "nomic-embed-text"
+
+
+@dataclass(frozen=True)
+class EmbeddingBackend:
+    """An embeddings endpoint, in the same terms `Backend` uses for chat, so
+    the recorder and the `library`/`gateway` fixtures can treat both alike."""
+
+    name: str
+    gateway_model: str
+    native_model: str
+    missing_native_model: str
+    endpoint: str
+    config_prefix: str
+    provider: type[Provider]
+    gateway_config: dict = field(default_factory=dict)
+    needs_openrouter_key: bool = False
+
+    def model_for(self, scenario: EmbeddingScenario) -> str:
+        if scenario.missing_model:
+            return f"{self.config_prefix}/{self.missing_native_model}"
+        return self.gateway_model
+
+    def native_request(self, scenario: EmbeddingScenario) -> dict:
+        model = self.missing_native_model if scenario.missing_model else self.native_model
+        request = embeddings.request_to_internal(scenario.body(model))
+        provider = self.provider(model=model, base_url=self.gateway_config["base_url"])
+        return provider.build_embedding_request(request)
+
+
+EMBEDDING_BACKENDS = {
+    b.name: b
+    for b in (
+        EmbeddingBackend(
+            name="ollama_embed",
+            gateway_model=f"ollama/{OLLAMA_EMBED_MODEL}",
+            native_model=OLLAMA_EMBED_MODEL,
+            missing_native_model="model-calling-missing:latest",
+            endpoint=f"{OLLAMA_URL}/api/embed",
+            config_prefix="ollama",
+            gateway_config={"base_url": OLLAMA_URL},
+            provider=OllamaProvider,
+        ),
+        # Ollama's OpenAI-compatible root, standing in for vLLM: the same
+        # /v1/embeddings wire format, recordable for free. See fixtures/README.md.
+        EmbeddingBackend(
+            name="openai_compat_embed",
+            gateway_model=f"vllm/{OLLAMA_EMBED_MODEL}",
+            native_model=OLLAMA_EMBED_MODEL,
+            missing_native_model="model-calling-missing:latest",
+            endpoint=f"{OLLAMA_URL}/v1/embeddings",
+            config_prefix="vllm",
+            gateway_config={"base_url": f"{OLLAMA_URL}/v1", "api_key": REPLAY_API_KEY},
+            provider=VLLMProvider,
+        ),
+    )
+}
+
+# Every recorded backend, chat and embeddings, by fixture directory.
+ALL_BACKENDS = {**BACKENDS, **EMBEDDING_BACKENDS}

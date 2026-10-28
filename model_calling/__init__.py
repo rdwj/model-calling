@@ -7,6 +7,7 @@ backends.
 
     resp = model_calling.completion("ollama/qwen3:4b", [{"role": "user", "content": "hi"}])
     msg = model_calling.messages("vllm/gpt-oss-20b", [...], max_tokens=256)
+    vecs = model_calling.embedding("ollama/nomic-embed-text", ["hello"])
 """
 
 from model_calling.errors import (
@@ -22,7 +23,15 @@ from model_calling.errors import (
     PermissionDeniedError,
     RateLimitError,
 )
-from model_calling.library import Client, acompletion, amessages, completion, messages
+from model_calling.library import (
+    Client,
+    acompletion,
+    aembedding,
+    amessages,
+    completion,
+    embedding,
+    messages,
+)
 
 __version__ = "0.2.0.dev0"
 
@@ -40,7 +49,9 @@ __all__ = [
     "PermissionDeniedError",
     "RateLimitError",
     "acompletion",
+    "aembedding",
     "amessages",
     "completion",
+    "embedding",
     "messages",
 ]

@@ -6,14 +6,28 @@ calls against replayed backend fixtures. See tests/harness/grid.py.
 import pytest
 
 from model_calling.errors import APIStatusError
-from tests.harness.grid import LIBRARY_INGRESSES, Cell, grid
+from tests.harness.grid import (
+    LIBRARY_EMBEDDING_INGRESSES,
+    LIBRARY_INGRESSES,
+    Cell,
+    embedding_grid,
+    grid,
+)
 from tests.harness.replay import Exchange, fixture_path
-from tests.harness.scenarios import BACKENDS, SCENARIOS
+from tests.harness.scenarios import (
+    ALL_BACKENDS,
+    BACKENDS,
+    EMBEDDING_BACKENDS,
+    EMBEDDING_INPUTS,
+    EMBEDDING_SCENARIOS,
+    SCENARIOS,
+)
 from tests.harness.sdk import (
     validate_anthropic_message,
     validate_anthropic_stream,
     validate_chat_completion,
     validate_chat_completion_chunks,
+    validate_embedding_response,
 )
 
 EXPECTED_TEXT = "pong"
@@ -135,6 +149,36 @@ async def check_messages_backend_error(library, cell):
     await check_backend_error(messages, library, cell)
 
 
+# --- library_embedding ----------------------------------------------------
+
+
+def embedding_model(cell: Cell) -> str:
+    return EMBEDDING_BACKENDS[cell.backend].model_for(EMBEDDING_SCENARIOS[cell.scenario])
+
+
+async def embed(library, cell: Cell):
+    body = EMBEDDING_SCENARIOS[cell.scenario].body(embedding_model(cell))
+    return await library.client.aembedding(**body)
+
+
+def recorded_vectors(cell: Cell) -> list:
+    body = Exchange.load(fixture_path(cell.backend, cell.scenario)).response_json
+    return body["embeddings"] if "embeddings" in body else [d["embedding"] for d in body["data"]]
+
+
+async def check_embedding(library, cell):
+    resp = await embed(library, cell)
+    validate_embedding_response(resp.to_dict())
+    assert [d.embedding for d in resp.data] == recorded_vectors(cell)
+    assert [d.index for d in resp.data] == list(range(len(EMBEDDING_INPUTS)))
+    assert resp.model == embedding_model(cell)
+    assert resp.usage.prompt_tokens > 0
+
+
+async def check_embedding_error(library, cell):
+    await check_backend_error(embed, library, cell)
+
+
 CHECKS = {
     ("library_completion", "text"): check_completion_text,
     ("library_completion", "tools"): check_completion_tools,
@@ -144,13 +188,22 @@ CHECKS = {
     ("library_messages", "tools"): check_messages_tools,
     ("library_messages", "stream"): check_messages_stream,
     ("library_messages", "backend_error"): check_messages_backend_error,
+    ("library_embedding", "embedding"): check_embedding,
+    ("library_embedding", "embedding_error"): check_embedding_error,
 }
 
 
-@pytest.mark.parametrize("cell", grid(ingresses=LIBRARY_INGRESSES))
+def assert_auth(cell: Cell, replay):
+    """A backend with a key gets it as a bearer token; one without gets none."""
+    assert replay.requests, "client never called the backend"
+    key = ALL_BACKENDS[cell.backend].gateway_config.get("api_key")
+    assert replay.requests[0].headers.get("authorization") == (f"Bearer {key}" if key else None)
+
+
+@pytest.mark.parametrize(
+    "cell", grid(ingresses=LIBRARY_INGRESSES) + embedding_grid(LIBRARY_EMBEDDING_INGRESSES)
+)
 async def test_cell(library, cell: Cell):
     replay = library.use(cell.backend, cell.scenario)
     await CHECKS[(cell.ingress, cell.scenario)](library, cell)
-    assert replay.requests, "client never called the backend"
-    key = BACKENDS[cell.backend].gateway_config.get("api_key")
-    assert replay.requests[0].headers.get("authorization") == (f"Bearer {key}" if key else None)
+    assert_auth(cell, replay)

@@ -37,11 +37,21 @@ async def amessages(*args, **kwargs):
     return await default_client().amessages(*args, **kwargs)
 
 
+def embedding(*args, **kwargs):
+    return default_client().embedding(*args, **kwargs)
+
+
+async def aembedding(*args, **kwargs):
+    return await default_client().aembedding(*args, **kwargs)
+
+
 __all__ = [
     "Client",
     "acompletion",
+    "aembedding",
     "amessages",
     "completion",
     "default_client",
+    "embedding",
     "messages",
 ]

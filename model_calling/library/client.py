@@ -1,6 +1,6 @@
 """
 The in-process library API: `Client`, with Chat Completions and Anthropic
-Messages calls side by side.
+Messages calls side by side, plus OpenAI Embeddings.
 
 A client owns its per-prefix config, its callbacks, and pooled HTTP
 clients. Async calls pool on the caller's event loop; sync calls run on a
@@ -20,7 +20,7 @@ from model_calling.callbacks import Callback
 from model_calling.core import Request, Response, StreamError, StreamEvent, Usage
 from model_calling.errors import APIResponseValidationError, BadRequestError
 from model_calling.formats import TranslationError
-from model_calling.formats import anthropic
+from model_calling.formats import anthropic, embeddings
 from model_calling.formats import chat_completions as chat
 from model_calling.formats.anthropic_stream import AnthropicStreamEncoder
 from model_calling.formats.chat_completions_stream import ChatCompletionsStreamEncoder
@@ -34,6 +34,7 @@ from model_calling.providers import (
     split_model,
 )
 from model_calling.types.chat import ChatCompletion, ChatCompletionChunk
+from model_calling.types.embeddings import CreateEmbeddingResponse
 from model_calling.types.messages import Message, MessageStreamEvent, parse_stream_event
 
 T = TypeVar("T")
@@ -204,6 +205,58 @@ class Client:
         events = await _open_stream(provider, request)
         return _encoded(provider, events, encoder.encode, parse_stream_event)
 
+    # --- Embeddings -----------------------------------------------------------
+
+    async def aembedding(
+        self,
+        model: str,
+        input: str | list[str] | list[int] | list[list[int]],
+        *,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        drop_params: bool | None = None,
+        **params: Any,
+    ) -> CreateEmbeddingResponse:
+        """An OpenAI Embeddings call. `model` is `prefix/name`, as
+        `ollama/nomic-embed-text`. Other keyword arguments are Embeddings
+        request fields: `dimensions`, `encoding_format`, `user`."""
+        return await self._embedding(
+            self._http, model, input, api_base, api_key, drop_params, params
+        )
+
+    def embedding(
+        self,
+        model: str,
+        input: str | list[str] | list[int] | list[list[int]],
+        *,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        drop_params: bool | None = None,
+        **params: Any,
+    ) -> CreateEmbeddingResponse:
+        """The sync form of `aembedding`."""
+        return self._run_sync(
+            self._embedding(self._sync_http, model, input, api_base, api_key, drop_params, params),
+            stream=False,
+        )
+
+    async def _embedding(self, http, model, input, api_base, api_key, drop_params, params):
+        body = {**params, "model": model, "input": input}
+        provider = self._provider(http, model, api_base, api_key)
+        request = _translate(provider, lambda: embeddings.request_to_internal(body))
+        fmt = _translate(provider, lambda: embeddings.encoding_format(body))
+        self._refuse(provider, provider.unsupported_embedding_params(request), drop_params)
+        try:
+            response = await provider.embed(request)
+        except TranslationError as e:
+            raise BadRequestError(str(e), provider=provider.name) from e
+        return _typed(
+            provider,
+            lambda: CreateEmbeddingResponse.model_validate(
+                embeddings.response_from_internal(response, model, fmt)
+            ),
+        )
+
     # --- plumbing -------------------------------------------------------------
 
     def _provider(
@@ -227,8 +280,11 @@ class Client:
             raise BadRequestError(str(e), provider=prefix) from e
 
     def _check_params(self, provider: Provider, request: Request, drop_params: bool | None):
+        self._refuse(provider, provider.unsupported_params(request), drop_params)
+
+    def _refuse(self, provider: Provider, names: list[str], drop_params: bool | None):
+        """Raise for parameters the backend can't honor, unless dropping them."""
         drop = self.drop_params if drop_params is None else drop_params
-        names = provider.unsupported_params(request)
         if names and not drop:
             raise BadRequestError(
                 f"{provider.name} cannot honor {', '.join(names)}; pass "

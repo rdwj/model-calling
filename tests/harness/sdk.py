@@ -15,6 +15,7 @@ from anthropic.types.message_create_params import (
     MessageCreateParamsNonStreaming,
     MessageCreateParamsStreaming,
 )
+from openai.types import CreateEmbeddingResponse
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.responses import Response
 from pydantic import TypeAdapter
@@ -34,6 +35,10 @@ def validate_chat_completion(body: dict) -> ChatCompletion:
 
 def validate_chat_completion_chunks(chunks: List[dict]) -> List[ChatCompletionChunk]:
     return [ChatCompletionChunk.model_validate(chunk) for chunk in chunks]
+
+
+def validate_embedding_response(body: dict) -> CreateEmbeddingResponse:
+    return CreateEmbeddingResponse.model_validate(body)
 
 
 def validate_anthropic_message(body: dict) -> Message:
