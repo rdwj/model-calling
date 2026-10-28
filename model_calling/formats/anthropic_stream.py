@@ -63,6 +63,9 @@ class AnthropicStreamEncoder:
         if isinstance(event, MessageStart):
             self.id = event.id
             return [self._message_start(event)]
+        if isinstance(event, StreamError):
+            # A backend can fail before it starts the message (Ollama's first line).
+            return [self._error(event)]
         if self.id is None:
             raise RuntimeError("stream event before message_start")
         if isinstance(event, BlockStart):
@@ -78,8 +81,6 @@ class AnthropicStreamEncoder:
             return [self._message_delta(event)]
         if isinstance(event, MessageStop):
             return [{"type": "message_stop"}]
-        if isinstance(event, StreamError):
-            return [self._error(event)]
         return []
 
     def _message_start(self, event: MessageStart) -> dict:

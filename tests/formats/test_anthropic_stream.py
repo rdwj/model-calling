@@ -372,3 +372,13 @@ def test_event_before_message_start():
     encoder = AnthropicStreamEncoder("test-model")
     with pytest.raises(RuntimeError, match="stream event before message_start"):
         encoder.encode(BlockStart(index=0, block=Text(text="")))
+
+
+def test_error_before_message_start_is_an_error_event():
+    """Ollama can fail on its first line, before any message starts."""
+    from model_calling.core import StreamError
+    from tests.harness.sdk import validate_anthropic_error
+
+    out = AnthropicStreamEncoder("ollama/m").encode(StreamError(status=502, message="boom"))
+    assert len(out) == 1
+    validate_anthropic_error(out[0])
