@@ -63,6 +63,8 @@ dev = [
     "requests==2.34.2",
     "openai==3.35.1",
     "anthropic==2.0.0",
+    # anthropic's httpx fork; the SDK grid builds its ASGI client with it.
+    "httpx2==2.15.1",
 ]
 
 [project.urls]

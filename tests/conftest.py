@@ -18,6 +18,7 @@ from pathlib import Path
 
 import dotenv
 import httpx
+import httpx2
 import pytest
 
 pytest_plugins = ["tests.harness.gateway", "tests.harness.library"]
@@ -122,6 +123,8 @@ def offline_isolation(request, monkeypatch, tmp_path):
     async def blocked_async_transport(transport, request):
         blocked_transport(transport, request)
 
-    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", blocked_transport)
-    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", blocked_async_transport)
+    # anthropic 2.x has its own httpx fork, httpx2; the SDK grid uses it.
+    for lib in (httpx, httpx2):
+        monkeypatch.setattr(lib.HTTPTransport, "handle_request", blocked_transport)
+        monkeypatch.setattr(lib.AsyncHTTPTransport, "handle_async_request", blocked_async_transport)
     yield

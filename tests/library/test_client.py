@@ -461,6 +461,16 @@ def test_messages_takes_its_own_content_back():
     assert turns[1]["content"] is first.content, "the caller's turns were replaced"
 
 
+async def test_blocks_the_caller_builds_keep_their_type():
+    from model_calling.types.messages import TextBlock
+
+    transport, sent, _ = tools_backend()
+    async with ollama_client(transport) as client:
+        turn = {"role": "user", "content": [TextBlock(text="hi"), TextBlock(text="there")]}
+        await client.amessages("ollama/m", [turn], max_tokens=256)
+    assert sent[0]["messages"] == [{"role": "user", "content": "hi\nthere"}]
+
+
 async def test_dict_blocks_and_typed_blocks_send_the_same_body():
     transport, sent, _ = tools_backend()
     async with ollama_client(transport) as client:

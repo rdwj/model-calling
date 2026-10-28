@@ -104,6 +104,7 @@ BAD_BODIES = {
     "no_model": ({"messages": BASE["messages"]}, "model is required"),
     "unported_prefix": ({**BASE, "model": "anthropic/claude-x"}, "no provider for"),
     "no_messages": ({"model": MODEL}, "invalid Anthropic request"),
+    "messages_not_a_list": ({**BASE, "messages": "hi"}, "invalid Anthropic request"),
     "system_image": ({**BASE, "system": [IMAGE_BLOCK]}, "only text blocks"),
 }
 

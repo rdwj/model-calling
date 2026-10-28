@@ -46,10 +46,14 @@ T = TypeVar("T")
 
 def _wire(value: Any) -> Any:
     """`value` with every pydantic model in it (such as the content blocks a
-    previous `messages()` call returned) dumped as the SDK dumps request
-    models. Builds new containers; the caller's are untouched."""
+    previous `messages()` call returned) dumped as a wire dict. Builds new
+    containers; the caller's are untouched.
+
+    Null fields are left out, as the wire leaves them out. Unset fields are
+    kept, since a block's `type` is a default the caller never sets.
+    """
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json", exclude_unset=True, by_alias=True)
+        return value.model_dump(mode="json", exclude_none=True, by_alias=True)
     if isinstance(value, (list, tuple)):
         return [_wire(v) for v in value]
     if isinstance(value, dict):

@@ -13,7 +13,6 @@ after decoding always wins.
 import copy
 from typing import Any, Callable, TypeVar
 
-from pydantic import ValidationError
 
 from model_calling.core import (
     Base64Source,
@@ -89,7 +88,8 @@ def _translating(what: str, fn: Callable[[], T]) -> T:
         return fn()
     except TranslationError:
         raise
-    except (KeyError, TypeError, AttributeError, ValidationError) as e:
+    except (KeyError, TypeError, AttributeError, ValueError) as e:
+        # ValueError covers pydantic's ValidationError and dict() of a string.
         raise TranslationError(f"invalid Anthropic {what}: {type(e).__name__}: {e}") from e
 
 
