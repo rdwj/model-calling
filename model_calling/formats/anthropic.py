@@ -427,8 +427,12 @@ def response_to_internal(body: dict) -> Response:
     return _translating("response", lambda: _response_in(body))
 
 
+def stop_reason_from_internal(stop_reason: str | None) -> str | None:
+    """Internal stop reason to its Anthropic wire name."""
+    return None if stop_reason is None else _STOP_REASON_OUT.get(stop_reason, stop_reason)
+
+
 def response_from_internal(resp: Response) -> dict:
-    stop_reason = resp.stop_reason
     out = _out(
         resp,
         {
@@ -437,7 +441,7 @@ def response_from_internal(resp: Response) -> dict:
             "role": "assistant",
             "model": resp.model,
             "content": [_block_out(b) for b in resp.content],
-            "stop_reason": _STOP_REASON_OUT.get(stop_reason, stop_reason),
+            "stop_reason": stop_reason_from_internal(resp.stop_reason),
             "stop_sequence": resp.stop_sequence,
             "usage": None if resp.usage is None else usage_from_internal(resp.usage),
         },
