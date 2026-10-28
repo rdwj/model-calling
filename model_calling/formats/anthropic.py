@@ -450,3 +450,37 @@ def response_from_internal(resp: Response) -> dict:
     out.setdefault("stop_reason", None)
     out.setdefault("stop_sequence", None)
     return out
+
+
+# --- errors -------------------------------------------------------------
+
+# Status code to Anthropic error type, where we have no backend-specific type.
+_ERROR_TYPES = {
+    400: "invalid_request_error",
+    401: "authentication_error",
+    403: "permission_error",
+    404: "not_found_error",
+    429: "rate_limit_error",
+    504: "timeout_error",
+    529: "overloaded_error",
+}
+# Error types the SDK knows.
+_KNOWN_ERROR_TYPES = {
+    "invalid_request_error",
+    "authentication_error",
+    "permission_error",
+    "not_found_error",
+    "rate_limit_error",
+    "timeout_error",
+    "overloaded_error",
+    "api_error",
+    "billing_error",
+}
+
+
+def error_body(status: int, message: str, error_type: str | None = None) -> dict:
+    """An Anthropic error body, for a response or an `error` stream event.
+    A backend's own `error_type` wins when the SDK knows it."""
+    if error_type not in _KNOWN_ERROR_TYPES:
+        error_type = _ERROR_TYPES.get(status, "api_error")
+    return {"type": "error", "error": {"type": error_type, "message": message}}

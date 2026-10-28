@@ -25,32 +25,10 @@ from model_calling.core import (
 from model_calling.formats.anthropic import (
     FORMAT,
     block_from_internal,
+    error_body,
     stop_reason_from_internal,
     usage_from_internal,
 )
-
-# Status code to Anthropic error type, where we have no backend-specific type.
-_ERROR_TYPES = {
-    400: "invalid_request_error",
-    401: "authentication_error",
-    403: "permission_error",
-    404: "not_found_error",
-    429: "rate_limit_error",
-    504: "timeout_error",
-    529: "overloaded_error",
-}
-# SDK error types the encoder knows.
-_KNOWN_ERROR_TYPES = {
-    "invalid_request_error",
-    "authentication_error",
-    "permission_error",
-    "not_found_error",
-    "rate_limit_error",
-    "timeout_error",
-    "overloaded_error",
-    "api_error",
-    "billing_error",
-}
 
 
 class AnthropicStreamEncoder:
@@ -146,7 +124,4 @@ class AnthropicStreamEncoder:
         }
 
     def _error(self, event: StreamError) -> dict:
-        error_type = event.error_type if event.error_type in _KNOWN_ERROR_TYPES else None
-        if error_type is None:
-            error_type = _ERROR_TYPES.get(event.status, "api_error")
-        return {"type": "error", "error": {"type": error_type, "message": event.message}}
+        return error_body(event.status, event.message, event.error_type)
