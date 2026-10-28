@@ -4,18 +4,11 @@ Base adapter classes for text embedding models.
 
 import time
 import logging
-import sys
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Union
 
 from model_calling.callbacks import Callback
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
 logger = logging.getLogger(__name__)
 
 
