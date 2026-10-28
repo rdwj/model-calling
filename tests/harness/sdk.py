@@ -7,9 +7,14 @@ format drifts.
 """
 
 import json
+from collections.abc import Iterator
 from typing import Any, List, Union
 
 from anthropic.types import Message, RawMessageStreamEvent
+from anthropic.types.message_create_params import (
+    MessageCreateParamsNonStreaming,
+    MessageCreateParamsStreaming,
+)
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.responses import Response
 from pydantic import TypeAdapter
@@ -17,6 +22,10 @@ from pydantic import TypeAdapter
 SSE_DONE = "[DONE]"
 
 _anthropic_event = TypeAdapter(RawMessageStreamEvent)
+_anthropic_request = {
+    False: TypeAdapter(MessageCreateParamsNonStreaming),
+    True: TypeAdapter(MessageCreateParamsStreaming),
+}
 
 
 def validate_chat_completion(body: dict) -> ChatCompletion:
@@ -29,6 +38,33 @@ def validate_chat_completion_chunks(chunks: List[dict]) -> List[ChatCompletionCh
 
 def validate_anthropic_message(body: dict) -> Message:
     return Message.model_validate(body)
+
+
+def _materialize(value: Any) -> Any:
+    """Consume every lazily validated iterator, forcing its validation."""
+    if isinstance(value, (Iterator, list, tuple)):
+        return [_materialize(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _materialize(v) for k, v in value.items()}
+    return value
+
+
+def validate_anthropic_request(body: dict) -> dict:
+    """Validate a Messages request body against the SDK's request TypedDicts.
+
+    The SDK types `Iterable` fields, which pydantic validates lazily, and its
+    TypedDicts ignore unknown keys. So this consumes every iterator, then
+    requires the validated result to equal the input, which rejects keys the
+    SDK doesn't define and values pydantic had to coerce.
+    """
+    adapter = _anthropic_request[bool(body.get("stream"))]
+    validated = _materialize(adapter.validate_python(body))
+    if validated != body:
+        raise ValueError(
+            "request differs from its SDK-validated form (unknown or coerced fields):\n"
+            f"{body!r}\nvalidated as:\n{validated!r}"
+        )
+    return validated
 
 
 def validate_anthropic_stream(events: List[dict]) -> List[Any]:

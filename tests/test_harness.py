@@ -11,7 +11,7 @@ import pytest
 from tests.harness import ledger
 from tests.harness.replay import FIXTURES_DIR, Exchange, ReplayTransport
 from tests.harness.scenarios import BACKENDS, SCENARIOS
-from tests.harness.sdk import SSE_DONE, parse_sse
+from tests.harness.sdk import SSE_DONE, parse_sse, validate_anthropic_request
 
 URL = "https://backend.test/v1/chat"
 
@@ -110,3 +110,16 @@ def test_fixture_is_scrubbed_and_loads(path):
     ex = Exchange.load(path)
     assert (ex.response_json is None) != (ex.lines is None)
     json.dumps(ex.to_dict())
+
+
+@pytest.mark.parametrize(
+    "message, match",
+    [
+        ({"role": "user", "content": "hi", "typo": 1}, "unknown or coerced fields"),
+        ({"role": "user", "content": [{"type": "tool_result"}]}, "tool_use_id"),
+    ],
+)
+def test_validate_anthropic_request_is_strict(message, match):
+    body = {"model": "m", "max_tokens": 1, "messages": [message]}
+    with pytest.raises(ValueError, match=match):
+        validate_anthropic_request(body)
