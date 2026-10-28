@@ -86,6 +86,12 @@ class Backend:
     # Fixture recording needs an OpenRouter key.
     needs_openrouter_key: bool = False
 
+    def model_for(self, scenario: Scenario) -> str:
+        """The model id a client sends the gateway for `scenario`."""
+        if scenario.missing_model:
+            return f"{self.config_prefix}/{self.missing_native_model}"
+        return self.gateway_model
+
     def native_request(self, scenario: Scenario) -> dict:
         """The body the gateway sends this backend for `scenario`."""
         model = self.missing_native_model if scenario.missing_model else self.native_model
@@ -136,7 +142,7 @@ BACKENDS = {
             missing_native_model="model-calling-missing",
             endpoint=f"{VLLM_URL}/chat/completions",
             config_prefix="vllm",
-            gateway_config={"base_url": VLLM_URL},
+            gateway_config={"base_url": VLLM_URL, "api_key": REPLAY_API_KEY},
             provider=VLLMProvider,
         ),
     )

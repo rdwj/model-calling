@@ -12,8 +12,10 @@ A fixture file holds one backend exchange:
     }
 
 Request headers are never stored, so fixtures carry no credentials. The
-transport answers each request with the first unused fixture whose method
-and URL (without query) match, and fails loudly on anything else.
+transport answers each request with the first unused fixture whose method,
+URL (without query), and JSON body match, and fails loudly on anything
+else. A body mismatch names the top-level fields that differ. Nothing is
+ignored: when what we send changes, re-record the fixture.
 """
 
 import json
@@ -73,6 +75,24 @@ class Exchange:
     def matches(self, request: httpx.Request) -> bool:
         return request.method == self.method and _strip_query(request.url) == self.url
 
+    def body_mismatch(self, request: httpx.Request) -> Optional[str]:
+        """Describe how the sent body differs from the recorded one, or None."""
+        sent = json.loads(request.content) if request.content else None
+        if sent == self.request_json:
+            return None
+        recorded = self.request_json
+        if not (isinstance(sent, dict) and isinstance(recorded, dict)):
+            return f"recorded {recorded!r}, sent {sent!r}"
+        fields = sorted(
+            k
+            for k in recorded.keys() | sent.keys()
+            if recorded.get(k, _ABSENT) != sent.get(k, _ABSENT)
+        )
+        return "; ".join(
+            f"{k}: recorded {recorded.get(k, _ABSENT)!r}, sent {sent.get(k, _ABSENT)!r}"
+            for k in fields
+        )
+
     def body_bytes(self) -> bytes:
         if self.lines is not None:
             return ("\n".join(self.lines) + "\n").encode("utf-8")
@@ -84,6 +104,9 @@ class Exchange:
             headers={"content-type": self.content_type},
             content=self.body_bytes(),
         )
+
+
+_ABSENT = "<absent>"
 
 
 def _strip_query(url: httpx.URL) -> str:
@@ -100,18 +123,39 @@ class ReplayTransport(httpx.AsyncBaseTransport, httpx.BaseTransport):
     def __init__(self, exchanges: List[Exchange]):
         self._pending = list(exchanges)
         self.requests: List[httpx.Request] = []
+        # Every mismatch raised, kept because the code under test may catch
+        # the exception and turn it into an ordinary error response.
+        self.failures: List[str] = []
+
+    def check(self) -> None:
+        """Fail if any request went unanswered, even if the caller swallowed it."""
+        if self.failures:
+            raise AssertionError("Replay failed: " + " || ".join(self.failures))
 
     def _answer(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
+        mismatches = []
         for i, exchange in enumerate(self._pending):
-            if exchange.matches(request):
+            if not exchange.matches(request):
+                continue
+            mismatch = exchange.body_mismatch(request)
+            if mismatch is None:
                 del self._pending[i]
                 return exchange.to_response()
-        available = [f"{e.method} {e.url} ({e.source})" for e in self._pending] or ["none"]
-        raise AssertionError(
-            f"No recorded exchange for {request.method} {request.url}. "
-            f"Unused fixtures: {'; '.join(available)}"
-        )
+            mismatches.append(f"{exchange.source}: {mismatch}")
+        if mismatches:
+            failure = (
+                f"Request body for {request.method} {request.url} differs from the "
+                f"recording. {' | '.join(mismatches)}"
+            )
+        else:
+            available = [f"{e.method} {e.url} ({e.source})" for e in self._pending] or ["none"]
+            failure = (
+                f"No recorded exchange for {request.method} {request.url}. "
+                f"Unused fixtures: {'; '.join(available)}"
+            )
+        self.failures.append(failure)
+        raise AssertionError(failure)
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         request.read()

@@ -9,7 +9,7 @@ import pytest
 
 from tests.harness.grid import Cell, grid
 from tests.harness.replay import ReplayTransport
-from tests.harness.scenarios import BACKENDS, REPLAY_API_KEY, SCENARIOS
+from tests.harness.scenarios import BACKENDS, SCENARIOS
 from tests.harness.sdk import (
     SSE_DONE,
     parse_sse,
@@ -24,16 +24,17 @@ EXPECTED_TOOL = ("get_weather", {"location": "Paris"})
 
 async def post_chat_completions(gateway, cell: Cell):
     backend = BACKENDS[cell.backend]
-    body = SCENARIOS[cell.scenario].chat_completions_body(backend.gateway_model)
+    scenario = SCENARIOS[cell.scenario]
+    body = scenario.chat_completions_body(backend.model_for(scenario))
     return await gateway.client.post(CHAT_COMPLETIONS_PATH, json=body)
 
 
 def assert_backend_auth(cell: Cell, replay: ReplayTransport):
-    """Hosted backends must receive the configured credential."""
-    if cell.backend != "openai_compat":
-        return
+    """A backend with a key gets it as a bearer token; one without gets none."""
     assert replay.requests, "gateway never called the backend"
-    assert replay.requests[0].headers.get("authorization") == f"Bearer {REPLAY_API_KEY}"
+    key = BACKENDS[cell.backend].gateway_config.get("api_key")
+    expected = f"Bearer {key}" if key else None
+    assert replay.requests[0].headers.get("authorization") == expected
 
 
 async def check_chat_completions_text(gateway, cell, replay):

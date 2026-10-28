@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from tests.harness import ledger
+from tests.harness.grid import Cell
 from tests.harness.replay import FIXTURES_DIR, Exchange, ReplayTransport
 from tests.harness.scenarios import BACKENDS, SCENARIOS
 from tests.harness.sdk import SSE_DONE, parse_sse, validate_anthropic_request
@@ -16,17 +17,50 @@ from tests.harness.sdk import SSE_DONE, parse_sse, validate_anthropic_request
 URL = "https://backend.test/v1/chat"
 
 
-def exchange(status=200, body=None, url=URL):
-    return Exchange("POST", url, {}, status, "application/json", response_json=body or {})
+def exchange(status=200, body=None, url=URL, sent=None):
+    return Exchange("POST", url, sent, status, "application/json", response_json=body or {})
 
 
 async def test_replay_serves_matching_exchanges_in_order():
-    replay = ReplayTransport([exchange(body={"n": 1}), exchange(body={"n": 2})])
+    replay = ReplayTransport([exchange(body={"n": 1}, sent={"a": 1}), exchange(body={"n": 2})])
     async with httpx.AsyncClient(transport=replay) as client:
         first = await client.post(URL, json={"a": 1})
         second = await client.post(URL + "?ignored=query")
     assert [first.json()["n"], second.json()["n"]] == [1, 2]
     assert replay.sent_json(0) == {"a": 1}
+
+
+def test_replay_picks_the_exchange_whose_body_matches():
+    replay = ReplayTransport(
+        [exchange(body={"n": 1}, sent={"a": 1}), exchange(body={"n": 2}, sent={"a": 2})]
+    )
+    with httpx.Client(transport=replay) as client:
+        assert client.post(URL, json={"a": 2}).json() == {"n": 2}
+
+
+@pytest.mark.parametrize(
+    "tamper, match",
+    [
+        (lambda body: body.update(max_tokens=1), r"max_tokens: recorded 1, sent 256"),
+        (lambda body: body.pop("stream"), r"stream: recorded '<absent>', sent False"),
+        (lambda body: body["messages"].append({"role": "user", "content": "x"}), r"messages: "),
+    ],
+    ids=["changed", "removed", "nested"],
+)
+async def test_replay_rejects_a_tampered_fixture(gateway, tamper, match):
+    """The grid fails when a fixture's recorded request differs from what we send.
+
+    The gateway swallows the transport's error into an HTTP error response,
+    so the failure has to surface through `check()`.
+    """
+    from tests.test_gateway_grid import post_chat_completions
+
+    replay = gateway.use("vllm", "text")
+    tamper(replay._pending[0].request_json)
+    await post_chat_completions(gateway, Cell("chat_completions", "vllm", "text"))
+    with pytest.raises(AssertionError, match=f"differs from the recording.*{match}"):
+        replay.check()
+    replay.failures.clear()
 
 
 def test_replay_rejects_unrecorded_requests():

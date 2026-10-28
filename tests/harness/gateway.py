@@ -4,7 +4,8 @@ pytest fixtures that run the FastAPI gateway in-process against replayed backend
 Registered through `pytest_plugins` in tests/conftest.py.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
 
 import httpx
 import pytest
@@ -32,6 +33,7 @@ REPLAY_CAPABILITIES = {
 class Gateway:
     client: httpx.AsyncClient
     registry: object
+    replays: List[ReplayTransport] = field(default_factory=list)
 
     def use(self, backend_name: str, scenario_name: str) -> ReplayTransport:
         """Point the gateway at `backend_name` and replay its `scenario_name` fixture.
@@ -46,6 +48,7 @@ class Gateway:
         config = self.registry.default_configs[backend.config_prefix]
         config.update(backend.gateway_config, transport=replay)
         capability_cache.set_capability(backend.gateway_model, dict(REPLAY_CAPABILITIES))
+        self.replays.append(replay)
         return replay
 
 
@@ -59,5 +62,8 @@ async def gateway(monkeypatch):
     monkeypatch.setattr(server, "registry", registry)
     transport = httpx.ASGITransport(app=server.app)
     async with httpx.AsyncClient(transport=transport, base_url=GATEWAY_BASE_URL) as client:
-        yield Gateway(client=client, registry=registry)
+        gw = Gateway(client=client, registry=registry)
+        yield gw
     await registry.http_clients.aclose()
+    for replay in gw.replays:
+        replay.check()

@@ -38,7 +38,11 @@ The harness lives in `harness/`:
   the recorder.
 - `sdk.py` validates output against the official `openai` and `anthropic`
   SDK types.
-- `replay.py` serves recorded exchanges from `fixtures/`.
+- `replay.py` serves recorded exchanges from `fixtures/`. A request must
+  match a fixture's method, URL, and JSON body exactly; when what we send
+  changes, re-record rather than loosening the match. Because the gateway
+  turns a transport error into an HTTP error, the `gateway` fixture also
+  fails the test at teardown if any replay rejected a request.
 
 To add a scenario, define it in `scenarios.py`, record it (below), and add
 a check for each ingress in `test_gateway_grid.py`.

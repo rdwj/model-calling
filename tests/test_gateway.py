@@ -31,7 +31,9 @@ async def test_backend_error_returns_exact_status_and_error_body(gateway):
     """Backend 404 used to return HTTP 200. Verify it returns 404 with error body."""
     gateway.use("ollama", "backend_error")
 
-    body = SCENARIOS["backend_error"].chat_completions_body(BACKENDS["ollama"].gateway_model)
+    body = SCENARIOS["backend_error"].chat_completions_body(
+        BACKENDS["ollama"].model_for(SCENARIOS["backend_error"])
+    )
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
     # Status must be the backend's error status, not 200
@@ -51,7 +53,7 @@ async def test_callbacks_run_on_ollama_text(gateway):
     gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "text")
 
-    body = SCENARIOS["text"].chat_completions_body(BACKENDS["ollama"].gateway_model)
+    body = SCENARIOS["text"].chat_completions_body(BACKENDS["ollama"].model_for(SCENARIOS["text"]))
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
     assert resp.status_code == 200
@@ -75,7 +77,9 @@ async def test_callbacks_run_on_backend_error(gateway):
     gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "backend_error")
 
-    body = SCENARIOS["backend_error"].chat_completions_body(BACKENDS["ollama"].gateway_model)
+    body = SCENARIOS["backend_error"].chat_completions_body(
+        BACKENDS["ollama"].model_for(SCENARIOS["backend_error"])
+    )
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
     assert resp.status_code == 404
@@ -85,7 +89,7 @@ async def test_callbacks_run_on_backend_error(gateway):
     assert callback.calls[1][0] == "on_error"
 
     _, model, messages, error, kwargs = callback.calls[1]
-    assert model == "qwen3:4b"
+    assert model == BACKENDS["ollama"].missing_native_model
     assert isinstance(error, Exception)
 
 
@@ -98,7 +102,9 @@ async def test_callbacks_run_on_stream(gateway):
     gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "stream")
 
-    body = SCENARIOS["stream"].chat_completions_body(BACKENDS["ollama"].gateway_model)
+    body = SCENARIOS["stream"].chat_completions_body(
+        BACKENDS["ollama"].model_for(SCENARIOS["stream"])
+    )
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
     assert resp.status_code == 200
@@ -117,7 +123,7 @@ async def test_invalid_request_returns_400_with_error_body(gateway):
     """Invalid requests (e.g. n=2) should return 400 with OpenAI error body."""
     gateway.use("ollama", "text")
 
-    body = SCENARIOS["text"].chat_completions_body(BACKENDS["ollama"].gateway_model)
+    body = SCENARIOS["text"].chat_completions_body(BACKENDS["ollama"].model_for(SCENARIOS["text"]))
     body["n"] = 2  # Not supported
 
     resp = await gateway.client.post("/v1/chat/completions", json=body)
