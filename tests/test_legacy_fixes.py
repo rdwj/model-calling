@@ -7,6 +7,8 @@ moderation endpoint.
 import subprocess
 import sys
 
+import pytest
+
 from model_calling.adapter import create_openai_response
 
 # Imports every model_calling module except the entry point (which may
@@ -36,3 +38,19 @@ def test_importing_the_library_leaves_root_logging_alone():
 def test_legacy_response_ids_are_unique_within_a_second():
     ids = {create_openai_response(model="m", content="x")["id"] for _ in range(5)}
     assert len(ids) == 5, ids
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"input": "hello"}, {"input": "hello", "model": "text-moderation-latest"}],
+    ids=["default_model", "unprefixed_model"],
+)
+async def test_moderation_never_resolves_to_a_chat_backend(gateway, monkeypatch, body):
+    """Unprefixed moderation models (including the granite-guardian default)
+    used to resolve to the Ollama chat adapter. Moderation must go to Granite
+    Guardian, here reported missing since its extra isn't installed."""
+    monkeypatch.setitem(sys.modules, "model_calling.granite_guardian_adapter", None)
+    resp = await gateway.client.post("/v1/moderations", json=body)
+    assert resp.status_code == 501, resp.text
+    assert "model-calling[moderation]" in resp.json()["detail"]
+    assert not gateway.registry.adapters, "moderation created a chat adapter"

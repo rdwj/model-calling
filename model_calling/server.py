@@ -106,22 +106,19 @@ async def moderations(request: Request):
         logger.error(f"Invalid request format: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid request format: {e}")
 
-    # Get the appropriate adapter
+    # Moderation always runs on Granite Guardian. Resolving the model through
+    # the chat registry would send unprefixed names to Ollama's chat API.
     model_name = validated_request.model or "granite-guardian"
-    adapter = registry.get_adapter(model_name)
-
-    if not adapter:
-        # Imported lazily: torch and transformers are an optional extra
-        try:
-            from model_calling.granite_guardian_adapter import GraniteGuardianAdapter
-        except ImportError as e:
-            raise HTTPException(
-                status_code=501,
-                detail=f"Moderation requires optional dependencies ({e.name} is missing). "
-                "Install with: pip install 'model-calling[moderation]'",
-            )
-        adapter = GraniteGuardianAdapter({"model_name": model_name})
-        registry.register_adapter_class("granite-guardian", GraniteGuardianAdapter)
+    # Imported lazily: torch and transformers are an optional extra
+    try:
+        from model_calling.granite_guardian_adapter import GraniteGuardianAdapter
+    except ImportError as e:
+        raise HTTPException(
+            status_code=NOT_IMPLEMENTED,
+            detail=f"Moderation requires optional dependencies ({e.name} is missing). "
+            "Install with: pip install 'model-calling[moderation]'",
+        )
+    adapter = GraniteGuardianAdapter({"model_name": model_name})
 
     # Convert to model-specific format
     try:
