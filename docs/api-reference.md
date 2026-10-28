@@ -127,7 +127,15 @@ Make an Anthropic Messages call over any backend. `model` is `prefix/name`.
 
 `max_tokens` is required. With `stream=True`, returns an async iterator of stream events (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`). The iterator returns once the backend has accepted the request.
 
-Other keyword arguments are Messages request fields: `system` (str or list of content blocks), `tools`, `tool_choice`, `thinking` (dict with `type`, `budget_tokens`), `stop_sequences`, `metadata`, `temperature`, `top_p`, `top_k`.
+`messages` takes plain dicts, and the content blocks a previous call returned can go straight back as an assistant turn (`{"role": "assistant", "content": msg.content}`), as with the `anthropic` SDK. They are serialized as the SDK serializes request models.
+
+Other keyword arguments are Messages request fields: `system` (str or list of content blocks), `tools`, `tool_choice`, `thinking` (dict with `type`, `budget_tokens`), `output_config` (its `effort` sets the reasoning effort when thinking is on), `stop_sequences`, `metadata`, `temperature`, `top_p`, `top_k`.
+
+On Ollama, vLLM, and OpenAI-compatible backends:
+
+- `thinking` turns reasoning on. Ollama takes it as `think`; Chat Completions backends take `output_config.effort` as `reasoning_effort` and have no token budget.
+- A `tool_result` with `is_error: true` reaches the model as its content alone. None of these backends has an error flag for tool results, so put the failure in the content.
+- `metadata` and `cache_control` are ignored.
 
 Returns a `Message` for non-streaming calls, shaped like `anthropic.types.Message`.
 
@@ -246,7 +254,7 @@ The library is strict by default. A parameter the backend cannot honor raises `U
 Examples of unsupported parameters:
 
 - Ollama cannot force a tool call: `tool_choice` set to `"required"` or `{"type": "any"}` raises.
-- Chat Completions backends cannot accept `thinking.budget_tokens` (a Messages-only field).
+- Chat Completions backends cannot accept `thinking.budget_tokens` (a Messages-only field) on its own. Send `output_config.effort` with it, which becomes `reasoning_effort`.
 - Ollama embeddings take no fields beyond `dimensions` and `user`.
 
 Pass `drop_params=True` (client-wide or per call) to drop unsupported parameters instead of raising.
@@ -659,8 +667,18 @@ client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
 response = client.messages.create(
     model="qwen3:4b",
     messages=[{"role": "user", "content": "Hello"}],
-    max_tokens=512,
+    max_tokens=1024,
 )
+
+with client.messages.stream(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
+    max_tokens=1024,
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="")
 ```
+
+`messages.count_tokens` works too, with the estimate described above. The test suite drives every Messages scenario through `anthropic.AsyncAnthropic` against the gateway (`tests/test_sdk_grid.py`), including the stream helper.
 
 The gateway does not check client API keys (pass `"unused"` or any string). It uses its own backend credentials from the environment.
