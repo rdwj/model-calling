@@ -181,13 +181,13 @@ def test_parse_response_text(provider):
     resp = provider.parse_response(body)
 
     assert isinstance(resp.content[0], Thinking)
-    assert "Hmm" in resp.content[0].thinking
+    assert resp.content[0].thinking == body["message"]["thinking"]
     assert isinstance(resp.content[1], Text)
     assert resp.content[1].text == "pong"
     assert resp.stop_reason == "end_turn"
-    assert resp.usage.input_tokens == 17
-    assert resp.usage.output_tokens == 151
-    assert resp.usage.cache_read_tokens == 16
+    assert resp.usage.input_tokens == body["prompt_eval_count"]
+    assert resp.usage.output_tokens == body["eval_count"]
+    assert resp.usage.cache_read_tokens == body["prompt_eval_cached_count"]
 
 
 def test_parse_response_tools(provider):
@@ -197,7 +197,7 @@ def test_parse_response_tools(provider):
 
     assert resp.stop_reason == "tool_use"
     call = next(b for b in resp.content if isinstance(b, ToolCall))
-    assert call.id == "call_kquz06sl"
+    assert call.id == body["message"]["tool_calls"][0]["id"]
     assert call.name == "get_weather"
     assert call.input == {"location": "Paris"}
 

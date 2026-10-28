@@ -2,7 +2,7 @@
   "meta": {
     "backend": "ollama",
     "scenario": "backend_error",
-    "recorded_at": "2026-10-27T03:52:28+00:00",
+    "recorded_at": "2026-10-28T18:47:00+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -16,6 +16,9 @@
           "content": "Reply with exactly one word: pong"
         }
       ],
+      "options": {
+        "num_predict": 256
+      },
       "stream": false
     }
   },

@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openai_compat",
     "scenario": "tools",
-    "recorded_at": "2026-10-27T03:52:49+00:00",
+    "recorded_at": "2026-10-28T18:47:13+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -16,8 +16,6 @@
           "content": "Use the get_weather tool to look up the weather in Paris."
         }
       ],
-      "max_tokens": 64,
-      "stream": false,
       "tools": [
         {
           "type": "function",
@@ -38,16 +36,18 @@
             }
           }
         }
-      ]
+      ],
+      "max_tokens": 256,
+      "stream": false
     }
   },
   "response": {
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793073168-2qE5vcmXhWk0cyMjMtB1",
+      "id": "gen-1793213232-WHUtrq0AhWrd6VFtyAdv",
       "object": "chat.completion",
-      "created": 1793073168,
+      "created": 1793213232,
       "model": "mistralai/mistral-nemo",
       "provider": "Io Net",
       "system_fingerprint": "vllm-0.25.1-30d24b8b",
@@ -67,7 +67,7 @@
               {
                 "type": "function",
                 "index": 0,
-                "id": "kYg45Ub0L",
+                "id": "87GSlZmSc",
                 "function": {
                   "name": "get_weather",
                   "arguments": "{\"location\": \"Paris\"}"

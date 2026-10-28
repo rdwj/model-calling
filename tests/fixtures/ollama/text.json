@@ -2,7 +2,7 @@
   "meta": {
     "backend": "ollama",
     "scenario": "text",
-    "recorded_at": "2026-10-27T03:52:33+00:00",
+    "recorded_at": "2026-10-28T18:47:07+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -16,6 +16,9 @@
           "content": "Reply with exactly one word: pong"
         }
       ],
+      "options": {
+        "num_predict": 256
+      },
       "stream": false
     }
   },
@@ -24,21 +27,21 @@
     "content_type": "application/json",
     "json": {
       "model": "qwen3:4b",
-      "created_at": "2026-10-27T03:52:33.940353Z",
+      "created_at": "2026-10-28T18:47:07.554912Z",
       "message": {
         "role": "assistant",
         "content": "pong",
-        "thinking": "Hmm, the user asked me to reply with exactly one word: \"pong\". That's straightforward. \n\nI need to make sure I'm following instructions precisely. They specified \"exactly one word\", and \"pong\" is a single word. \n\nThe user might be testing if I can follow simple commands without adding extra text. Or maybe they're just being playful with the term \"pong\" which is often used in gaming contexts. \n\nI'll respond with just \"pong\" as requested. No extra words, no explanations. Keeping it minimal respects their instruction. \n\nBetter double-check - yep, \"pong\" is one word. No punctuation needed since they didn't ask for it. \n\nOkay, response ready: pong\n"
+        "thinking": "Hmm, the user just asked me to reply with exactly one word: \"pong\". That's pretty straightforward. \n\nOkay, let me think about this. The user specified \"exactly one word\" and they wrote \"pong\" in quotes, so they're clearly testing if I follow instructions precisely. \n\nI recall that in computing, \"pong\" is a response to \"ping\" - like a simple echo test. But here, they don't want any explanation, just the word. \n\nThe user seems to be checking if I can be minimalist. Maybe they're a developer or tech-savvy person testing API responses. Or could just be playful. \n\nImportant: must not add anything else. Even a space would break the \"exactly one word\" rule. \n\n*checks mental note* Yep, my response should be just \"pong\" with nothing extra. \n\n...Though part of me wants to add \"pong\" with a smiley, but no - user said \"exactly one word\". Strict compliance is key here. \n\nFinal decision: output only \"pong\"\n"
       },
       "done": true,
       "done_reason": "stop",
-      "total_duration": 1898380959,
-      "load_duration": 2794209,
+      "total_duration": 2740680083,
+      "load_duration": 7430542,
       "prompt_eval_count": 17,
       "prompt_eval_cached_count": 16,
-      "prompt_eval_duration": 13185000,
-      "eval_count": 151,
-      "eval_duration": 1879200000
+      "prompt_eval_duration": 12747000,
+      "eval_count": 222,
+      "eval_duration": 2716554000
     }
   }
 }

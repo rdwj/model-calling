@@ -2,7 +2,7 @@
   "meta": {
     "backend": "ollama",
     "scenario": "tools",
-    "recorded_at": "2026-10-27T03:52:37+00:00",
+    "recorded_at": "2026-10-28T18:47:10+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -16,13 +16,11 @@
           "content": "Use the get_weather tool to look up the weather in Paris."
         }
       ],
-      "stream": false,
       "tools": [
         {
           "type": "function",
           "function": {
             "name": "get_weather",
-            "description": "Get the current weather for a city",
             "parameters": {
               "type": "object",
               "properties": {
@@ -34,10 +32,15 @@
               "required": [
                 "location"
               ]
-            }
+            },
+            "description": "Get the current weather for a city"
           }
         }
-      ]
+      ],
+      "options": {
+        "num_predict": 256
+      },
+      "stream": false
     }
   },
   "response": {
@@ -45,14 +48,14 @@
     "content_type": "application/json",
     "json": {
       "model": "qwen3:4b",
-      "created_at": "2026-10-27T03:52:37.393471Z",
+      "created_at": "2026-10-28T18:47:10.558462Z",
       "message": {
         "role": "assistant",
         "content": "",
-        "thinking": "Okay, the user wants me to use the get_weather tool to check the weather in Paris. Let me see.\n\nFirst, I need to look at the tools provided. There's a function called get_weather that takes a location as a string. The description says it's for getting the current weather for a city.\n\nSo, the user specified Paris as the city. The function requires the location parameter. I should structure the tool call with location set to \"Paris\".\n\nWait, the tool's arguments are an object with a location field. The type is string. So the JSON should be {\"location\": \"Paris\"}.\n\nI need to make sure the function name is correct. The function name here is get_weather. The tool call should be in the specified XML format.\n\nSo the tool_call should be a JSON object with name \"get_weather\" and arguments {\"location\": \"Paris\"}.\n\nLet me double-check. The user says \"look up the weather in Paris\", so yes, location is Paris. No other parameters needed. The function only takes location.\n\nAlright, I think that's it. Just need to output the tool_call in the correct XML tags.\n",
+        "thinking": "Okay, the user wants me to use the get_weather tool to check the weather in Paris. Let me see.\n\nFirst, I need to confirm the function provided. The tool is called get_weather, and it requires a location parameter which is a city name. The user specified Paris, so the location should be \"Paris\".\n\nI should make sure there's no typo in the city name. Paris is a well-known city, so that's probably correct. The function's arguments expect a JSON object with \"location\" as a string. \n\nSo, the function call should have name \"get_weather\" and arguments {\"location\": \"Paris\"}. \n\nWait, the tool description says the function takes an object with a location of type string. The example shows the arguments as [location], so the JSON should be {\"location\": \"Paris\"}.\n\nI think that's it. Let me structure the tool_call JSON correctly. No other parameters are needed. Just the city name. Alright, I'll generate the tool_call.\n",
         "tool_calls": [
           {
-            "id": "call_kquz06sl",
+            "id": "call_k7dr2myi",
             "function": {
               "index": 0,
               "name": "get_weather",
@@ -65,13 +68,13 @@
       },
       "done": true,
       "done_reason": "stop",
-      "total_duration": 3450677000,
-      "load_duration": 2504917,
+      "total_duration": 3002445208,
+      "load_duration": 3461458,
       "prompt_eval_count": 149,
       "prompt_eval_cached_count": 1,
-      "prompt_eval_duration": 204810000,
-      "eval_count": 255,
-      "eval_duration": 3238644000
+      "prompt_eval_duration": 202854000,
+      "eval_count": 226,
+      "eval_duration": 2790075000
     }
   }
 }

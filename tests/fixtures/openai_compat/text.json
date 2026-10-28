@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openai_compat",
     "scenario": "text",
-    "recorded_at": "2026-10-27T03:52:48+00:00",
+    "recorded_at": "2026-10-28T18:47:12+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -16,7 +16,7 @@
           "content": "Reply with exactly one word: pong"
         }
       ],
-      "max_tokens": 64,
+      "max_tokens": 256,
       "stream": false
     }
   },
@@ -24,12 +24,12 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793073168-3ZIxzPt9qwjzA8PcdrJZ",
+      "id": "gen-1793213231-MSmbrSMituhv8vSBQjjE",
       "object": "chat.completion",
-      "created": 1793073168,
+      "created": 1793213231,
       "model": "mistralai/mistral-nemo",
-      "provider": "Io Net",
-      "system_fingerprint": "vllm-0.25.1-30d24b8b",
+      "provider": "DekaLLM",
+      "system_fingerprint": null,
       "service_tier": null,
       "choices": [
         {
@@ -49,7 +49,7 @@
         "prompt_tokens": 11,
         "completion_tokens": 3,
         "total_tokens": 14,
-        "cost": 2.4696e-07,
+        "cost": 2.88e-07,
         "is_byok": false,
         "prompt_tokens_details": {
           "cached_tokens": 0,
@@ -58,9 +58,9 @@
           "video_tokens": 0
         },
         "cost_details": {
-          "upstream_inference_cost": 2.4696e-07,
-          "upstream_inference_prompt_cost": 1.8216e-07,
-          "upstream_inference_completions_cost": 6.48e-08
+          "upstream_inference_cost": 2.88e-07,
+          "upstream_inference_prompt_cost": 1.98e-07,
+          "upstream_inference_completions_cost": 9e-08
         },
         "completion_tokens_details": {
           "reasoning_tokens": 0,
