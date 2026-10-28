@@ -17,7 +17,8 @@ import httpx
 LEDGER_PATH = Path(__file__).parent.parent / "live" / "spend.jsonl"
 EPIC_BUDGET_USD = 5.00
 OPENROUTER_GENERATION_URL = "https://openrouter.ai/api/v1/generation"
-GENERATION_LOOKUP_ATTEMPTS = 5
+# OpenRouter can take over 10s to publish a generation, so allow 30s.
+GENERATION_LOOKUP_ATTEMPTS = 15
 GENERATION_LOOKUP_DELAY_S = 2
 # Charged when a paid call's cost can't be determined, far above what any
 # call in this suite costs, so an unknown never lets spend slip past the guard.
