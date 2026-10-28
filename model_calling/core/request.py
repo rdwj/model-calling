@@ -71,6 +71,9 @@ class Request(CoreModel):
     temperature: float | None = None
     top_p: float | None = None
     top_k: int | None = None
+    seed: int | None = None
+    presence_penalty: float | None = None
+    frequency_penalty: float | None = None
     stop: list[str] | None = None
     thinking: ThinkingConfig | None = None
     response_format: ResponseFormat | None = None
