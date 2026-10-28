@@ -40,3 +40,11 @@
 {"ts": "2026-10-28T22:43:44+00:00", "source": "tests/live", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_06VPG9bDu45VSdN8XKfo", "cost_usd": 2.88e-07}
 {"ts": "2026-10-28T22:43:46+00:00", "source": "tests/live", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793227425-BdU3GADG1jwGoGySAhul", "cost_usd": 2.4696e-07}
 {"ts": "2026-10-28T22:55:33+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793228131-9e7jvMhuHo6S1C6cfKh4", "cost_usd": 7.92e-07}
+{"ts": "2026-10-28T22:56:14+00:00", "source": "tests/live", "endpoint": "library amessages", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793228160-pO2qlR66XIsLxrTB8pkk", "cost_usd": 2.88e-07}
+{"ts": "2026-10-28T22:56:22+00:00", "source": "tests/live", "endpoint": "library amessages", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793228174-6vUCE42j3IZdpPYB0Iof", "cost_usd": 1.785e-06}
+{"ts": "2026-10-28T22:56:36+00:00", "source": "tests/live", "endpoint": "gateway /v1/messages", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793228182-5WAysqc4v5dBgNw470ue", "cost_usd": 2.88e-07}
+{"ts": "2026-10-28T22:56:45+00:00", "source": "tests/live", "endpoint": "gateway /v1/messages", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793228196-x6ZtRW4sS9ij0iL34uOg", "cost_usd": 1.785e-06}
+{"ts": "2026-10-28T22:57:00+00:00", "source": "tests/live", "endpoint": "gateway /v1/messages stream", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793228205-QFMR621N8CrjwYpSyBvU", "cost_usd": 1.416e-06}
+{"ts": "2026-10-28T22:57:01+00:00", "source": "tests/live", "endpoint": "chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793228221-0gh7uxjNnaSsto7lhsfZ", "cost_usd": 2.88e-07}
+{"ts": "2026-10-28T22:57:02+00:00", "source": "tests/live", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_VHPj0GB9GrJAUhq90a32", "cost_usd": 2.88e-07}
+{"ts": "2026-10-28T22:57:03+00:00", "source": "tests/live", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793228222-x1AXpWpxRFz0GcTzZBrQ", "cost_usd": 2.88e-07}
