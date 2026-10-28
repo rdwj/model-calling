@@ -37,6 +37,8 @@ from model_calling.core import (
 )
 from model_calling.core.embeddings import EmbeddingRequest, EmbeddingResponse
 from model_calling.formats import TranslationError
+from model_calling.formats.anthropic import FORMAT as ANTHROPIC_FORMAT
+from model_calling.formats.chat_completions import FORMAT as CHAT_FORMAT
 from model_calling.formats.embeddings import FORMAT as EMBEDDINGS_FORMAT
 from model_calling.providers.base import (
     BAD_GATEWAY,
@@ -51,6 +53,8 @@ CHAT_PATH = "/api/chat"
 EMBED_PATH = "/api/embed"
 # Ollama has no tool_choice, so it can't make the model call a tool.
 FORCED_TOOL_CHOICES = ("any", "tool")
+# Formats whose tool definitions can ask for strict schema adherence.
+_STRICT_TOOL_FORMATS = (CHAT_FORMAT, ANTHROPIC_FORMAT)
 # Ollama's done_reason -> internal stop reason. Ollama reports "stop" even
 # when the turn ends in tool calls, so callers check for those first.
 _STOP_REASONS = {"stop": "end_turn", "length": "max_tokens"}
@@ -92,6 +96,13 @@ def _tool_call_in(raw: dict) -> ToolCall:
     return ToolCall(id=call_id, name=fn["name"], input={}, raw_arguments=raw_arguments)
 
 
+def _strict(tool: Any) -> bool:
+    """Whether a tool asks for strict schema adherence, which Ollama can't give."""
+    return isinstance(tool, Tool) and any(
+        tool.extras_for(f).get("strict") for f in _STRICT_TOOL_FORMATS
+    )
+
+
 class OllamaProvider(Provider):
     name = "ollama"
 
@@ -105,6 +116,11 @@ class OllamaProvider(Provider):
         choice = request.tool_choice
         if choice is not None and choice.mode in FORCED_TOOL_CHOICES:
             names.append("tool_choice")
+        if choice is not None and choice.parallel is False:
+            # Ollama has no switch for it; the model may still call several tools.
+            names.append("parallel_tool_calls")
+        if any(_strict(t) for t in request.tools or ()):
+            names.append("tools.strict")
         return names
 
     def build_request(self, request: Request) -> dict:

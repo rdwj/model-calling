@@ -18,7 +18,7 @@ from model_calling.core import (
     ToolResult,
     UrlSource,
 )
-from model_calling.formats import TranslationError
+from model_calling.formats import TranslationError, anthropic, chat_completions
 from model_calling.providers.ollama import OllamaProvider
 from tests.harness.replay import fixture_path
 
@@ -170,6 +170,48 @@ def test_build_request_tool_choice_none_drops_tools(provider):
     )
     body = provider.build_request(req)
     assert "tools" not in body
+
+
+STRICT_WEATHER = {"name": "get_weather", "parameters": {"type": "object"}, "strict": True}
+HI = [{"role": "user", "content": "Hi"}]
+
+
+@pytest.mark.parametrize(
+    "to_internal, body, refused",
+    [
+        (chat_completions.request_to_internal, {"tool_choice": "required"}, ["tool_choice"]),
+        (
+            chat_completions.request_to_internal,
+            {"parallel_tool_calls": False},
+            ["parallel_tool_calls"],
+        ),
+        (chat_completions.request_to_internal, {"parallel_tool_calls": True}, []),
+        (
+            chat_completions.request_to_internal,
+            {"tools": [{"type": "function", "function": STRICT_WEATHER}]},
+            ["tools.strict"],
+        ),
+        (
+            anthropic.request_to_internal,
+            {
+                "max_tokens": 16,
+                "tools": [
+                    {"name": "get_weather", "input_schema": {"type": "object"}, "strict": True}
+                ],
+                "tool_choice": {
+                    "type": "tool",
+                    "name": "get_weather",
+                    "disable_parallel_tool_use": True,
+                },
+            },
+            ["tool_choice", "parallel_tool_calls", "tools.strict"],
+        ),
+    ],
+)
+def test_unsupported_params(provider, to_internal, body, refused):
+    """What strict mode refuses: forced tool calls, one call per turn, strict tools."""
+    request = to_internal({"model": "qwen3:4b", "messages": HI, **body})
+    assert provider.unsupported_params(request) == refused
 
 
 # --- parse_response tests ---

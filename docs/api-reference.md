@@ -254,6 +254,7 @@ The library is strict by default. A parameter the backend cannot honor raises `U
 Examples of unsupported parameters:
 
 - Ollama cannot force a tool call: `tool_choice` set to `"required"` or `{"type": "any"}` raises.
+- Ollama cannot limit a turn to one tool call or enforce a tool's schema: `parallel_tool_calls: false` (Messages: `disable_parallel_tool_use: true`) and a tool with `strict: true` raise, as `parallel_tool_calls` and `tools.strict`.
 - Chat Completions backends cannot accept `thinking.budget_tokens` (a Messages-only field) on its own. Send `output_config.effort` with it, which becomes `reasoning_effort`.
 - Ollama embeddings take no fields beyond `dimensions` and `user`.
 
