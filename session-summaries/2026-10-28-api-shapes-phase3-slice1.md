@@ -46,4 +46,4 @@ Filed none · Closed none · Decided: empty signature for unsigned thinking · D
 
 ## Risks / watch-fors
 - Sub-agent output again needed refactoring (duplication, a relative import), as last session. The code-reading rule paid off.
-- `model_calling/library/client.py` is near 330 lines; slice 2 adds `embedding` and server reuse, so watch the 512-line guideline.
+- `model_calling/library/client.py` is 355 lines; slice 2 adds `embedding` and server reuse, so watch the 512-line guideline.
