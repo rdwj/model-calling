@@ -1,0 +1,95 @@
+{
+  "meta": {
+    "backend": "vllm",
+    "scenario": "parallel_tools",
+    "recorded_at": "2026-10-28T22:29:29+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/chat/completions",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris and in Tokyo. Call it once for each city, in the same turn."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-8e771b8cd5de8c97",
+      "object": "chat.completion",
+      "created": 1793226563,
+      "model": "gpt-oss-20b",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-af204d8acc0becb3",
+                "type": "function",
+                "function": {
+                  "name": "get_weather",
+                  "arguments": "{\"location\": \"Paris\"}"
+                }
+              }
+            ],
+            "reasoning": "We need to call get_weather twice. The tool: get_weather takes {location: string}.\n\nWe must call it twice in the same turn. We will issue two function calls within same response. I need to use assistant to call functions. The guidelines: we can only call one function per assistant turn? Typically for one function call, we send {name: \"get_weather\", arguments: {...}}. But question says \"Call it once for each city, in the same turn.\" That implies two calls in the same turn. So we need to return JSON with two function calls? Some frameworks don't allow multiple calls at once. But we can produce two calls sequentially? Maybe we can output a JSON array of calls? But tool specification: \"Call it once for each city, in the same turn.\" The tool has no mention of support for multiple calls. But we can attempt to call with location parameter as something that includes both city names? Not. So maybe the system expects to call get_weather twice separately: first for Paris, then for Tokyo within same assistant turn. That would be possible if we embed two function calls in the message? Maybe the tool integration framework supports multiple calls. So we produce a message containing two function calls.\n\nBut we must adhere to openAI API for function calling: we send a list for 'function_calls'? In this environment, they pass single function call each assistant round. But we can send multiple calls by sending array? I'm uncertain. But the prompt says call it once for each city, in the same turn. So we should return object that contains two calls? The correct approach might be to use one function call with location \"Paris\" and then another function call with location \"Tokyo\" but we need the output. But maybe we can construct a single call with location set to \"Paris, Tokyo\"? But that wouldn't return data for both.\n\nHowever possible answer: \"Paris: 15\u00b0C, clear. Tokyo: 22\u00b0C, sunny.\" But question specifically says \"use the get_weather tool to look up the weather in Paris and in Tokyo. Call it once for each city, in the same turn.\"\n\nTherefore we need to produce function calls. In the conversation context, we can produce two separate messages? But they want same turn. Might need to simulate that in the assistant reply we output the first function call, then after getting result we output second? But we cannot do that without a round trip.\n\nIn the solution, we likely have to call get_weather twice sequentially: first with location: \"Paris\", then after returning, call again with location: \"Tokyo\". But the user says same turn, maybe they want to use the tool multiple times per turn. Let's do that.\n\nSo we can send a JSON containing two function calls? The typical assistant message would specify \"function_calls\": [ { name: \"get_weather\", arguments: { location:\"Paris\"} }, { name: \"get_weather\", arguments: {location:\"Tokyo\"} } ]. But earlier works only allow single \"function_call\". But this environment may accept extra. Considering the instructions: \"Call it once for each city, in the same turn.\" Possibly we need to output two separate calls. Let's attempt:\n\n{\n  \"name\": \"get_weather\",\n  \"arguments\": {\n    \"location\": \"Paris\"\n  }\n}\n\nthen another? But only one.\n\nMaybe we need to use a single call and put both locations... but no.\n\nMaybe the correct answer is textual? Actually maybe they simply want us to call the function twice. So we do two calls in the assistant message: first function call for Paris awaited, then second for Tokyo. The system might process function calls one after another. So we can proceed:\n\nAssistant sends: first call get_weather with Paris. Then receives result. Then calls get_weather with Tokyo. But we need to do both in same turn. I'm not sure.\n\nCould it be that we send two function calls in a single message block separate, like:\n\n{\n\"name\":\"get_weather\",\"arguments\":{\"location\":\"Paris\"}}\n{\n\"name\":\"get_weather\",\"arguments\":{\"location\":\"Tokyo\"}}\n\nBut not valid.\n\nAlternatively we may combine in one function call with array arguments: location: [\"Paris\",\"Tokyo\"]. But function expects string.\n\nThus maybe we need to output two separate messages, each with function call: The assistant can send \"function_call\" with Paris, then the system will provide the result and we send second function_call. But that's two turns.\n\nHowever question says \"same turn\". Hmm.\n\nI think best output: a composite response where we call get_weather twice with separate function calls embedded. I will produce a response with multiple function calls accordingly.\n\nThus the assistant message: first function call for Paris, second for Tokyo. We'll output them one after another."
+          },
+          "logprobs": null,
+          "finish_reason": "tool_calls",
+          "stop_reason": 200012,
+          "token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.24.0+rhaiv.13-aa47e83a",
+      "usage": {
+        "prompt_tokens": 152,
+        "total_tokens": 1142,
+        "completion_tokens": 990,
+        "prompt_tokens_details": null
+      },
+      "prompt_logprobs": null,
+      "prompt_token_ids": null,
+      "prompt_text": null,
+      "kv_transfer_params": null
+    }
+  }
+}

@@ -8,8 +8,11 @@ per (backend, scenario), so every ingress format replays the same backend
 exchange.
 """
 
+import base64
+import json
 from dataclasses import dataclass, field
-from typing import ClassVar, Tuple
+from pathlib import Path
+from typing import Any, ClassVar, Mapping, Optional, Tuple
 
 from model_calling.formats import anthropic, chat_completions, embeddings
 from model_calling.providers import OllamaProvider, OpenRouterProvider, Provider, VLLMProvider
@@ -36,12 +39,43 @@ ANTHROPIC_WEATHER_TOOL = {
 
 TEXT_PROMPT = "Reply with exactly one word: pong"
 TOOL_PROMPT = "Use the get_weather tool to look up the weather in Paris."
+PARALLEL_TOOL_PROMPT = (
+    "Use the get_weather tool to look up the weather in Paris and in Tokyo. "
+    "Call it once for each city, in the same turn."
+)
+IMAGE_PROMPT = "What color is this image? Reply with one word."
+THINKING_PROMPT = "What is 17 * 23? Reply with just the number."
+SYSTEM_BLOCKS = ("You are a terse assistant.", "Always answer in lowercase.")
+STOP_SEQUENCE = "###"
+# The tool call the tool_error scenario's history made, and its failed result.
+PRIOR_CALL_ID = "call_weather_1"
+PRIOR_CALL_INPUT = {"location": "Paris"}
+TOOL_ERROR_TEXT = "Weather service unavailable: upstream timeout."
+
+# A 64x64 solid red PNG.
+IMAGE_PNG = (Path(__file__).parent / "red-square.png").read_bytes()
+IMAGE_B64 = base64.b64encode(IMAGE_PNG).decode("ascii")
+
+# Backend capabilities a scenario can need beyond text and tools.
+VISION = "vision"
+REASONING = "reasoning"
+CHAT_COMPLETIONS = "chat_completions"
+MESSAGES = "messages"
 
 
 @dataclass(frozen=True)
 class Scenario:
+    """One client request, in both wire forms where both can express it.
+
+    By default the request is the single user turn `prompt`. A scenario with
+    history, system blocks, or images spells out each form's `messages` (and
+    `messages_extra["system"]`) instead. `native_form` names the form the
+    backend's native body is built from; strict replay then proves the other
+    form produces the same body.
+    """
+
     name: str
-    prompt: str
+    prompt: str = ""
     stream: bool = False
     tools: Tuple[dict, ...] = ()
     # The same tools as Anthropic Messages tools.
@@ -50,16 +84,33 @@ class Scenario:
     max_tokens: int = 256
     # When set, the backend is asked for a model that doesn't exist.
     missing_model: bool = False
+    # Explicit turns, overriding `prompt`, per wire form.
+    chat_messages: Tuple[dict, ...] = ()
+    anthropic_messages: Tuple[dict, ...] = ()
+    # Further top-level fields per wire form.
+    chat_extra: Mapping[str, Any] = field(default_factory=dict)
+    messages_extra: Mapping[str, Any] = field(default_factory=dict)
+    native_form: str = CHAT_COMPLETIONS
+    # False when Chat Completions has no faithful form of the request.
+    chat_form: bool = True
+    # A capability the backend's model needs (VISION, REASONING), if any.
+    needs: Optional[str] = None
+    # Replay another scenario's fixture: the native exchange is identical,
+    # and strict body matching proves it.
+    fixture: Optional[str] = None
 
     def messages(self) -> list:
         return [{"role": "user", "content": self.prompt}]
 
     def chat_completions_body(self, model: str) -> dict:
+        if not self.chat_form:
+            raise ValueError(f"scenario {self.name!r} has no Chat Completions form")
         body = {
             "model": model,
-            "messages": self.messages(),
+            "messages": list(self.chat_messages) or self.messages(),
             "max_tokens": self.max_tokens,
             "stream": self.stream,
+            **self.chat_extra,
         }
         if self.tools:
             body["tools"] = list(self.tools)
@@ -68,13 +119,24 @@ class Scenario:
     def messages_body(self, model: str) -> dict:
         body = {
             "model": model,
-            "messages": self.messages(),
+            "messages": list(self.anthropic_messages) or self.messages(),
             "max_tokens": self.max_tokens,
             "stream": self.stream,
+            **self.messages_extra,
         }
         if self.anthropic_tools:
             body["tools"] = list(self.anthropic_tools)
         return body
+
+    def native_internal(self, model: str):
+        """The scenario as an internal request, from its native form."""
+        if self.native_form == MESSAGES:
+            return anthropic.request_to_internal(self.messages_body(model))
+        return chat_completions.request_to_internal(self.chat_completions_body(model))
+
+    @property
+    def fixture_name(self) -> str:
+        return self.fixture or self.name
 
 
 SCENARIOS = {
@@ -86,6 +148,149 @@ SCENARIOS = {
         ),
         Scenario("stream", TEXT_PROMPT, stream=True),
         Scenario("backend_error", TEXT_PROMPT, missing_model=True),
+        # System prompt as two blocks. The Messages form also carries fields
+        # every backend here ignores: cache_control and metadata.
+        Scenario(
+            "system_blocks",
+            chat_messages=(
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": t} for t in SYSTEM_BLOCKS],
+                },
+                {"role": "user", "content": TEXT_PROMPT},
+            ),
+            anthropic_messages=({"role": "user", "content": TEXT_PROMPT},),
+            chat_extra={"stop": [STOP_SEQUENCE]},
+            messages_extra={
+                "system": [
+                    {"type": "text", "text": SYSTEM_BLOCKS[0]},
+                    {
+                        "type": "text",
+                        "text": SYSTEM_BLOCKS[1],
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                ],
+                "stop_sequences": [STOP_SEQUENCE],
+                "metadata": {"user_id": "grid-test"},
+            },
+        ),
+        # A tool exchange whose result reports failure. Messages flags it
+        # with is_error; Chat Completions has no such flag, and no backend
+        # here takes one, so both forms send the same native body.
+        Scenario(
+            "tool_error",
+            tools=(WEATHER_TOOL,),
+            anthropic_tools=(ANTHROPIC_WEATHER_TOOL,),
+            chat_messages=(
+                {"role": "user", "content": TOOL_PROMPT},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": PRIOR_CALL_ID,
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": json.dumps(PRIOR_CALL_INPUT),
+                            },
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": PRIOR_CALL_ID, "content": TOOL_ERROR_TEXT},
+            ),
+            anthropic_messages=(
+                {"role": "user", "content": TOOL_PROMPT},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": PRIOR_CALL_ID,
+                            "name": "get_weather",
+                            "input": PRIOR_CALL_INPUT,
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": PRIOR_CALL_ID,
+                            "content": TOOL_ERROR_TEXT,
+                            "is_error": True,
+                        }
+                    ],
+                },
+            ),
+            native_form=MESSAGES,
+        ),
+        Scenario(
+            "parallel_tools",
+            PARALLEL_TOOL_PROMPT,
+            # qwen3 thinks through both calls first.
+            max_tokens=1024,
+            tools=(WEATHER_TOOL,),
+            anthropic_tools=(ANTHROPIC_WEATHER_TOOL,),
+        ),
+        Scenario(
+            "image",
+            chat_messages=(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{IMAGE_B64}"},
+                        },
+                        {"type": "text", "text": IMAGE_PROMPT},
+                    ],
+                },
+            ),
+            anthropic_messages=(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": IMAGE_B64,
+                            },
+                        },
+                        {"type": "text", "text": IMAGE_PROMPT},
+                    ],
+                },
+            ),
+            needs=VISION,
+        ),
+        # Extended thinking with an effort level, which Chat Completions
+        # backends take as reasoning_effort. Chat Completions' own
+        # reasoning_effort is Phase 4's.
+        Scenario(
+            "thinking",
+            THINKING_PROMPT,
+            max_tokens=2048,
+            messages_extra={
+                "thinking": {"type": "enabled", "budget_tokens": 1024},
+                "output_config": {"effort": "low"},
+            },
+            native_form=MESSAGES,
+            chat_form=False,
+            needs=REASONING,
+        ),
+        # The stream scenario with usage asked for. Messages streams always
+        # carry usage, and backends are always asked for it, so the native
+        # exchange is the stream fixture's.
+        Scenario(
+            "stream_usage",
+            TEXT_PROMPT,
+            stream=True,
+            chat_extra={"stream_options": {"include_usage": True}},
+            fixture="stream",
+        ),
     )
 }
 
@@ -111,17 +316,36 @@ class Backend:
     # False for a backend recorded only as a reference, because no provider
     # can reach it yet. Its fixtures are validated but stay off the grid.
     in_grid: bool = True
+    # Capability -> the native model that has it, when `native_model`
+    # doesn't. A capability missing here is assumed of `native_model`.
+    capability_models: Mapping[str, str] = field(default_factory=dict)
+    # Capability -> why this backend can't run scenarios needing it.
+    lacks: Mapping[str, str] = field(default_factory=dict)
+    # Scenarios recorded for this backend, if not all of them.
+    only_scenarios: Optional[Tuple[str, ...]] = None
+
+    def runs(self, scenario: Scenario) -> bool:
+        return self.unsupported(scenario) is None and (
+            self.only_scenarios is None or scenario.name in self.only_scenarios
+        )
+
+    def unsupported(self, scenario: Scenario) -> Optional[str]:
+        """Why this backend can't run `scenario`, or None."""
+        return self.lacks.get(scenario.needs) if scenario.needs else None
+
+    def native_model_for(self, scenario: Scenario) -> str:
+        if scenario.missing_model:
+            return self.missing_native_model
+        return self.capability_models.get(scenario.needs, self.native_model)
 
     def model_for(self, scenario: Scenario) -> str:
         """The model id a client sends the gateway for `scenario`."""
-        if scenario.missing_model:
-            return f"{self.config_prefix}/{self.missing_native_model}"
-        return self.gateway_model
+        return f"{self.config_prefix}/{self.native_model_for(scenario)}"
 
     def native_request(self, scenario: Scenario) -> dict:
         """The body the gateway sends this backend for `scenario`."""
-        model = self.missing_native_model if scenario.missing_model else self.native_model
-        request = chat_completions.request_to_internal(scenario.chat_completions_body(model))
+        model = self.native_model_for(scenario)
+        request = scenario.native_internal(model)
         if self.provider is None:
             return anthropic.request_from_internal(request)
         provider = self.provider(model=model, base_url=self.gateway_config["base_url"])
@@ -138,6 +362,12 @@ VLLM_MODEL = "gpt-oss-20b"
 # Placeholder credential for replay. Real keys only ever come from the
 # environment, in the recorder and live tests.
 REPLAY_API_KEY = "replay-not-a-real-key"
+# Models for scenarios the default model can't run. qwen3:4b, gpt-oss-20b,
+# and the OpenRouter reasoning model all think.
+OLLAMA_VISION_MODEL = "gemma3"
+OPENROUTER_VISION_MODEL = "google/gemma-3-4b-it"
+OPENROUTER_REASONING_MODEL = "openai/gpt-oss-20b"
+VLLM_NO_VISION = "vLLM serves gpt-oss-20b, which takes no image input"
 
 BACKENDS = {
     b.name: b
@@ -151,6 +381,7 @@ BACKENDS = {
             config_prefix="ollama",
             gateway_config={"base_url": OLLAMA_URL},
             provider=OllamaProvider,
+            capability_models={VISION: OLLAMA_VISION_MODEL},
         ),
         Backend(
             name="openai_compat",
@@ -162,6 +393,10 @@ BACKENDS = {
             gateway_config={"base_url": OPENROUTER_URL, "api_key": REPLAY_API_KEY},
             needs_openrouter_key=True,
             provider=OpenRouterProvider,
+            capability_models={
+                VISION: OPENROUTER_VISION_MODEL,
+                REASONING: OPENROUTER_REASONING_MODEL,
+            },
         ),
         Backend(
             name="vllm",
@@ -172,6 +407,7 @@ BACKENDS = {
             config_prefix="vllm",
             gateway_config={"base_url": VLLM_URL, "api_key": REPLAY_API_KEY},
             provider=VLLMProvider,
+            lacks={VISION: VLLM_NO_VISION},
         ),
         # vLLM's native Anthropic Messages endpoint, the reference for our
         # Messages encoder until an Anthropic provider exists (Phase 6).
@@ -185,11 +421,18 @@ BACKENDS = {
             gateway_config={"base_url": VLLM_URL, "api_key": REPLAY_API_KEY},
             provider=None,
             in_grid=False,
+            lacks={VISION: VLLM_NO_VISION},
+            only_scenarios=("text", "tools", "stream", "backend_error"),
         ),
     )
 }
 
 GRID_BACKENDS = tuple(name for name, b in BACKENDS.items() if b.in_grid)
+
+
+def recorded_scenarios(backend: Backend) -> list:
+    """The scenarios with a fixture of their own for `backend`."""
+    return [s for s in SCENARIOS.values() if backend.runs(s) and s.fixture is None]
 
 
 # --- embeddings ---------------------------------------------------------------
@@ -235,13 +478,14 @@ class EmbeddingBackend:
     gateway_config: dict = field(default_factory=dict)
     needs_openrouter_key: bool = False
 
+    def native_model_for(self, scenario: EmbeddingScenario) -> str:
+        return self.missing_native_model if scenario.missing_model else self.native_model
+
     def model_for(self, scenario: EmbeddingScenario) -> str:
-        if scenario.missing_model:
-            return f"{self.config_prefix}/{self.missing_native_model}"
-        return self.gateway_model
+        return f"{self.config_prefix}/{self.native_model_for(scenario)}"
 
     def native_request(self, scenario: EmbeddingScenario) -> dict:
-        model = self.missing_native_model if scenario.missing_model else self.native_model
+        model = self.native_model_for(scenario)
         request = embeddings.request_to_internal(scenario.body(model))
         provider = self.provider(model=model, base_url=self.gateway_config["base_url"])
         return provider.build_embedding_request(request)
@@ -278,3 +522,11 @@ EMBEDDING_BACKENDS = {
 # Every recorded backend and scenario, chat and embeddings.
 ALL_BACKENDS = {**BACKENDS, **EMBEDDING_BACKENDS}
 ALL_SCENARIOS = {**SCENARIOS, **EMBEDDING_SCENARIOS}
+
+
+def fixture_for(backend_name: str, scenario_name: str) -> Path:
+    """The fixture a (backend, scenario) cell replays."""
+    from tests.harness.replay import fixture_path
+
+    scenario = ALL_SCENARIOS[scenario_name]
+    return fixture_path(backend_name, getattr(scenario, "fixture_name", scenario_name))

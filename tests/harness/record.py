@@ -35,17 +35,19 @@ from tests.harness.scenarios import (
     ALL_BACKENDS,
     ALL_SCENARIOS,
     EMBEDDING_SCENARIOS,
-    SCENARIOS,
     VLLM_URL,
     Backend,
     EmbeddingBackend,
     EmbeddingScenario,
     Scenario,
+    recorded_scenarios,
 )
 
 
 def _scenarios_for(backend) -> dict:
-    return EMBEDDING_SCENARIOS if isinstance(backend, EmbeddingBackend) else SCENARIOS
+    if isinstance(backend, EmbeddingBackend):
+        return EMBEDDING_SCENARIOS
+    return {s.name: s for s in recorded_scenarios(backend)}
 
 
 OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
@@ -176,8 +178,9 @@ def record_one(
             if k in response_json:
                 response_json[k] = SCRUBBED
     if target.model is not None:
-        response_json = _replace_model(response_json, target.model, backend.native_model)
-        lines = _replace_model(lines, target.model, backend.native_model)
+        stored = backend.native_model_for(scenario)
+        response_json = _replace_model(response_json, target.model, stored)
+        lines = _replace_model(lines, target.model, stored)
 
     exchange = Exchange(
         method="POST",

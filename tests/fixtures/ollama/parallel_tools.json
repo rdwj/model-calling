@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "backend": "ollama",
+    "scenario": "parallel_tools",
+    "recorded_at": "2026-10-28T22:29:22+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:11434/api/chat",
+    "json": {
+      "model": "qwen3:4b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris and in Tokyo. Call it once for each city, in the same turn."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            },
+            "description": "Get the current weather for a city"
+          }
+        }
+      ],
+      "options": {
+        "num_predict": 1024
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "model": "qwen3:4b",
+      "created_at": "2026-10-28T22:29:22.962988Z",
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "thinking": "Okay, let's see. The user wants me to use the get_weather tool to check the weather in Paris and Tokyo. They said to call it once for each city in the same turn.\n\nFirst, I need to check the available tools. The tool provided is get_weather, which takes a location (city name) as a string. The function expects an object with a location parameter.\n\nSo, I need to make two separate tool calls here. One for Paris and another for Tokyo. Each call should be in its own tool_call tag.\n\nWait, the instructions say \"Call it once for each city, in the same turn.\" So I should generate two tool calls in the same response. But the example shows that each tool_call is a separate XML block.\n\nLet me structure this. For each city, create a JSON object with the function name and arguments. The arguments should be {\"location\": \"Paris\"} for the first and {\"location\": \"Tokyo\"} for the second.\n\nI need to make sure the JSON is correctly formatted. Let me double-check the function definition. The function name is get_weather, and the arguments are a location string.\n\nSo the first tool_call is for Paris: {\"name\": \"get_weather\", \"arguments\": {\"location\": \"Paris\"}}\n\nSecond tool_call is for Tokyo: {\"name\": \"get_weather\", \"arguments\": {\"location\": \"Tok: \"Tokyo\"}}\n\nWait, Tokyo is spelled correctly. So the arguments for Tokyo would be {\"location\": \"Tokyo\"}.\n\nI need to make sure there are no typos. Let me confirm the city names. Paris and Tokyo are correct.\n\nAlright, so two tool calls, each with their respective city. The user wants them in the same turn, so both tool_call blocks should be in the response.\n",
+        "tool_calls": [
+          {
+            "id": "call_2k6qqnmm",
+            "function": {
+              "index": 0,
+              "name": "get_weather",
+              "arguments": {
+                "location": "Paris"
+              }
+            }
+          },
+          {
+            "id": "call_d3kdt8jm",
+            "function": {
+              "index": 1,
+              "name": "get_weather",
+              "arguments": {
+                "location": "Tokyo"
+              }
+            }
+          }
+        ]
+      },
+      "done": true,
+      "done_reason": "stop",
+      "total_duration": 5268579875,
+      "load_duration": 7625625,
+      "prompt_eval_count": 164,
+      "prompt_eval_cached_count": 141,
+      "prompt_eval_duration": 76160000,
+      "eval_count": 408,
+      "eval_duration": 5162142000
+    }
+  }
+}

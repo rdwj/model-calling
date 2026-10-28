@@ -41,10 +41,19 @@ The harness lives in `harness/`:
   `library_embedding` run in `test_library_grid.py`. Embeddings have their
   own backends and scenarios (`EMBEDDING_BACKENDS`, `embedding_grid`).
   `KNOWN_FAILURES` lists the cells that are expected to fail as strict
-  xfails, each naming the epic phase that fixes it. When a fix lands, the
-  run fails until the entry is removed.
+  xfails, each naming the epic phase that fixes it (or the backend
+  limitation behind it). When a fix lands, the run fails until the entry
+  is removed. Chat Completions ingresses skip scenarios with no Chat
+  Completions form, and a backend that `lacks` a capability a scenario
+  `needs` (vLLM's gpt-oss has no vision) makes that cell a strict xfail.
 - `scenarios.py` defines the requests and backends shared by the tests and
-  the recorder.
+  the recorder. A scenario is written in both wire forms where both can
+  express it; `native_form` picks the one the backend body is built from,
+  so strict replay proves the other form sends the same body. A backend's
+  `capability_models` names the model it uses for a scenario that needs
+  vision or reasoning.
+- `checks.py` holds what each scenario must return, checked on the typed
+  result, shared by the library, gateway, and SDK-client cells.
 - `sdk.py` validates output against the official `openai` and `anthropic`
   SDK types.
 - `replay.py` serves recorded exchanges from `fixtures/`. A request must
@@ -54,8 +63,7 @@ The harness lives in `harness/`:
   fails the test at teardown if any replay rejected a request.
 
 To add a scenario, define it in `scenarios.py`, record it (below), and add
-a check for each ingress in `test_gateway_grid.py` and
-`test_library_grid.py`. A backend with `in_grid=False` (`vllm_messages`) is
+its checks to `checks.py` (`COMPLETION_CHECKS` and `MESSAGE_CHECKS`). A backend with `in_grid=False` (`vllm_messages`) is
 recorded and validated on its own until a provider can reach it.
 
 ## Fixtures and the recorder
@@ -69,7 +77,7 @@ uv run python -m tests.harness.record
 uv run python -m tests.harness.record --backend ollama --scenario tools --force
 ```
 
-Ollama must be running with `qwen3:4b` and `nomic-embed-text` pulled, and recording OpenRouter
+Ollama must be running with `qwen3:4b`, `gemma3`, and `nomic-embed-text` pulled, and recording OpenRouter
 fixtures needs `OPENROUTER_API_KEY`. Recording vLLM needs `VLLM_BASE_URL`
 (the server root, without `/v1`) and `VLLM_MODEL`, plus `VLLM_API_KEY` if
 the endpoint wants one; `VLLM_VERIFY_TLS=false` skips certificate checks

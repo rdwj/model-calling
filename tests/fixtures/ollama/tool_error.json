@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "backend": "ollama",
+    "scenario": "tool_error",
+    "recorded_at": "2026-10-28T22:29:01+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:11434/api/chat",
+    "json": {
+      "model": "qwen3:4b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "function": {
+                "name": "get_weather",
+                "arguments": {
+                  "location": "Paris"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": "Weather service unavailable: upstream timeout.",
+          "tool_name": "get_weather"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            },
+            "description": "Get the current weather for a city"
+          }
+        }
+      ],
+      "options": {
+        "num_predict": 256
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "model": "qwen3:4b",
+      "created_at": "2026-10-28T22:29:01.030539Z",
+      "message": {
+        "role": "assistant",
+        "content": "The weather service is currently unavailable due to an upstream timeout. I'll be able to check the weather again once the service is restored. Would you like me to try the request later?",
+        "thinking": "Okay, the user asked for the weather in Paris, so I called the get_weather function with location set to Paris. But the response was \"Weather service unavailable: upstream timeout.\" Hmm, that means the tool didn't work. I need to figure out how to handle this.\n\nFirst, check if the function was called correctly. The tool's description says it takes a city name as a string. I used \"Paris\", which is correct. But the error says upstream timeout, so maybe the weather service is down or there's a network issue.\n\nThe user probably expects the weather info, but since the tool isn't working, I should inform them that the service is unavailable. I shouldn't try to call the tool again because the error says it's a timeout. Maybe the user needs to know it's a temporary issue.\n\nI should respond clearly that the weather service is unavailable right now and maybe suggest trying later. No need to use the tool again since the problem is with the upstream service. Just provide a helpful message without making up data.\n"
+      },
+      "done": true,
+      "done_reason": "stop",
+      "total_duration": 3240230208,
+      "load_duration": 2648542,
+      "prompt_eval_count": 187,
+      "prompt_eval_cached_count": 141,
+      "prompt_eval_duration": 86959000,
+      "eval_count": 250,
+      "eval_duration": 3129209000
+    }
+  }
+}

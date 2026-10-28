@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "backend": "openai_compat",
+    "scenario": "thinking",
+    "recorded_at": "2026-10-28T22:29:43+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/chat/completions",
+    "json": {
+      "model": "openai/gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 17 * 23? Reply with just the number."
+        }
+      ],
+      "max_tokens": 2048,
+      "reasoning_effort": "low",
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "gen-1793226582-IMqovVXKE1EFT2C6Gipl",
+      "object": "chat.completion",
+      "created": 1793226582,
+      "model": "openai/gpt-oss-20b",
+      "provider": "AkashML",
+      "system_fingerprint": null,
+      "service_tier": null,
+      "choices": [
+        {
+          "index": 0,
+          "logprobs": null,
+          "finish_reason": "stop",
+          "native_finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "391",
+            "refusal": null,
+            "reasoning": "Need 17*23. Compute: 17*20=340; 17*3=51; sum=391.",
+            "reasoning_details": [
+              {
+                "type": "reasoning.text",
+                "text": "Need 17*23. Compute: 17*20=340; 17*3=51; sum=391.",
+                "format": "unknown",
+                "index": 0
+              }
+            ]
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 81,
+        "completion_tokens": 37,
+        "total_tokens": 118,
+        "cost": 5.32e-06,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 5.32e-06,
+          "upstream_inference_prompt_cost": 1.62e-06,
+          "upstream_inference_completions_cost": 3.7e-06
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  }
+}

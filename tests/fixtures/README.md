@@ -17,6 +17,14 @@ really returns even where our translation is broken.
 | `ollama_embed` | local Ollama 0.40, `/api/embed` | `nomic-embed-text` |
 | `openai_compat_embed` | local Ollama 0.40, `/v1/embeddings` | `nomic-embed-text` |
 
+Scenarios that need a capability the default model lacks use another model
+on the same backend: `image` uses `gemma3` on Ollama and
+`google/gemma-3-4b-it` on OpenRouter, and `thinking` uses
+`openai/gpt-oss-20b` on OpenRouter. vLLM's gpt-oss-20b takes no images, so
+vLLM has no `image` fixture and its cells are strict xfails. `stream_usage`
+replays each backend's `stream` fixture, since its native request is the
+same.
+
 The `vllm` recordings go to `VLLM_BASE_URL` and `VLLM_MODEL` from the
 environment. The fixtures store the replay URL (`http://localhost:8000`) and
 the model name `gpt-oss-20b` in their place, so deployment details stay out
@@ -48,8 +56,8 @@ Places where OpenRouter's responses don't match the official SDK types:
 
 - **Chat Completions streaming** (checked 2026-10-26): the final chunk
   that carries `usage` repeats `finish_reason` and a delta in `choices`,
-  where OpenAI sends `choices: []`. The grid's stream check allows a
-  repeated `finish_reason`.
+  where OpenAI sends `choices: []`. Our stream parser emits one stop
+  reason per stream, and the grid checks that our output carries exactly one.
 - **Responses API usage** (`/api/v1/responses`, checked 2026-10-26):
   `usage.input_tokens_details` omits `cache_write_tokens`, which
   `openai.types.responses.ResponseUsage` requires as of `openai` 3.35.1.

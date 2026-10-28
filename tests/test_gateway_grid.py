@@ -18,8 +18,9 @@ from tests.harness.grid import (
     embedding_grid,
     grid,
 )
+from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
 from tests.harness.replay import Exchange, ReplayTransport, fixture_path
-from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, BACKENDS
+from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS
 from tests.harness.sdk import (
     SSE_DONE,
     parse_sse,
@@ -32,8 +33,6 @@ from tests.harness.sdk import (
 )
 
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
-EXPECTED_TEXT = "pong"
-EXPECTED_TOOL = ("get_weather", {"location": "Paris"})
 
 # Ingress -> (gateway path, request body for a scenario and model, library method).
 INGRESS_CALLS = {
@@ -57,10 +56,14 @@ INGRESS_CALLS = {
 VOLATILE_FIELDS = ("id", "created")
 
 
+def model(cell: Cell) -> str:
+    return ALL_BACKENDS[cell.backend].model_for(ALL_SCENARIOS[cell.scenario])
+
+
 def request_body(cell: Cell) -> dict:
     scenario = ALL_SCENARIOS[cell.scenario]
     _, body, _ = INGRESS_CALLS[cell.ingress]
-    return body(scenario, ALL_BACKENDS[cell.backend].model_for(scenario))
+    return body(scenario, model(cell))
 
 
 async def post(gateway, cell: Cell):
@@ -80,45 +83,17 @@ def assert_backend_auth(cell: Cell, replay: ReplayTransport):
     assert replay.requests[0].headers.get("authorization") == expected
 
 
-async def check_chat_completions_text(gateway, cell, replay):
+async def check_chat_completions(gateway, cell, replay):
     resp = await post_chat_completions(gateway, cell)
     assert resp.status_code == 200, resp.text
-    completion = validate_chat_completion(resp.json())
-    choice = completion.choices[0]
-    assert EXPECTED_TEXT in (choice.message.content or "").lower()
-    assert choice.finish_reason == "stop"
-    assert completion.model == BACKENDS[cell.backend].gateway_model
-    assert completion.usage is not None and completion.usage.total_tokens > 0
-
-
-async def check_chat_completions_tools(gateway, cell, replay):
-    resp = await post_chat_completions(gateway, cell)
-    assert resp.status_code == 200, resp.text
-    completion = validate_chat_completion(resp.json())
-    choice = completion.choices[0]
-    assert choice.message.function_call is None, "legacy function_call emitted"
-    assert choice.message.tool_calls, f"no tool_calls in {choice.message}"
-    call = choice.message.tool_calls[0]
-    assert (call.function.name, json.loads(call.function.arguments)) == EXPECTED_TOOL
-    assert choice.finish_reason == "tool_calls"
-
-
-async def check_chat_completions_stream(gateway, cell, replay):
-    resp = await post_chat_completions(gateway, cell)
-    assert resp.status_code == 200, resp.text
-    assert resp.headers["content-type"].startswith("text/event-stream")
-    events = parse_sse(resp.text)
-    assert events and events[-1] == SSE_DONE, f"stream did not end with [DONE]: {events[-3:]}"
-    chunks = validate_chat_completion_chunks(events[:-1])
-    text = "".join(c.choices[0].delta.content or "" for c in chunks if c.choices)
-    assert EXPECTED_TEXT in text.lower()
-    finish = [
-        c.choices[0].finish_reason for c in chunks if c.choices and c.choices[0].finish_reason
-    ]
-    # OpenRouter repeats finish_reason on its usage chunk, so allow repeats.
-    assert finish and set(finish) == {"stop"}, finish
-    assert len({c.id for c in chunks}) == 1, "chunks of one stream must share an id"
-    assert {c.model for c in chunks} == {BACKENDS[cell.backend].gateway_model}
+    if ALL_SCENARIOS[cell.scenario].stream:
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        events = parse_sse(resp.text)
+        assert events and events[-1] == SSE_DONE, f"stream did not end with [DONE]: {events[-3:]}"
+        result = validate_chat_completion_chunks(events[:-1])
+    else:
+        result = validate_chat_completion(resp.json())
+    COMPLETION_CHECKS[cell.scenario](result, model(cell))
 
 
 async def check_chat_completions_backend_error(gateway, cell, replay):
@@ -140,21 +115,17 @@ def sse_blocks(text: str) -> list[tuple[str | None, dict]]:
     return blocks
 
 
-async def check_messages_body(gateway, cell, replay):
+async def check_messages(gateway, cell, replay):
     resp = await post(gateway, cell)
     assert resp.status_code == 200, resp.text
-    validate_anthropic_message(resp.json())
-
-
-async def check_messages_stream(gateway, cell, replay):
-    resp = await post(gateway, cell)
-    assert resp.status_code == 200, resp.text
-    assert resp.headers["content-type"].startswith("text/event-stream")
-    blocks = sse_blocks(resp.text)
-    assert all(name == data["type"] for name, data in blocks), blocks
-    events = [data for _, data in blocks]
-    validate_anthropic_stream(events)
-    assert [e["type"] for e in events[-2:]] == ["message_delta", "message_stop"]
+    if ALL_SCENARIOS[cell.scenario].stream:
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        blocks = sse_blocks(resp.text)
+        assert all(name == data["type"] for name, data in blocks), blocks
+        result = validate_anthropic_stream([data for _, data in blocks])
+    else:
+        result = validate_anthropic_message(resp.json())
+    MESSAGE_CHECKS[cell.scenario](result, model(cell))
 
 
 async def check_messages_backend_error(gateway, cell, replay):
@@ -182,13 +153,9 @@ async def check_embeddings_error(gateway, cell, replay):
 
 
 CHECKS = {
-    ("chat_completions", "text"): check_chat_completions_text,
-    ("chat_completions", "tools"): check_chat_completions_tools,
-    ("chat_completions", "stream"): check_chat_completions_stream,
+    **{("chat_completions", name): check_chat_completions for name in COMPLETION_CHECKS},
+    **{("gateway_messages", name): check_messages for name in MESSAGE_CHECKS},
     ("chat_completions", "backend_error"): check_chat_completions_backend_error,
-    ("gateway_messages", "text"): check_messages_body,
-    ("gateway_messages", "tools"): check_messages_body,
-    ("gateway_messages", "stream"): check_messages_stream,
     ("gateway_messages", "backend_error"): check_messages_backend_error,
     ("gateway_embeddings", "embedding"): check_embeddings,
     ("gateway_embeddings", "embedding_error"): check_embeddings_error,
@@ -238,7 +205,11 @@ def gateway_answer(resp, cell: Cell):
     return [e for e in parse_sse(resp.text) if e != SSE_DONE]
 
 
-@pytest.mark.parametrize("cell", GATEWAY_GRID)
+@pytest.mark.parametrize(
+    "cell",
+    grid(ingresses=GATEWAY_INGRESSES, known_failures=False)
+    + embedding_grid(GATEWAY_EMBEDDING_INGRESSES, known_failures=False),
+)
 async def test_gateway_body_matches_library(gateway, library, cell: Cell):
     gateway.use(cell.backend, cell.scenario)
     served = gateway_answer(await post(gateway, cell), cell)
