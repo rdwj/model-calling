@@ -1,794 +1,464 @@
-# Migration Guide: From Local Development to Production
+# Migration Guide
 
-This guide covers the transition from local development with Ollama to production deployment in environments like OpenShift, addressing common challenges such as authentication, service URLs, and ensuring code compatibility.
+This guide covers upgrading from model-calling 0.1.x and moving applications from local development to production.
 
-- [Overview](#overview)
-- [Migration Scenarios](#migration-scenarios)
-- [Authentication Changes](#authentication-changes)
-- [Configuration Management](#configuration-management)
-- [OpenShift-Specific Considerations](#openshift-specific-considerations)
-- [Complete Examples](#complete-examples)
-- [Troubleshooting](#troubleshooting)
+## Contents
 
-## Overview
+- [Upgrading from 0.1.x](#upgrading-from-01x)
+- [From Local Development to Production](#from-local-development-to-production)
+- [Checklist](#checklist)
 
-A common development workflow involves:
+## Upgrading from 0.1.x
 
-1. Developing locally with Ollama for fast iteration and no authentication
-2. Testing with hosted services like Anthropic or OpenAI
-3. Deploying to production using vLLM or other enterprise-grade services on OpenShift
+### Install the server extra
 
-Model Calling is designed to make this transition as seamless as possible, requiring minimal code changes when moving between environments.
+The library and gateway dependencies are split. Applications that only call models in-process still install `model-calling`, which brings httpx and pydantic and nothing else. A gateway deployment installs `model-calling[server]`, which adds FastAPI, uvicorn, and python-dotenv.
 
-## Migration Scenarios
+```bash
+# In-process use
+pip install model-calling
 
-### Scenario 1: Ollama → vLLM on OpenShift
+# Gateway deployment
+pip install 'model-calling[server]'
+```
 
-**What changes:**
-- Service URL
-- Provider prefix (`ollama/` → `vllm/`)
-- Authentication (none → token-based)
+### Switch to the in-process Client
 
-**What stays the same:**
-- Message format
-- Tool/function definitions
-- Response processing logic
-- Agent business logic
+The in-process `Client` is the primary API. HTTP calls to a running gateway still work, but the recommended path is to import the library directly or to point the official OpenAI and Anthropic SDKs at the gateway.
 
-### Scenario 2: Ollama → Hosted API (Anthropic/OpenAI)
-
-**What changes:**
-- Service URL
-- Provider prefix (`ollama/` → `anthropic/` or `openai/`)
-- Authentication (none → API key)
-- Possibly the model name
-
-**What stays the same:**
-- Message format
-- Tool/function definitions
-- Response processing logic
-
-### Scenario 3: Multiple Environments (Dev/Test/Prod)
-
-**What changes:**
-- Service URLs
-- Provider prefixes
-- Authentication methods
-- Possibly model names
-
-**The challenge:** Managing different configurations without code changes
-
-## Authentication Changes
-
-### From Unauthenticated (Ollama) to Authenticated Services
-
-#### Local Development (No Authentication)
+**Before (0.1.x):**
 
 ```python
 from model_calling.client import SyncModelCallingClient
 
-# Simple unauthenticated local setup
-client = SyncModelCallingClient()  # Default localhost:8000
-
+client = SyncModelCallingClient(base_url="http://localhost:8000")
 response = client.chat_completion(
-    model="ollama/mistral-small3.1:24b",
-    messages=[
-        {"role": "user", "content": "Generate a product description for a coffee maker."}
-    ]
+    model="ollama/qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
 )
 ```
 
-#### Production with Authentication
-
-There are several approaches to add authentication:
-
-##### 1. Environment Variables (Recommended)
+**After (0.2.x, in-process):**
 
 ```python
-# Set in environment or .env file:
-# ANTHROPIC_API_KEY=your_key
-# VLLM_API_KEY=your_token
+from model_calling import Client
 
-from model_calling.client import SyncModelCallingClient
-
-# The base URL changes, but code structure remains identical
-client = SyncModelCallingClient(base_url="https://model-calling.openshift-cluster.com")
-
-response = client.chat_completion(
-    model="vllm/mistral-7b",  # Just change the provider prefix
-    messages=[
-        {"role": "user", "content": "Generate a product description for a coffee maker."}
-    ]
+client = Client()
+response = client.completion(
+    model="ollama/qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
 )
 ```
 
-##### 2. Explicit Configuration
+**After (0.2.x, official SDKs pointed at the gateway):**
 
 ```python
-from model_calling.client import SyncModelCallingClient
+import openai
 
-client = SyncModelCallingClient(base_url="https://model-calling.openshift-cluster.com")
+client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+response = client.chat.completions.create(
+    model="ollama/qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
 
-# Configure authentication explicitly
-client.update_config(
-    prefix="vllm",
+The gateway does not check client keys. It uses backend keys from its own environment.
+
+### Update vLLM base_url
+
+OpenAI-compatible base URLs (vLLM, OpenAI, OpenRouter) are the API root with `/v1` included, matching the `openai` SDK's conventions. The library appends `/chat/completions` or `/embeddings`.
+
+**Before (0.1.x):**
+
+```python
+config = {"vllm": {"base_url": "http://vllm-server:8000"}}
+```
+
+**After (0.2.x):**
+
+```python
+config = {"vllm": {"base_url": "http://vllm-server:8000/v1"}}
+```
+
+The Ollama base URL is still the server root (`http://localhost:11434`). The library appends `/api/chat` or `/api/embed` depending on the call.
+
+### The library is strict by default
+
+A parameter the backend cannot honor raises `UnsupportedParamsError` (a subclass of `BadRequestError`). Pass `drop_params=True` client-wide or per call to drop unsupported parameters instead.
+
+```python
+from model_calling import Client
+
+weather_tool = {
+    "type": "function",
+    "function": {"name": "get_weather", "parameters": {"type": "object", "properties": {}}},
+}
+
+client = Client(drop_params=True)  # Drop unsupported params for all calls
+
+# Or per call:
+response = client.completion(
+    model="ollama/qwen3:4b",
+    messages=[{"role": "user", "content": "What's the weather?"}],
+    tools=[weather_tool],
+    tool_choice="required",  # Ollama can't force a tool call
+    drop_params=True,
+)
+```
+
+The gateway still drops by default. Set `MODEL_CALLING_STRICT_PARAMS=true` in its environment to turn on strict mode.
+
+### Callback changes
+
+The `on_stream_chunk` hook now receives internal events (`model_calling.core.StreamEvent`: `MessageStart`, `BlockDelta`, etc.) instead of raw backend lines. These events are the same shape for every backend, so callback code that switches on event type no longer needs to know which backend answered.
+
+A stream that stops early (the consumer breaks out of the loop and closes the iterator, or cancels the async task) ends with `on_request_end(cancelled=True)` instead of `on_error`.
+
+### Backend 401/403 becomes 502
+
+When a gateway call reaches a backend and the backend refuses the gateway's credential (401 or 403), the gateway client sees 502 (the gateway's fault, not the client's). Other 4xx statuses pass through unchanged.
+
+### vLLM prompt mode is gone
+
+The legacy `/generate` endpoint and the `openai_compatible` adapter switch are removed. vLLM is always reached through its OpenAI-compatible `/v1/chat/completions` and `/v1/embeddings` endpoints.
+
+### Embeddings changes
+
+The `/v1/embeddings` response returns the full model id (as `ollama/nomic-embed-text`) instead of the short name, and includes the backend's token count in the `usage` object when the backend reports one. Ollama embeddings are batched through `/api/embed` rather than sent one at a time to `/api/embeddings`. The gateway's in-memory embedding cache now applies only to Cohere (the last unported backend that reaches it).
+
+### Stream error mapping
+
+Errors a backend reports inside a stream now map by kind: rate limit errors become 429, not found becomes 404, invalid request becomes 400. Errors that do not match those kinds still become 502.
+
+### Messages endpoint requires max_tokens
+
+The gateway's `POST /v1/messages` endpoint requires `max_tokens` in the request body. Requests without it return 400.
+
+## From Local Development to Production
+
+A typical workflow starts with Ollama for local iteration, moves to a hosted service (OpenAI, OpenRouter) or vLLM on OpenShift for shared testing, and deploys to production with environment-specific model names and authentication.
+
+The library reads only backend API keys (`OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`) from the environment. It never reads a `.env` file. The gateway loads `.env` with python-dotenv at startup. Both the library and the gateway support per-prefix configuration with `base_url`, `api_key`, and `headers`.
+
+### Scenario: Ollama to vLLM on OpenShift
+
+**Local development:**
+
+```python
+from model_calling import Client
+
+client = Client()
+response = client.completion(
+    model="ollama/qwen3:4b",
+    messages=[{"role": "user", "content": "Summarize this document."}],
+    temperature=0.7,
+)
+print(response.choices[0].message.content)
+client.close()
+```
+
+**Production (vLLM on OpenShift):**
+
+```python
+import os
+from model_calling import Client
+
+# Read your app's own config (the library itself only reads API key env vars)
+vllm_url = os.environ["VLLM_BASE_URL"]  # e.g. "https://vllm.apps.cluster.example.com/v1"
+vllm_token = os.environ["VLLM_API_KEY"]
+
+client = Client(
     config={
-        "api_key": "your_vllm_token",
-        "base_url": "https://vllm-service.openshift-cluster.com/v1",
-        "headers": {  # Optional custom headers
-            "X-Project-ID": "your-project-id"
+        "vllm": {
+            "base_url": vllm_url,
+            "api_key": vllm_token,
         }
     }
 )
 
-# Same code as before
-response = client.chat_completion(
-    model="vllm/mistral-7b",
-    messages=[
-        {"role": "user", "content": "Generate a product description for a coffee maker."}
-    ]
+response = client.completion(
+    model="vllm/gpt-oss-20b",  # The model the vLLM server serves
+    messages=[{"role": "user", "content": "Summarize this document."}],
+    temperature=0.7,
 )
+print(response.choices[0].message.content)
+client.close()
 ```
 
-### Authentication for Different Providers
+The message format, tools, and response processing stay the same. Only the model name and configuration change.
 
-#### vLLM on OpenShift
+### Scenario: Ollama to OpenRouter
 
-```python
-client.update_config(
-    prefix="vllm",
-    config={
-        "api_key": "your_vllm_token",
-        "base_url": "https://vllm-service.openshift-cluster.com/v1",
-        "headers": {
-            "Authorization": f"Bearer {vllm_token}"
-        }
-    }
-)
-```
-
-#### Anthropic
+Local calls to `ollama/mistral-nemo` become `openrouter/mistralai/mistral-nemo` in production. Set `OPENROUTER_API_KEY` in the environment or pass it through `config`.
 
 ```python
-client.update_config(
-    prefix="anthropic",
-    config={
-        "api_key": "your_anthropic_api_key",
-        "base_url": "https://api.anthropic.com/v1/messages"
-    }
-)
-```
+from model_calling import Client
 
-#### OpenAI
+# OPENROUTER_API_KEY from environment
+client = Client()
 
-```python
-client.update_config(
-    prefix="openai",
-    config={
-        "api_key": "your_openai_api_key",
-        "headers": {"OpenAI-Organization": "your_openai_org_id"},  # Optional
-        "base_url": "https://api.openai.com/v1"
-    }
-)
-```
-
-For `vllm`, `openai`, and `openrouter`, `base_url` is the API root with the
-`/v1` version included, as in the official `openai` SDK. The gateway appends
-`/chat/completions`.
-
-#### OpenRouter
-
-`openrouter/` models use `https://openrouter.ai/api/v1` and read
-`OPENROUTER_API_KEY` from the environment by default:
-
-```python
-response = client.chat_completion(
+response = client.completion(
     model="openrouter/mistralai/mistral-nemo",
     messages=[{"role": "user", "content": "Hello"}],
 )
 ```
 
-## Configuration Management
-
-### Environment-Based Configuration
+Per-call overrides work for one-off calls that need a different key or endpoint:
 
 ```python
-import os
-from model_calling.client import SyncModelCallingClient
-
-# Determine environment
-ENV = os.environ.get("DEPLOYMENT_ENV", "development")
-
-# Configure based on environment
-if ENV == "development":
-    base_url = "http://localhost:8000"
-    model_name = "ollama/mistral-small3.1:24b"
-elif ENV == "staging":
-    base_url = "https://model-calling-staging.example.com"
-    model_name = "vllm/mistral-7b"
-elif ENV == "production":
-    base_url = "https://model-calling-prod.openshift-cluster.com"
-    model_name = "vllm/mistral-7b"
-
-# Create client with appropriate base URL
-client = SyncModelCallingClient(base_url=base_url)
-
-# Use the environment-appropriate model
-response = client.chat_completion(
-    model=model_name,
-    messages=[
-        {"role": "user", "content": "Tell me about AI."}
-    ]
+response = client.completion(
+    model="openrouter/mistralai/mistral-nemo",
+    messages=[{"role": "user", "content": "Hello"}],
+    api_key="sk-or-v1-...",  # Override for this call
 )
 ```
 
-### Configuration File Approach
+### Environment-based configuration
+
+Applications that run in dev, test, and prod can read their own environment variables and build the client config from them. The library itself only reads the provider API key variables listed above.
 
 ```python
-import yaml
 import os
-from model_calling.client import SyncModelCallingClient
+from model_calling import Client
 
-# Load configuration from file
-env = os.environ.get("DEPLOYMENT_ENV", "development")
-config_path = f"config/{env}.yaml"
+env = os.environ.get("DEPLOY_ENV", "dev")
 
-with open(config_path, "r") as f:
-    config = yaml.safe_load(f)
+if env == "dev":
+    model = "ollama/qwen3:4b"
+    config = {}  # Defaults to localhost
+elif env == "test":
+    model = "vllm/gpt-oss-20b"
+    config = {
+        "vllm": {
+            "base_url": os.environ["VLLM_TEST_URL"],
+            "api_key": os.environ["VLLM_TEST_TOKEN"],
+        }
+    }
+else:  # production
+    model = "vllm/gpt-oss-20b"
+    config = {
+        "vllm": {
+            "base_url": os.environ["VLLM_PROD_URL"],
+            "api_key": os.environ["VLLM_PROD_TOKEN"],
+        }
+    }
 
-# Create client with configuration
-client = SyncModelCallingClient(base_url=config["base_url"])
-
-# Configure providers if needed
-for provider, provider_config in config["providers"].items():
-    client.update_config(prefix=provider, config=provider_config)
-
-# Use configured model
-response = client.chat_completion(
-    model=config["default_model"],
-    messages=[
-        {"role": "user", "content": "Tell me about AI."}
-    ]
-)
+client = Client(config=config)
+response = client.completion(model=model, messages=[...])
+client.close()
 ```
 
-Example `config/development.yaml`:
-```yaml
-base_url: http://localhost:8000
-default_model: ollama/mistral-small3.1:24b
-providers:
-  ollama:
-    base_url: http://localhost:11434
+### Using the gateway
+
+A gateway serves many applications. Each app points the `openai` or `anthropic` SDK at the gateway, and the gateway holds the backend configurations and keys. Update a backend URL with `POST /v1/config/update`:
+
+```bash
+curl -X POST http://localhost:8000/v1/config/update \
+  -H 'Content-Type: application/json' \
+  -d '{"prefix": "vllm", "config": {"base_url": "https://vllm.apps.cluster.example.com/v1"}}'
 ```
 
-Example `config/production.yaml`:
-```yaml
-base_url: https://model-calling-prod.openshift-cluster.com
-default_model: vllm/mistral-7b
-providers:
-  vllm:
-    base_url: https://vllm-service.openshift-cluster.com/v1
-    api_key: ${VLLM_API_KEY}  # Replaced at runtime
-  anthropic:
-    api_key: ${ANTHROPIC_API_KEY}
-```
-
-## OpenShift-Specific Considerations
-
-### Using Kubernetes Secrets
-
-Store your API keys and tokens securely:
+The gateway reads backend keys from its environment (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`). In OpenShift, mount them from Secrets:
 
 ```yaml
-# kubernetes-secrets.yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: model-api-keys
+  name: model-calling-keys
 type: Opaque
 data:
-  ANTHROPIC_API_KEY: base64_encoded_key_here
-  VLLM_API_KEY: base64_encoded_token_here
-```
-
-Mount as environment variables:
-
-```yaml
-# deployment.yaml
+  OPENROUTER_API_KEY: <base64-encoded-key>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-calling-gateway
 spec:
-  containers:
-  - name: your-app
-    env:
-      - name: ANTHROPIC_API_KEY
-        valueFrom:
-          secretKeyRef:
-            name: model-api-keys
-            key: ANTHROPIC_API_KEY
-      - name: VLLM_API_KEY
-        valueFrom:
-          secretKeyRef:
-            name: model-api-keys
-            key: VLLM_API_KEY
+  template:
+    spec:
+      containers:
+      - name: gateway
+        image: quay.io/your-org/model-calling:latest
+        env:
+        - name: OPENROUTER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: model-calling-keys
+              key: OPENROUTER_API_KEY
 ```
 
-### Configuring vLLM on OpenShift
-
-When deploying vLLM on OpenShift, you may need to set up:
-
-1. **Authentication Middleware**: Typically using Bearer tokens
-2. **CORS Configuration**: If accessing from web applications 
-3. **Route Configuration**: Setting up proper routes for the service
-
-Model Calling can be configured to work with these setups:
+Applications call the gateway with no authentication (the gateway uses its own backend credentials):
 
 ```python
-client.update_config(
-    prefix="vllm",
+import openai
+
+client = openai.OpenAI(
+    base_url="http://model-calling-gateway:8000/v1",
+    api_key="unused",
+)
+response = client.chat.completions.create(
+    model="openrouter/mistralai/mistral-nemo",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
+
+The same gateway serves Chat Completions (`POST /v1/chat/completions`), Anthropic Messages (`POST /v1/messages`), and Embeddings (`POST /v1/embeddings`).
+
+### Anthropic Messages over any backend
+
+The `messages` method translates Anthropic Messages requests to the backend's format. This works over Ollama, vLLM, OpenAI, and OpenRouter. The Anthropic and Cohere backends are not in the library yet (planned).
+
+```python
+from model_calling import Client
+
+client = Client()
+
+# Anthropic Messages over Ollama
+response = client.messages(
+    model="ollama/qwen3:4b",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello"}],
+)
+# Response may include thinking blocks; extract the text block
+text = next(b.text for b in response.content if b.type == "text")
+print(text)
+
+# Same call, different backend
+response = client.messages(
+    model="openrouter/mistralai/mistral-nemo",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello"}],
+)
+text = next(b.text for b in response.content if b.type == "text")
+print(text)
+```
+
+The gateway's `/v1/messages` endpoint accepts Anthropic Messages requests and returns Anthropic-shaped responses and stream events, translating them to and from the backend.
+
+### Streaming
+
+Async streams are async iterators. Sync streams are plain iterators. A streaming call returns only once the backend has accepted the request, so a refused request raises at the call, not mid-loop.
+
+```python
+import asyncio
+from model_calling import Client
+
+async def stream_example():
+    client = Client()
+    
+    stream = await client.acompletion(
+        model="ollama/qwen3:4b",
+        messages=[{"role": "user", "content": "Count to 10"}],
+        stream=True,
+    )
+    
+    async for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            print(chunk.choices[0].delta.content, end="", flush=True)
+    print()
+    
+    await client.aclose()
+
+asyncio.run(stream_example())
+```
+
+Close async clients with `await client.aclose()` or `async with Client() as client`. Close sync clients with `client.close()` or `with Client() as client`.
+
+### Complete example: tool use across environments
+
+This agent calls a weather function. The code is the same in dev (Ollama) and production (vLLM on OpenShift); only the model name and configuration change.
+
+```python
+import os
+import json
+from model_calling import Client
+
+def get_weather(location: str) -> dict:
+    return {"location": location, "temperature": 22, "unit": "celsius"}
+
+weather_tool = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get current weather for a location",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "description": "City name"}
+            },
+            "required": ["location"],
+        },
+    },
+}
+
+def run_agent(model: str, config: dict):
+    client = Client(config=config)
+    
+    response = client.completion(
+        model=model,
+        messages=[{"role": "user", "content": "What is the weather in Paris?"}],
+        tools=[weather_tool],
+    )
+    
+    message = response.choices[0].message
+    if not message.tool_calls:
+        print(message.content)
+        client.close()
+        return
+    
+    # Execute tool call
+    call = message.tool_calls[0]
+    args = json.loads(call.function.arguments)
+    result = get_weather(args["location"])
+    
+    # Send result back
+    final = client.completion(
+        model=model,
+        messages=[
+            {"role": "user", "content": "What is the weather in Paris?"},
+            {"role": "assistant", "tool_calls": [call.to_dict()]},
+            {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)},
+        ],
+    )
+    
+    print(final.choices[0].message.content)
+    client.close()
+
+# Development
+run_agent("ollama/qwen3:4b", config={})
+
+# Production
+run_agent(
+    "vllm/gpt-oss-20b",
     config={
-        "base_url": "https://vllm-route.openshift-apps.example.com/v1",
-        "headers": {
-            "Authorization": f"Bearer {os.environ.get('VLLM_API_KEY')}",
-            "X-Request-ID": "unique-request-id"  # Optional for tracking
+        "vllm": {
+            "base_url": os.environ["VLLM_BASE_URL"],
+            "api_key": os.environ["VLLM_API_KEY"],
         }
-    }
+    },
 )
 ```
 
-### Working with Chat Templates in vLLM
+## Checklist
 
-If your vLLM deployment uses a default chat template, Model Calling works seamlessly with it:
+When moving an application from local to production:
 
-```python
-# vLLM with a default chat template (e.g., for Mistral)
-client.update_config(
-    prefix="vllm",
-    config={
-        "base_url": "https://vllm-service.openshift-cluster.com/v1",
-        "api_key": os.environ.get("VLLM_API_KEY")
-    }
-)
+1. **Install the right extra.** Gateway deployments need `model-calling[server]`.
 
-# Your code remains unchanged
-response = client.chat_completion(
-    model="vllm/mistral-7b",
-    messages=[...],
-    tools=[...]
-)
-```
+2. **Update model names.** Change `ollama/` to `vllm/`, `openai/`, or `openrouter/` as appropriate.
 
-vLLM is reached through its OpenAI-compatible `/v1/chat/completions` endpoint, so the server applies the model's chat template. The legacy `/generate` prompt mode is no longer supported.
+3. **Configure the backend.** Pass `config={"prefix": {"base_url": ..., "api_key": ...}}` to `Client()`, or set `OPENAI_API_KEY` / `OPENROUTER_API_KEY` in the environment for hosted services.
 
-## Complete Examples
+4. **Fix vLLM base URLs.** Include `/v1` in `base_url` for vLLM, OpenAI, and OpenRouter.
 
-### Complete Migration Example: Local to OpenShift
+5. **Close the client.** Use `async with` / `with` or call `aclose()` / `close()` after async or sync use.
 
-Here's a complete example of an agent migrating from local Ollama to vLLM on OpenShift:
+6. **Handle unsupported parameters.** The library raises by default. Pass `drop_params=True` to drop them, or remove parameters the backend cannot honor (Ollama cannot force tool calls; Chat Completions backends cannot take `thinking.budget_tokens`).
 
-#### Local Development Version
+7. **Test streaming.** Verify that streams close properly and errors at the start of a stream raise before iteration begins.
 
-```python
-import json
-from model_calling.client import SyncModelCallingClient
+8. **Secure credentials.** In OpenShift, mount API keys from Secrets. Never commit them to source.
 
-# Simple weather function
-def get_weather(location):
-    return {"temperature": 22, "unit": "celsius", "description": "Sunny"}
+9. **Check error handling.** Catch `model_calling.APIError` or its subclasses (`BadRequestError`, `AuthenticationError`, `RateLimitError`, `InternalServerError`). The `provider`, `status`, and `body` attributes help with debugging.
 
-# Define tools
-weather_tool = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get current weather in a location",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name"
-                    }
-                },
-                "required": ["location"]
-            }
-        }
-    }
-]
-
-def run_weather_agent(query):
-    # Create client - local development with Ollama
-    client = SyncModelCallingClient()
-    
-    try:
-        # Make initial request
-        response = client.chat_completion(
-            model="ollama/granite:34b",  # Local Granite model
-            messages=[
-                {"role": "user", "content": query}
-            ],
-            tools=weather_tool
-        )
-        
-        # Process function calls
-        message = response["choices"][0]["message"]
-        if "function_call" in message:
-            # Extract function call details
-            function_name = message["function_call"]["name"]
-            arguments = json.loads(message["function_call"]["arguments"])
-            
-            # Call the appropriate function
-            if function_name == "get_weather":
-                weather_data = get_weather(arguments["location"])
-            else:
-                weather_data = {"error": "Unknown function"}
-            
-            # Continue the conversation with the function result
-            final_response = client.chat_completion(
-                model="ollama/granite:34b",
-                messages=[
-                    {"role": "user", "content": query},
-                    {"role": "assistant", "content": "", "function_call": message["function_call"]},
-                    {"role": "function", "name": function_name, "content": json.dumps(weather_data)}
-                ]
-            )
-            
-            return final_response["choices"][0]["message"]["content"]
-        else:
-            return message["content"]
-    
-    finally:
-        client.close()
-
-# Use the agent
-result = run_weather_agent("What's the weather like in Paris?")
-print(result)
-```
-
-#### Production Version for OpenShift
-
-```python
-import json
-import os
-from model_calling.client import SyncModelCallingClient
-
-# Simple weather function
-def get_weather(location):
-    return {"temperature": 22, "unit": "celsius", "description": "Sunny"}
-
-# Define tools - UNCHANGED
-weather_tool = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get current weather in a location",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name"
-                    }
-                },
-                "required": ["location"]
-            }
-        }
-    }
-]
-
-def run_weather_agent(query):
-    # Get configuration from environment
-    model_calling_url = os.environ.get("MODEL_CALLING_URL", "https://model-calling.openshift-cluster.com")
-    vllm_api_key = os.environ.get("VLLM_API_KEY", "")
-    model_name = os.environ.get("MODEL_NAME", "vllm/granite:34b")  # Default to vLLM
-    
-    # Create client with production URL
-    client = SyncModelCallingClient(base_url=model_calling_url)
-    
-    # Configure vLLM authentication if needed
-    if vllm_api_key and model_name.startswith("vllm/"):
-        client.update_config(
-            prefix="vllm",
-            config={"api_key": vllm_api_key}
-        )
-    
-    try:
-        # Make initial request - ONLY MODEL NAME CHANGED
-        response = client.chat_completion(
-            model=model_name,  # Now using vLLM on OpenShift
-            messages=[
-                {"role": "user", "content": query}
-            ],
-            tools=weather_tool
-        )
-        
-        # Process function calls - COMPLETELY UNCHANGED
-        message = response["choices"][0]["message"]
-        if "function_call" in message:
-            # Extract function call details
-            function_name = message["function_call"]["name"]
-            arguments = json.loads(message["function_call"]["arguments"])
-            
-            # Call the appropriate function
-            if function_name == "get_weather":
-                weather_data = get_weather(arguments["location"])
-            else:
-                weather_data = {"error": "Unknown function"}
-            
-            # Continue the conversation with the function result
-            final_response = client.chat_completion(
-                model=model_name,  # Using the environment-configured model
-                messages=[
-                    {"role": "user", "content": query},
-                    {"role": "assistant", "content": "", "function_call": message["function_call"]},
-                    {"role": "function", "name": function_name, "content": json.dumps(weather_data)}
-                ]
-            )
-            
-            return final_response["choices"][0]["message"]["content"]
-        else:
-            return message["content"]
-    
-    finally:
-        client.close()
-
-# Use the agent - UNCHANGED
-result = run_weather_agent("What's the weather like in Paris?")
-print(result)
-```
-
-### Hybrid Environment Example
-
-Here's an example that can dynamically select the best available model across multiple environments:
-
-```python
-import os
-import json
-from model_calling.client import SyncModelCallingClient
-
-class ModelSelector:
-    """Select the best model based on availability and environment"""
-    
-    def __init__(self):
-        # Create client
-        model_calling_url = os.environ.get("MODEL_CALLING_URL", "http://localhost:8000")
-        self.client = SyncModelCallingClient(base_url=model_calling_url)
-        
-        # Configure available models
-        self.configure_models()
-        
-    def configure_models(self):
-        """Configure models based on environment variables"""
-        self.models = []
-        
-        # Add vLLM model if available
-        vllm_api_key = os.environ.get("VLLM_API_KEY")
-        if vllm_api_key:
-            self.client.update_config(
-                prefix="vllm",
-                config={"api_key": vllm_api_key}
-            )
-            self.models.append("vllm/mistral-7b")
-        
-        # Add Anthropic model if available
-        anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if anthropic_api_key:
-            self.models.append("anthropic/claude-3-sonnet-20240229")
-        
-        # Ollama is always available as fallback in development
-        self.models.append("ollama/mistral-small3.1:24b")
-    
-    def get_best_model(self):
-        """Get the best available model"""
-        if not self.models:
-            raise ValueError("No models configured")
-        return self.models[0]
-    
-    def close(self):
-        """Close the client"""
-        self.client.close()
-
-# Example agent that works across environments
-class FlexibleAgent:
-    """Agent that works across multiple environments"""
-    
-    def __init__(self):
-        self.model_selector = ModelSelector()
-        self.client = self.model_selector.client
-        
-        # Define tools
-        self.tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get current weather in a location",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "City name"
-                            }
-                        },
-                        "required": ["location"]
-                    }
-                }
-            }
-        ]
-    
-    def run(self, query):
-        """Run the agent with the best available model"""
-        try:
-            # Get the best model
-            model = self.model_selector.get_best_model()
-            print(f"Using model: {model}")
-            
-            # Make initial request
-            response = self.client.chat_completion(
-                model=model,
-                messages=[
-                    {"role": "user", "content": query}
-                ],
-                tools=self.tools
-            )
-            
-            # Process function calls
-            message = response["choices"][0]["message"]
-            if "function_call" in message:
-                # ... function call handling (omitted for brevity)
-                # This would be the same regardless of model
-                pass
-            
-            return message["content"]
-        
-        finally:
-            pass  # Don't close client here
-    
-    def close(self):
-        """Clean up resources"""
-        self.model_selector.close()
-
-# Example usage
-agent = FlexibleAgent()
-try:
-    result = agent.run("Tell me about AI")
-    print(result)
-finally:
-    agent.close()
-```
-
-## Troubleshooting
-
-### Common Migration Issues
-
-#### Authentication Errors
-
-**Symptoms:**
-- `401 Unauthorized` errors
-- `Authentication failed` messages
-
-**Solutions:**
-- Check that the correct API key or token is provided
-- Verify the authentication header format (e.g., `Bearer` prefix)
-- Ensure secrets are properly mounted in Kubernetes/OpenShift
-
-#### Model Not Found
-
-**Symptoms:**
-- `Model not found` errors
-- `Unknown model` messages
-
-**Solutions:**
-- Verify the model name is correct for the target environment
-- Ensure the model is actually deployed on the target vLLM instance
-- Check provider prefix (`vllm/` vs `ollama/`)
-
-#### Function Calling Issues
-
-**Symptoms:**
-- Function calling not working in production, but works locally
-- Model not returning function calls in expected format
-
-**Solutions:**
-- Verify the target model supports function calling
-- Update configuration to specify function call support:
-  ```python
-  client.update_config(
-      prefix="vllm",
-      config={"supports_function_call": True}
-  )
-  ```
-- Check if the vLLM deployment has the right chat template
-
-### Testing Across Environments
-
-A good practice is to create a simple test script that checks basic connectivity and capabilities:
-
-```python
-import os
-import json
-from model_calling.client import SyncModelCallingClient
-
-def test_model_calling():
-    """Test Model Calling across environments"""
-    # Get configuration from environment
-    model_calling_url = os.environ.get("MODEL_CALLING_URL", "http://localhost:8000")
-    model_name = os.environ.get("MODEL_NAME", "ollama/mistral-small3.1:24b")
-    
-    print(f"Testing with: URL={model_calling_url}, Model={model_name}")
-    
-    client = SyncModelCallingClient(base_url=model_calling_url)
-    
-    try:
-        # Basic text completion
-        print("Testing basic completion...")
-        response = client.chat_completion(
-            model=model_name,
-            messages=[
-                {"role": "user", "content": "Say hello"}
-            ]
-        )
-        
-        print(f"Response: {response['choices'][0]['message']['content']}")
-        
-        # Function calling
-        print("Testing function calling...")
-        response = client.chat_completion(
-            model=model_name,
-            messages=[
-                {"role": "user", "content": "What's the weather in Tokyo?"}
-            ],
-            tools=[
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_weather",
-                        "description": "Get current weather in a location",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "location": {
-                                    "type": "string",
-                                    "description": "City name"
-                                }
-                            },
-                            "required": ["location"]
-                        }
-                    }
-                }
-            ]
-        )
-        
-        message = response["choices"][0]["message"]
-        if "function_call" in message:
-            print(f"Function call: {message['function_call']['name']}")
-            print(f"Arguments: {message['function_call']['arguments']}")
-        else:
-            print(f"No function call. Response: {message['content']}")
-        
-        print("All tests passed!")
-        
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    
-    finally:
-        client.close()
-
-if __name__ == "__main__":
-    test_model_calling()
-```
-
-This script can be run in different environments to verify that your Model Calling setup is working as expected.
-
-## Conclusion
-
-The migration from local development to production should require minimal code changes when using Model Calling. By following the patterns in this guide, you can build applications that seamlessly work across environments, from local Ollama development to enterprise-grade vLLM deployments on OpenShift.
-
-Remember these key principles:
-
-1. **Externalize Configuration**: Use environment variables or config files for environment-specific settings
-2. **Maintain Abstraction**: Let Model Calling handle the provider-specific details
-3. **Test Across Environments**: Verify functionality works consistently in all target environments
-
-With this approach, your applications can develop locally with fast iteration and deploy to production with confidence.
+10. **Consider the gateway.** For multiple applications, a single gateway with `/v1/config/update` can route to many backends. Applications call it with the official `openai` or `anthropic` SDKs.

@@ -1,236 +1,328 @@
-# Quickstart Guide
+# Quickstart
 
-This guide helps you get started with Model Calling quickly.
+This guide gets you started with model-calling, a library and gateway for calling LLM providers through a consistent API. The library supports OpenAI Chat Completions and Anthropic Messages side by side, over Ollama, vLLM, OpenAI, and OpenRouter backends.
 
 ## Installation
 
-### 1. Install the Package
+Install the library:
 
 ```bash
 pip install model-calling
 ```
 
-### 2. Set Up API Keys (Optional)
-
-For hosted providers, create a `.env` file with your API keys:
+The library depends on httpx and pydantic. It never loads FastAPI and never reads a `.env` file. For the optional gateway server, install the `server` extra:
 
 ```bash
-# Copy the example .env file
-cp .env.example .env
-
-# Edit the file with your API keys
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
-COHERE_API_KEY=your_cohere_key
+pip install 'model-calling[server]'
 ```
 
-### 3. Start the Service
+This adds FastAPI, uvicorn, and python-dotenv.
+
+## First call
+
+Pull a model with Ollama:
 
 ```bash
-# Start the service on http://localhost:8000
-python -m model_calling
+ollama pull qwen3:4b
 ```
 
-## Using the API
-
-### Basic Example
+Call it with the Chat Completions API:
 
 ```python
-import requests
+from model_calling import completion
 
-response = requests.post(
-    "http://localhost:8000/v1/chat/completions",
-    json={
-        "model": "ollama/mistral-small3.1:24b",  # Use any model from any provider
-        "messages": [
-            {"role": "user", "content": "What is machine learning?"}
-        ]
-    }
+response = completion(
+    model="ollama/qwen3:4b",
+    messages=[{"role": "user", "content": "What is prompt caching?"}],
 )
 
-print(response.json()["choices"][0]["message"]["content"])
+print(response.choices[0].message.content)
 ```
 
-### Using the Client Library
+The response is a pydantic model shaped like `openai.types.chat.ChatCompletion`. Access fields as attributes, or call `.to_dict()` for the wire representation. Unprefixed model names default to Ollama, so `"qwen3:4b"` works the same way.
+
+## Anthropic Messages
+
+The same backend answers Messages requests:
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import messages
 
-client = SyncModelCallingClient()
+response = messages(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "What is prompt caching?"}],
+    max_tokens=512,
+)
 
-try:
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "What is machine learning?"}
-        ]
-    )
-    
-    print(response["choices"][0]["message"]["content"])
-finally:
-    client.close()
+text = next(b.text for b in response.content if b.type == "text")
+print(text)
 ```
 
-### Function Calling
+The response validates against `anthropic.types.Message`. Both formats work over every backend. Ollama, vLLM, OpenAI, and OpenRouter all serve Chat Completions and Messages requests through translation.
+
+## Streaming
+
+Request a stream with `stream=True`:
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import completion
+
+stream = completion(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Write a haiku about recursion."}],
+    stream=True,
+)
+
+for chunk in stream:
+    delta = chunk.choices[0].delta
+    if delta.content:
+        print(delta.content, end="", flush=True)
+print()
+```
+
+Each chunk is a `ChatCompletionChunk`. The stream returns once the backend has accepted the request, so a refusal raises before you start iterating.
+
+Messages streams work the same way:
+
+```python
+from model_calling import messages
+
+stream = messages(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Explain extended thinking."}],
+    max_tokens=512,
+    stream=True,
+)
+
+for event in stream:
+    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+        print(event.delta.text, end="", flush=True)
+print()
+```
+
+The events are `message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, and `message_stop`, matching the Anthropic stream API.
+
+## Tool calling
+
+Define tools as OpenAI function schemas and pass them to `completion`:
+
+```python
+from model_calling import completion
 import json
 
-client = SyncModelCallingClient()
-
-# Define tools
 tools = [
     {
         "type": "function",
         "function": {
-            "name": "get_weather",
-            "description": "Get current weather in a location",
+            "name": "get_temperature",
+            "description": "Get the current temperature for a city",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name"
-                    }
+                    "city": {"type": "string", "description": "City name"},
+                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
                 },
-                "required": ["location"]
-            }
-        }
+                "required": ["city"],
+            },
+        },
     }
 ]
 
-try:
-    # Send request
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
+response = completion(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "What's the temperature in Paris?"}],
+    tools=tools,
+)
+
+message = response.choices[0].message
+if message.tool_calls:
+    call = message.tool_calls[0]
+    print(f"Tool: {call.function.name}")
+    print(f"Arguments: {call.function.arguments}")
+    
+    # Simulate calling your function
+    result = {"temperature": 18, "unit": "celsius"}
+    
+    # Continue the conversation with the result
+    final = completion(
+        model="qwen3:4b",
         messages=[
-            {"role": "user", "content": "What's the weather in Paris?"}
+            {"role": "user", "content": "What's the temperature in Paris?"},
+            message.to_dict(),
+            {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)},
         ],
-        tools=tools
+        tools=tools,
     )
     
-    # Process function call
-    message = response["choices"][0]["message"]
-    if "function_call" in message:
-        function_name = message["function_call"]["name"]
-        arguments = json.loads(message["function_call"]["arguments"])
-        
-        print(f"Function called: {function_name}")
-        print(f"Arguments: {arguments}")
-        
-        # In a real app, you would call your actual function here
-        # weather_data = get_weather(arguments["location"])
-        
-        # For this example, we'll simulate a response
-        weather_data = {
-            "temperature": 22,
-            "unit": "celsius",
-            "description": "Partly cloudy"
-        }
-        
-        # Continue the conversation with the function result
-        final_response = client.chat_completion(
-            model="ollama/mistral-small3.1:24b",
-            messages=[
-                {"role": "user", "content": "What's the weather in Paris?"},
-                {
-                    "role": "assistant", 
-                    "content": "", 
-                    "function_call": {
-                        "name": "get_weather",
-                        "arguments": json.dumps({"location": "Paris, France"})
-                    }
-                },
-                {
-                    "role": "function", 
-                    "name": "get_weather", 
-                    "content": json.dumps(weather_data)
-                }
-            ]
-        )
-        
-        print("\nFinal response:")
-        print(final_response["choices"][0]["message"]["content"])
-    else:
-        print(message["content"])
-finally:
-    client.close()
+    print(final.choices[0].message.content)
 ```
 
-### Using Different Providers
+Not every backend supports forcing a tool call. Ollama rejects `tool_choice` set to `"required"` or `{"type": "any"}`. With strict mode (the library's default), an unsupported parameter raises `UnsupportedParamsError`. Pass `drop_params=True` to send the request without it instead.
+
+## Embeddings
+
+Pull an embedding model:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Call it with the Embeddings API:
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import embedding
 
-client = SyncModelCallingClient()
+response = embedding(
+    model="ollama/nomic-embed-text",
+    input=["prompt caching", "extended thinking"],
+)
 
-try:
-    # Ollama (local)
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=[{"role": "user", "content": "What is quantum computing?"}]
-    )
-    
-    print("Ollama response:")
-    print(response["choices"][0]["message"]["content"])
-    
-    # OpenAI (if API key is set)
-    response = client.chat_completion(
-        model="openai/gpt-4",
-        messages=[{"role": "user", "content": "What is quantum computing?"}]
-    )
-    
-    print("\nOpenAI response:")
-    print(response["choices"][0]["message"]["content"])
-    
-    # Anthropic (if API key is set)
-    response = client.chat_completion(
-        model="anthropic/claude-3-sonnet-20240229",
-        messages=[{"role": "user", "content": "What is quantum computing?"}]
-    )
-    
-    print("\nAnthropic response:")
-    print(response["choices"][0]["message"]["content"])
-finally:
-    client.close()
+for item in response.data:
+    print(f"Embedding {item.index}: {len(item.embedding)} dimensions")
 ```
 
-### Streaming Responses
+The response is a `CreateEmbeddingResponse` matching the OpenAI SDK. Ollama accepts text input only; token arrays raise `BadRequestError`. The OpenAI-compatible backends pass token arrays through to the server.
+
+## Switching backends
+
+Model names are `prefix/name`. Override the default base URL or API key per call:
 
 ```python
-import asyncio
-from model_calling.client import ModelCallingClient
+from model_calling import completion
 
-async def stream_example():
-    client = ModelCallingClient()
-    
-    try:
-        stream = await client.chat_completion(
-            model="ollama/mistral-small3.1:24b",
-            messages=[
-                {"role": "user", "content": "Write a short story about robots."}
-            ],
-            stream=True
-        )
-        
-        print("Streaming response:")
-        async for chunk in stream:
-            if "choices" in chunk and len(chunk["choices"]) > 0:
-                delta = chunk["choices"][0].get("delta", {})
-                if "content" in delta and delta["content"]:
-                    print(delta["content"], end="", flush=True)
-        print("\n")
-    finally:
-        await client.close()
+# vLLM (local or cluster)
+response = completion(
+    model="vllm/gpt-oss-20b",
+    messages=[{"role": "user", "content": "Hello"}],
+    api_base="http://cluster.local:8000/v1",
+)
 
-# Run the async function
-asyncio.run(stream_example())
+# OpenAI (reads OPENAI_API_KEY from the environment)
+response = completion(
+    model="openai/gpt-4",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+
+# OpenRouter (reads OPENROUTER_API_KEY from the environment)
+response = completion(
+    model="openrouter/mistralai/mistral-nemo",
+    messages=[{"role": "user", "content": "Hello"}],
+)
 ```
 
-## Next Steps
+The library reads `OPENAI_API_KEY`, `OPENAI_ORG_ID`, and `OPENROUTER_API_KEY` from the environment. It never reads a `.env` file. For per-call credentials, pass `api_key`:
 
-- Check out the [API Reference](api-reference.md) for detailed documentation
-- Explore more [Examples](examples.md)
-- Learn about [Advanced Topics](advanced.md)
+```python
+response = completion(
+    model="openai/gpt-4",
+    messages=[{"role": "user", "content": "Hello"}],
+    api_key="sk-...",
+)
+```
+
+The default base URLs are `http://localhost:11434` for Ollama, `http://localhost:8000/v1` for vLLM, `https://api.openai.com/v1` for OpenAI, and `https://openrouter.ai/api/v1` for OpenRouter. Override them with `api_base` or configure a client (see the [API reference](api-reference.md)).
+
+## Using a Client
+
+The module-level functions (`completion`, `messages`, `embedding`) run on a lazily created default client. For custom config, callbacks, or control over when connections close, create your own:
+
+```python
+from model_calling import Client
+
+client = Client(
+    config={
+        "ollama": {"base_url": "http://192.168.1.100:11434"},
+        "openai": {"api_key": "sk-..."},
+    },
+    drop_params=True,
+)
+
+response = client.completion(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+
+client.close()
+```
+
+Or use a context manager:
+
+```python
+with Client() as client:
+    response = client.completion(
+        model="qwen3:4b",
+        messages=[{"role": "user", "content": "Hello"}],
+    )
+```
+
+For async calls, use `acompletion`, `amessages`, and `aembedding`, and close with `aclose()` or `async with`.
+
+## Running the gateway
+
+Install the server extra if you have not already:
+
+```bash
+pip install 'model-calling[server]'
+```
+
+Start the gateway:
+
+```bash
+model-calling
+```
+
+Or:
+
+```bash
+python -m model_calling
+```
+
+The gateway listens on port 8000 (override with the `PORT` environment variable). It reads `.env` at startup for backend credentials.
+
+Point the official SDKs at it:
+
+```python
+import openai
+
+client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+
+response = client.chat.completions.create(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+
+print(response.choices[0].message.content)
+```
+
+Or with the Anthropic SDK:
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
+
+response = client.messages.create(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
+    max_tokens=512,
+)
+
+print(next(b.text for b in response.content if b.type == "text"))
+```
+
+The gateway does not check client API keys. It uses its own backend credentials from the environment. Requests can also use `curl`:
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:4b",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+```
+
+The gateway serves `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/embeddings`, `GET /v1/models`, `POST /v1/config/update`, and `POST /v1/models/refresh`. See the [API reference](api-reference.md) for details.
+
+## Next steps
+
+Read the [API reference](api-reference.md) for the complete Client API, callback hooks, error types, and gateway endpoints.

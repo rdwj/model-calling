@@ -1,22 +1,11 @@
-# Documentation Files
+# Documentation files
 
-These documentation files provide detailed information on how to use the Model Calling API.
+Index of model-calling documentation.
 
-## Main Documentation
-
-- [Index](index.md) - Overview and introduction
-- [API Reference](api-reference.md) - Comprehensive API documentation
-- [Quickstart](quickstart.md) - Get up and running quickly
-- [Examples](examples.md) - Code examples for common use cases
-- [Migration Guide](migration-guide.md) - **Transitioning from local development to production**
-- [Testing Guide](testing.md) - **Testing with local Ollama models**
-- [Advanced Topics](advanced.md) - In-depth information for advanced users
-
-## PyPI Documentation
-
-- [PyPI README](../PYPI_README.md) - The README file for PyPI
-
-## Other Resources
-
-- [GitHub README](../README.md) - The main README file
-- [Examples Directory](../examples/) - Example scripts demonstrating usage
+- [index.md](index.md): Documentation landing page
+- [quickstart.md](quickstart.md): Get up and running
+- [api-reference.md](api-reference.md): Comprehensive API documentation
+- [examples.md](examples.md): Code examples for common use cases
+- [advanced.md](advanced.md): In-depth information
+- [migration-guide.md](migration-guide.md): Migrating from 0.1.x
+- [testing.md](testing.md): Running the test suite

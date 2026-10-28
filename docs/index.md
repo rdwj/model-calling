@@ -1,68 +1,46 @@
-# Model Calling Documentation
+# model-calling documentation
 
-Welcome to the Model Calling documentation. This guide will help you use the unified API for calling multiple LLM providers.
+An LLM client library for Python that speaks OpenAI Chat Completions and Anthropic Messages over Ollama, vLLM, OpenAI-compatible, and OpenRouter backends.
+
+## Install
+
+```bash
+pip install model-calling              # library only
+pip install 'model-calling[server]'    # adds the gateway (FastAPI + uvicorn)
+pip install 'model-calling[moderation]' # adds moderation endpoint (torch + transformers)
+```
+
+## Quick example
+
+```python
+from model_calling import Client
+
+client = Client()
+
+# Chat Completions (OpenAI format)
+response = client.completion(
+    "ollama/qwen3:4b",
+    [{"role": "user", "content": "What is the capital of France?"}]
+)
+print(response.choices[0].message.content)
+
+# Anthropic Messages
+message = client.messages(
+    "vllm/gpt-oss-20b",
+    [{"role": "user", "content": "What is the capital of France?"}],
+    max_tokens=256
+)
+# Reasoning models put a thinking block first; print the text.
+print(next(b.text for b in message.content if b.type == "text"))
+
+client.close()
+```
 
 ## Contents
 
-- [API Reference](api-reference.md) - Comprehensive API documentation
-- [Quickstart](quickstart.md) - Get up and running quickly
-- [Examples](examples.md) - Code examples for common use cases
-- [Migration Guide](migration-guide.md) - Transitioning from local development to production
-- [Testing Guide](testing.md) - Testing the service with local models
-- [Advanced Topics](advanced.md) - In-depth information for advanced users
-
-## What is Model Calling?
-
-Model Calling is a unified API that allows you to interact with multiple Large Language Models (LLMs) through a consistent interface. Whether you're using local models via Ollama, cluster-deployed models with vLLM, or hosted models from providers like OpenAI and Anthropic, Model Calling provides a single, OpenAI-compatible API.
-
-### Key Features
-
-- **Unified API**: Call any supported model using the same code
-- **Function Calling**: Tool/function calling support across models  
-- **Streaming Support**: Efficient streaming responses
-- **Multiple Providers**: Support for Ollama, vLLM, OpenAI, Anthropic, Cohere, and more
-- **Python Client**: Easy-to-use synchronous and asynchronous clients
-- **Runtime Configuration**: Update model settings without restarting
-
-### Supported Providers
-
-| Provider | Description | Example Models |
-|----------|-------------|----------------|
-| Ollama | Local models | mistral-small3.1, llama3, qwen |
-| vLLM | Cluster-deployed models | Any model deployed with vLLM |
-| OpenAI | OpenAI API | gpt-4, gpt-3.5-turbo |
-| Anthropic | Anthropic API | claude-3-opus, claude-3-sonnet |
-| Cohere | Cohere API | command, command-r |
-
-## Installation
-
-```bash
-pip install model-calling
-```
-
-## Quick Example
-
-```python
-from model_calling.client import SyncModelCallingClient
-
-client = SyncModelCallingClient()
-
-try:
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=[
-            {"role": "user", "content": "What is quantum computing?"}
-        ]
-    )
-    
-    print(response["choices"][0]["message"]["content"])
-finally:
-    client.close()
-```
-
-## Next Steps
-
-- Read the [API Reference](api-reference.md) for comprehensive documentation
-- See the [Quickstart](quickstart.md) guide to get up and running
-- Explore [Examples](examples.md) for code samples of common patterns
-- Check out [Advanced Topics](advanced.md) for in-depth information
+- [Quickstart](quickstart.md): Get up and running
+- [API Reference](api-reference.md): Comprehensive API documentation
+- [Examples](examples.md): Code examples for common use cases
+- [Advanced Topics](advanced.md): In-depth information
+- [Migration Guide](migration-guide.md): Migrating from 0.1.x
+- [Testing Guide](testing.md): Running the test suite

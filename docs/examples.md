@@ -1,889 +1,531 @@
 # Code Examples
 
-This page provides practical code examples for common use cases with the Model Calling API.
+Practical examples for common use cases with the model-calling library. Every example uses `model_calling.Client` directly in process. For gateway-only deployments, point the official `openai` or `anthropic` SDKs at the gateway instead (see the last section).
 
 ## Basic Chat Completion
 
-Simple example of generating a text response from a model.
+A simple synchronous call to get a completion. The response is a typed `ChatCompletion` object with attribute access.
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import Client
 
-client = SyncModelCallingClient()
-
-try:
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
+with Client() as client:
+    response = client.completion(
+        model="ollama/qwen3:4b",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Explain the concept of neural networks in simple terms."}
+            {"role": "user", "content": "Explain neural networks in two sentences."}
         ],
         temperature=0.7
     )
     
-    print(response["choices"][0]["message"]["content"])
-finally:
-    client.close()
+    print(response.choices[0].message.content)
 ```
 
-## Multi-turn Conversation
+## Multi-Turn Conversation
 
-Example of a multi-turn conversation with the model.
+Build a conversation history by appending messages. The library does not track state; you manage the history yourself.
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import Client
 
-client = SyncModelCallingClient()
-
-try:
-    # Conversation history
+with Client() as client:
     messages = [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "What are the three laws of robotics?"}
     ]
     
-    # First user turn
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=messages
-    )
+    response = client.completion(model="ollama/qwen3:4b", messages=messages)
+    assistant_msg = {"role": "assistant", "content": response.choices[0].message.content}
+    messages.append(assistant_msg)
+    print("Assistant:", assistant_msg["content"])
     
-    assistant_message = response["choices"][0]["message"]
-    messages.append(assistant_message)
-    print("Assistant:", assistant_message["content"])
-    
-    # Second user turn
     messages.append({"role": "user", "content": "Who created these laws?"})
-    
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=messages
-    )
-    
-    assistant_message = response["choices"][0]["message"]
-    messages.append(assistant_message)
-    print("Assistant:", assistant_message["content"])
-    
-    # Third user turn
-    messages.append({"role": "user", "content": "What year were they published?"})
-    
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=messages
-    )
-    
-    assistant_message = response["choices"][0]["message"]
-    print("Assistant:", assistant_message["content"])
-finally:
-    client.close()
+    response = client.completion(model="ollama/qwen3:4b", messages=messages)
+    print("Assistant:", response.choices[0].message.content)
 ```
 
-## Streaming Response
+## Streaming Chat Completions
 
-Example of streaming a response from the model.
+Stream a Chat Completions response asynchronously. Chunks arrive as `ChatCompletionChunk` objects; extract text from `delta.content`.
 
 ```python
 import asyncio
-from model_calling.client import ModelCallingClient
+from model_calling import Client
 
-async def stream_example():
-    client = ModelCallingClient()
-    
-    try:
-        stream = await client.chat_completion(
-            model="ollama/mistral-small3.1:24b",
+async def stream_completion():
+    async with Client() as client:
+        stream = await client.acompletion(
+            model="ollama/qwen3:4b",
             messages=[
-                {"role": "system", "content": "You are a creative assistant."},
-                {"role": "user", "content": "Write a short poem about artificial intelligence."}
+                {"role": "user", "content": "Write a haiku about recursion."}
             ],
             stream=True
         )
         
-        # Process streaming chunks
-        full_response = ""
-        print("Streaming response:")
+        full_text = ""
         async for chunk in stream:
-            if "choices" in chunk and len(chunk["choices"]) > 0:
-                delta = chunk["choices"][0].get("delta", {})
-                if "content" in delta and delta["content"]:
-                    content = delta["content"]
-                    print(content, end="", flush=True)
-                    full_response += content
-        
-        print("\n\nFull response:")
-        print(full_response)
-    finally:
-        await client.close()
+            if chunk.choices and chunk.choices[0].delta.content:
+                text = chunk.choices[0].delta.content
+                print(text, end="", flush=True)
+                full_text += text
+        print("\n")
+        return full_text
 
-# Run the async function
-asyncio.run(stream_example())
+asyncio.run(stream_completion())
 ```
 
-## Function Calling
+## Streaming Anthropic Messages
 
-Example of using function calling to get external data.
+Stream an Anthropic Messages response. Events arrive as typed objects (`MessageStartEvent`, `ContentBlockDeltaEvent`, and so on). Text comes in `ContentBlockDeltaEvent` where `delta.type == "text_delta"`.
 
 ```python
-from model_calling.client import SyncModelCallingClient
+import asyncio
+from model_calling import Client
+from model_calling.types.messages import ContentBlockDeltaEvent
+
+async def stream_messages():
+    async with Client() as client:
+        stream = await client.amessages(
+            model="ollama/qwen3:4b",
+            messages=[
+                {"role": "user", "content": "Explain photosynthesis in one paragraph."}
+            ],
+            max_tokens=1024,
+            stream=True
+        )
+        
+        async for event in stream:
+            if isinstance(event, ContentBlockDeltaEvent) and event.delta.type == "text_delta":
+                print(event.delta.text, end="", flush=True)
+        print("\n")
+
+asyncio.run(stream_messages())
+```
+
+## Function Calling with Chat Completions
+
+A complete tool loop: the model requests a tool call via `tool_calls`, you run the tool, send the result back as a message with `role="tool"`, and get the final answer. This example uses the Chat Completions format.
+
+```python
 import json
+from model_calling import Client
 
-# Define a function to get weather data (in a real app, this would call a weather API)
 def get_weather(location):
-    print(f"Getting weather for {location}...")
-    # Simulated weather data
-    return {
-        "location": location,
-        "temperature": 22,
-        "unit": "celsius",
-        "description": "Partly cloudy",
-        "humidity": 65
-    }
+    return {"location": location, "temperature": 22, "unit": "celsius", "description": "Sunny"}
 
-client = SyncModelCallingClient()
+with Client() as client:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather for a location",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string", "description": "City name"}
+                    },
+                    "required": ["location"]
+                }
+            }
+        }
+    ]
+    
+    messages = [{"role": "user", "content": "What's the weather in Tokyo?"}]
+    response = client.completion(model="ollama/qwen3:4b", messages=messages, tools=tools)
+    
+    message = response.choices[0].message
+    if message.tool_calls:
+        tool_call = message.tool_calls[0]
+        function_name = tool_call.function.name
+        arguments = json.loads(tool_call.function.arguments)
+        
+        result = get_weather(arguments["location"])
+        
+        messages.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": tool_call.id, "type": "function", "function": {"name": function_name, "arguments": tool_call.function.arguments}}]
+        })
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": json.dumps(result)
+        })
+        
+        final_response = client.completion(model="ollama/qwen3:4b", messages=messages)
+        print(final_response.choices[0].message.content)
+    else:
+        print(message.content)
+```
 
-# Define tool schema
-tools = [
-    {
-        "type": "function",
-        "function": {
+## Function Calling with Messages API
+
+The same tool loop using the Anthropic Messages format. The model returns `tool_use` blocks in `content`; you send back `tool_result` blocks in a user message. Send the whole assistant content back (including thinking blocks) when building the conversation history.
+
+```python
+import json
+from model_calling import Client
+
+def get_weather(location):
+    return {"location": location, "temperature": 15, "unit": "celsius", "description": "Cloudy"}
+
+with Client() as client:
+    tools = [
+        {
             "name": "get_weather",
-            "description": "Get current weather in a location",
-            "parameters": {
+            "description": "Get current weather for a location",
+            "input_schema": {
                 "type": "object",
                 "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name"
-                    }
+                    "location": {"type": "string", "description": "City name"}
                 },
                 "required": ["location"]
             }
         }
-    }
-]
-
-try:
-    # Initial request that may trigger function calling
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=[
-            {"role": "user", "content": "What's the weather like in Tokyo today?"}
-        ],
-        tools=tools
-    )
+    ]
     
-    # Check if the model wants to call a function
-    message = response["choices"][0]["message"]
-    if "function_call" in message:
-        # Extract function call details
-        function_name = message["function_call"]["name"]
-        arguments = json.loads(message["function_call"]["arguments"])
+    messages = [{"role": "user", "content": "What's the weather in London?"}]
+    response = client.messages(model="ollama/qwen3:4b", messages=messages, max_tokens=1024, tools=tools)
+    
+    tool_use_blocks = [block for block in response.content if block.type == "tool_use"]
+    if tool_use_blocks:
+        block = tool_use_blocks[0]
+        result = get_weather(block.input["location"])
         
-        print(f"Function call requested: {function_name}")
-        print(f"Arguments: {arguments}")
-        
-        # Execute the function
-        if function_name == "get_weather":
-            function_result = get_weather(arguments["location"])
-        else:
-            function_result = {"error": f"Unknown function: {function_name}"}
-        
-        # Continue the conversation with the function result
-        final_response = client.chat_completion(
-            model="ollama/mistral-small3.1:24b",
-            messages=[
-                {"role": "user", "content": "What's the weather like in Tokyo today?"},
+        # Send the blocks back as wire dicts.
+        messages.append({"role": "assistant", "content": [b.to_dict() for b in response.content]})
+        messages.append({
+            "role": "user",
+            "content": [
                 {
-                    "role": "assistant", 
-                    "content": "", 
-                    "function_call": {
-                        "name": function_name,
-                        "arguments": json.dumps(arguments)
-                    }
-                },
-                {
-                    "role": "function", 
-                    "name": function_name, 
-                    "content": json.dumps(function_result)
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(result)
                 }
             ]
-        )
+        })
         
-        print("\nFinal response:")
-        print(final_response["choices"][0]["message"]["content"])
+        final_response = client.messages(model="ollama/qwen3:4b", messages=messages, max_tokens=1024)
+        text = next((b.text for b in final_response.content if b.type == "text"), "")
+        print(text)
     else:
-        print(message["content"])
-finally:
-    client.close()
+        text = next((b.text for b in response.content if b.type == "text"), "")
+        print(text)
 ```
 
-## Multiple Function Calls
+## Comparing Models Across Backends
 
-Example of handling multiple function calls in a conversation.
+Call different backends with the same prompt. Model routing uses `prefix/name`, with unprefixed names going to Ollama.
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import Client
+
+query = "What is a hash table?"
+
+models = [
+    "ollama/qwen3:4b",
+    "vllm/gpt-oss-20b",
+    "openrouter/mistralai/mistral-nemo"
+]
+
+with Client() as client:
+    for model in models:
+        try:
+            response = client.completion(
+                model=model,
+                messages=[{"role": "user", "content": query}],
+                temperature=0.5
+            )
+            print(f"{model}:")
+            print(response.choices[0].message.content)
+            print("-" * 50)
+        except Exception as e:
+            print(f"{model}: {e}")
+            print("-" * 50)
+```
+
+## Small Agent Loop
+
+An agent that calls tools until it gets a text answer. This example limits the loop to five iterations and uses the Chat Completions format.
+
+```python
 import json
+from model_calling import Client
 
-# Define our tool functions
-def get_current_weather(location):
-    # Simulate weather API call
-    return {
-        "location": location,
-        "temperature": 22,
-        "unit": "celsius",
-        "description": "Partly cloudy"
-    }
+def get_time():
+    from datetime import datetime
+    return {"time": datetime.now().strftime("%H:%M:%S")}
 
-def get_population(city):
-    # Simulate population API call
-    populations = {
-        "Tokyo": 37.4,
-        "New York": 8.8,
-        "London": 9.0,
-        "Paris": 2.2,
-        "Sydney": 5.3
-    }
-    return {
-        "city": city,
-        "population": populations.get(city, "unknown"),
-        "unit": "million"
-    }
+def calculate(expression):
+    try:
+        return {"result": eval(expression, {"__builtins__": {}})}
+    except Exception as e:
+        return {"error": str(e)}
 
-# Tool definitions
 tools = [
     {
         "type": "function",
         "function": {
-            "name": "get_current_weather",
-            "description": "Get current weather in a location",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name"
-                    }
-                },
-                "required": ["location"]
-            }
+            "name": "get_time",
+            "description": "Get the current time",
+            "parameters": {"type": "object", "properties": {}}
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "get_population",
-            "description": "Get the population of a city",
+            "name": "calculate",
+            "description": "Evaluate a mathematical expression",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "City name"
-                    }
-                },
-                "required": ["city"]
+                "properties": {"expression": {"type": "string"}},
+                "required": ["expression"]
             }
         }
     }
 ]
 
-client = SyncModelCallingClient()
+tool_map = {"get_time": get_time, "calculate": calculate}
 
-try:
-    # Start conversation
-    messages = [
-        {"role": "user", "content": "I'm planning a trip to Tokyo. Can you tell me about the weather and population there?"}
-    ]
+with Client() as client:
+    messages = [{"role": "user", "content": "What time is it, and what is 123 times 456?"}]
     
-    # Process multiple turns with function calls
-    max_turns = 3
-    current_turn = 0
-    
-    while current_turn < max_turns:
-        response = client.chat_completion(
-            model="ollama/mistral-small3.1:24b",
-            messages=messages,
-            tools=tools
-        )
+    for _ in range(5):
+        response = client.completion(model="ollama/qwen3:4b", messages=messages, tools=tools)
+        message = response.choices[0].message
         
-        assistant_message = response["choices"][0]["message"]
-        messages.append(assistant_message)
-        
-        # Check if function call was requested
-        if "function_call" in assistant_message:
-            function_name = assistant_message["function_call"]["name"]
-            arguments = json.loads(assistant_message["function_call"]["arguments"])
-            
-            print(f"\nFunction call: {function_name}")
-            print(f"Arguments: {arguments}")
-            
-            # Call the appropriate function
-            if function_name == "get_current_weather":
-                result = get_current_weather(arguments["location"])
-            elif function_name == "get_population":
-                result = get_population(arguments["city"])
-            else:
-                result = {"error": f"Unknown function: {function_name}"}
-            
-            # Add function result to messages
-            function_message = {
-                "role": "function",
-                "name": function_name,
-                "content": json.dumps(result)
-            }
-            messages.append(function_message)
-            print(f"Function result: {result}")
-        else:
-            # No function call, just a regular message
-            print(f"\nAssistant: {assistant_message['content']}")
+        if not message.tool_calls:
+            print(message.content)
             break
         
-        current_turn += 1
-    
-    # If we used up all turns but still haven't gotten a final answer
-    if current_turn == max_turns:
-        # Get final synthesis with all the function results
-        final_response = client.chat_completion(
-            model="ollama/mistral-small3.1:24b",
-            messages=messages
-        )
-        
-        print(f"\nFinal answer: {final_response['choices'][0]['message']['content']}")
-finally:
-    client.close()
-```
-
-## Comparing Models
-
-Example of comparing responses from different models.
-
-```python
-from model_calling.client import SyncModelCallingClient
-
-client = SyncModelCallingClient()
-
-# Function to get response from a model
-def get_model_response(model, query):
-    response = client.chat_completion(
-        model=model,
-        messages=[
-            {"role": "user", "content": query}
-        ]
-    )
-    return response["choices"][0]["message"]["content"]
-
-try:
-    # The query to compare
-    query = "Explain how transformers work in deep learning in 3-4 sentences."
-    
-    # Compare models
-    models = [
-        "ollama/mistral-small3.1:24b",
-        "ollama/llama3:8b",
-        "openai/gpt-4-turbo",
-        "anthropic/claude-3-sonnet-20240229"
-    ]
-    
-    print(f"Query: {query}\n")
-    
-    for model in models:
-        try:
-            response = get_model_response(model, query)
-            print(f"{model}:\n{response}\n{'-'*50}\n")
-        except Exception as e:
-            print(f"{model}: Error - {str(e)}\n{'-'*50}\n")
-finally:
-    client.close()
-```
-
-## Using REST API Directly
-
-Example of using the REST API without the client library.
-
-```python
-import requests
-import json
-
-# Function calling example with direct REST API
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get current weather in a location",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name"
-                    }
-                },
-                "required": ["location"]
-            }
-        }
-    }
-]
-
-# Initial request
-response = requests.post(
-    "http://localhost:8000/v1/chat/completions",
-    json={
-        "model": "ollama/mistral-small3.1:24b",
-        "messages": [
-            {"role": "user", "content": "What's the weather in San Francisco?"}
-        ],
-        "tools": tools
-    }
-)
-
-data = response.json()
-message = data["choices"][0]["message"]
-
-# Check for function call
-if "function_call" in message:
-    function_name = message["function_call"]["name"]
-    arguments = json.loads(message["function_call"]["arguments"])
-    
-    print(f"Function call: {function_name}")
-    print(f"Arguments: {arguments}")
-    
-    # Simulate function call
-    weather_data = {
-        "temperature": 15,
-        "unit": "celsius",
-        "description": "Foggy and cool"
-    }
-    
-    # Continue conversation with function result
-    response = requests.post(
-        "http://localhost:8000/v1/chat/completions",
-        json={
-            "model": "ollama/mistral-small3.1:24b",
-            "messages": [
-                {"role": "user", "content": "What's the weather in San Francisco?"},
-                {
-                    "role": "assistant",
-                    "content": "",
-                    "function_call": {
-                        "name": function_name,
-                        "arguments": json.dumps(arguments)
-                    }
-                },
-                {
-                    "role": "function",
-                    "name": function_name,
-                    "content": json.dumps(weather_data)
-                }
+        messages.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in message.tool_calls
             ]
-        }
-    )
-    
-    final_data = response.json()
-    print("\nFinal response:")
-    print(final_data["choices"][0]["message"]["content"])
-else:
-    print(message["content"])
-```
-
-## Building an Agent
-
-Example of building a simple agent that can use multiple functions.
-
-```python
-from model_calling.client import SyncModelCallingClient
-import json
-import datetime
-
-class SimpleAgent:
-    def __init__(self):
-        self.client = SyncModelCallingClient()
-        self.model = "ollama/mistral-small3.1:24b"
-        self.messages = []
-        self.tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_current_time",
-                    "description": "Get the current time",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get weather for a location",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "City name"
-                            }
-                        },
-                        "required": ["location"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "calculate",
-                    "description": "Perform a calculation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "expression": {
-                                "type": "string",
-                                "description": "Mathematical expression to calculate"
-                            }
-                        },
-                        "required": ["expression"]
-                    }
-                }
-            }
-        ]
+        })
         
-        # Tool implementation map
-        self.tool_map = {
-            "get_current_time": self._get_current_time,
-            "get_weather": self._get_weather,
-            "calculate": self._calculate
-        }
-    
-    def _get_current_time(self, args=None):
-        """Get the current time"""
-        now = datetime.datetime.now()
-        return {
-            "time": now.strftime("%H:%M:%S"),
-            "date": now.strftime("%Y-%m-%d")
-        }
-    
-    def _get_weather(self, args):
-        """Simulate getting weather data"""
-        location = args.get("location", "unknown")
-        return {
-            "location": location,
-            "temperature": 22,
-            "unit": "celsius",
-            "description": "Partly cloudy"
-        }
-    
-    def _calculate(self, args):
-        """Perform a calculation"""
-        expression = args.get("expression", "")
-        try:
-            result = eval(expression, {"__builtins__": {}})
-            return {"result": result}
-        except Exception as e:
-            return {"error": f"Error calculating: {str(e)}"}
-    
-    def chat(self, user_message):
-        """Process a user message and generate a response"""
-        # Add user message to history
-        self.messages.append({"role": "user", "content": user_message})
-        
-        # Get response from model
-        response = self.client.chat_completion(
-            model=self.model,
-            messages=self.messages,
-            tools=self.tools
-        )
-        
-        assistant_message = response["choices"][0]["message"]
-        self.messages.append(assistant_message)
-        
-        # Check if function call was requested
-        if "function_call" in assistant_message:
-            # Process function call
-            return self._process_function_call()
-        else:
-            # Return text response
-            return assistant_message["content"]
-    
-    def _process_function_call(self):
-        """Process function calls, possibly multiple in a row"""
-        max_function_calls = 5
-        num_calls = 0
-        
-        while num_calls < max_function_calls:
-            # Get the latest assistant message
-            assistant_message = self.messages[-1]
-            
-            # Check if it's a function call
-            if "function_call" not in assistant_message:
-                # Got a regular message, return it
-                return assistant_message["content"]
-            
-            # Extract function details
-            function_name = assistant_message["function_call"]["name"]
-            arguments_str = assistant_message["function_call"]["arguments"]
-            arguments = json.loads(arguments_str)
-            
-            # Call the function
-            if function_name in self.tool_map:
-                function_result = self.tool_map[function_name](arguments)
-            else:
-                function_result = {"error": f"Unknown function: {function_name}"}
-            
-            # Add function result to messages
-            self.messages.append({
-                "role": "function",
-                "name": function_name,
-                "content": json.dumps(function_result)
-            })
-            
-            # Get next response from model
-            response = self.client.chat_completion(
-                model=self.model,
-                messages=self.messages,
-                tools=self.tools
-            )
-            
-            assistant_message = response["choices"][0]["message"]
-            self.messages.append(assistant_message)
-            
-            num_calls += 1
-        
-        # If we hit the limit, return whatever we have
-        return assistant_message["content"]
-    
-    def close(self):
-        """Clean up resources"""
-        self.client.close()
-
-# Example usage
-agent = SimpleAgent()
-
-try:
-    print("Agent: Hello! How can I help you today?")
-    
-    # Example queries
-    queries = [
-        "What time is it?",
-        "What's the weather in Tokyo?",
-        "What's 123 * 456?",
-        "If it's 22°C in Tokyo, what would that be in Fahrenheit?"
-    ]
-    
-    for query in queries:
-        print(f"\nUser: {query}")
-        response = agent.chat(query)
-        print(f"Agent: {response}")
-finally:
-    agent.close()
-```
-
-## Choosing Between Providers
-
-Example of how to choose the best provider for a specific task:
-
-```python
-from model_calling.client import SyncModelCallingClient
-
-# Provider selection logic
-def select_provider(task_type, content_length=None, importance=None):
-    """Select the best provider/model for a specific task"""
-    
-    if task_type == "creative":
-        if importance == "high":
-            return "anthropic/claude-3-opus-20240229"
-        else:
-            return "ollama/llama3:8b"
-    
-    elif task_type == "coding":
-        if content_length == "long":
-            return "openai/gpt-4-turbo"
-        else:
-            return "ollama/codellama:7b"
-    
-    elif task_type == "factual":
-        return "anthropic/claude-3-sonnet-20240229"
-    
-    else:  # Default
-        return "ollama/mistral-small3.1:24b"
-
-client = SyncModelCallingClient()
-
-try:
-    # Example tasks
-    tasks = [
-        {"type": "creative", "query": "Write a short poem about AI", "importance": "low"},
-        {"type": "coding", "query": "Write a Python function to calculate Fibonacci numbers", "content_length": "short"},
-        {"type": "factual", "query": "Explain how quantum computing works"}
-    ]
-    
-    for task in tasks:
-        # Select the appropriate provider
-        provider_model = select_provider(
-            task["type"], 
-            task.get("content_length"), 
-            task.get("importance")
-        )
-        
-        print(f"\nTask: {task['query']}")
-        print(f"Selected model: {provider_model}")
-        
-        # Call the model
-        response = client.chat_completion(
-            model=provider_model,
-            messages=[
-                {"role": "user", "content": task["query"]}
-            ]
-        )
-        
-        print("Response:")
-        print(response["choices"][0]["message"]["content"])
-        print("-" * 50)
-finally:
-    client.close()
+        for tool_call in message.tool_calls:
+            fn_name = tool_call.function.name
+            args = json.loads(tool_call.function.arguments)
+            result = tool_map[fn_name](**args) if fn_name in tool_map else {"error": "unknown function"}
+            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps(result)})
 ```
 
 ## Error Handling
 
-Example of robust error handling:
+The library raises typed exceptions. Check the type to handle specific errors, or catch `APIError` for all of them. `UnsupportedParamsError` names parameters the backend cannot honor; pass `drop_params=True` to send the request without them.
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import Client
+from model_calling.errors import (
+    UnsupportedParamsError, NotFoundError, RateLimitError,
+    APIConnectionError, BadRequestError
+)
 
-client = SyncModelCallingClient()
+tools = [{"type": "function", "function": {"name": "get_time", "parameters": {"type": "object", "properties": {}}}}]
+request = {
+    "model": "ollama/qwen3:4b",
+    "messages": [{"role": "user", "content": "What time is it?"}],
+    "tools": tools,
+    "tool_choice": "required",  # Ollama can't force a tool call
+}
 
-def run_with_fallbacks(query, models):
-    """Try to get a response from multiple models with fallbacks"""
-    last_error = None
-    
-    for model in models:
-        try:
-            response = client.chat_completion(
-                model=model,
-                messages=[
-                    {"role": "user", "content": query}
-                ],
-                timeout=10.0  # Set a timeout for the request
-            )
-            
-            # If we get here, the request was successful
-            return {
-                "success": True,
-                "model": model,
-                "content": response["choices"][0]["message"]["content"]
-            }
-        
-        except Exception as e:
-            print(f"Error with model {model}: {str(e)}")
-            last_error = str(e)
-            # Continue to the next model
-    
-    # If we get here, all models failed
-    return {
-        "success": False,
-        "error": last_error
-    }
-
-try:
-    # Query to run
-    query = "What are three interesting scientific discoveries in the last decade?"
-    
-    # Model fallback chain
-    fallback_chain = [
-        "ollama/mistral-small3.1:24b",  # First choice: local model
-        "openai/gpt-3.5-turbo",         # Fallback 1: cheaper API model 
-        "anthropic/claude-3-haiku-20240307"  # Fallback 2: another provider
-    ]
-    
-    result = run_with_fallbacks(query, fallback_chain)
-    
-    if result["success"]:
-        print(f"Successful response from {result['model']}:")
-        print(result["content"])
-    else:
-        print(f"All models failed. Last error: {result['error']}")
-finally:
-    client.close()
+with Client() as client:
+    try:
+        response = client.completion(**request)
+    except UnsupportedParamsError as e:
+        print(f"Unsupported params: {e.params}")
+        print("Retrying with drop_params=True")
+        response = client.completion(**request, drop_params=True)
+        print(response.choices[0].message.content)
+    except NotFoundError as e:
+        print(f"Model not found: {e.message} (status {e.status})")
+    except RateLimitError as e:
+        print(f"Rate limited: {e.message}")
+    except APIConnectionError as e:
+        print(f"Connection failed: {e.message} (status: {e.status})")
+    except BadRequestError as e:
+        print(f"Bad request: {e.message}")
 ```
 
-## Batch Processing
+## Batch Processing with asyncio
 
-Example of processing multiple queries in parallel:
+Process multiple requests in parallel using `asyncio.gather`. One client can serve many concurrent calls; connections pool per prefix and per event loop.
 
 ```python
 import asyncio
-from model_calling.client import ModelCallingClient
+from model_calling import Client
 
-async def process_queries(queries, model):
-    """Process multiple queries in parallel"""
-    client = ModelCallingClient()
-    
-    try:
-        # Create tasks for all queries
-        tasks = []
-        for query in queries:
-            task = asyncio.create_task(client.chat_completion(
-                model=model,
-                messages=[
-                    {"role": "user", "content": query}
-                ]
-            ))
-            tasks.append(task)
-        
-        # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Process results
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                # Handle error
-                processed_results.append({
-                    "query": queries[i],
-                    "success": False,
-                    "error": str(result)
-                })
-            else:
-                # Process successful response
-                processed_results.append({
-                    "query": queries[i],
-                    "success": True,
-                    "content": result["choices"][0]["message"]["content"]
-                })
-        
-        return processed_results
-    
-    finally:
-        await client.close()
-
-# Example usage
-async def main():
-    # List of queries to process
+async def batch_completions():
     queries = [
         "What is machine learning?",
-        "Explain quantum computing",
+        "Explain quantum computing.",
         "What is the capital of France?",
-        "How does photosynthesis work?",
-        "What is the Pythagorean theorem?"
+        "How does photosynthesis work?"
     ]
     
-    # Process queries in parallel
-    results = await process_queries(queries, "ollama/mistral-small3.1:24b")
-    
-    # Display results
-    for i, result in enumerate(results):
-        print(f"\nQuery {i+1}: {result['query']}")
-        if result['success']:
-            print(f"Response: {result['content'][:100]}...")  # First 100 chars
-        else:
-            print(f"Error: {result['error']}")
+    async with Client() as client:
+        tasks = [
+            client.acompletion(
+                model="ollama/qwen3:4b",
+                messages=[{"role": "user", "content": q}]
+            )
+            for q in queries
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for query, result in zip(queries, results):
+            if isinstance(result, Exception):
+                print(f"Query: {query}\nError: {result}\n")
+            else:
+                print(f"Query: {query}\nResponse: {result.choices[0].message.content}\n")
 
-# Run the async function
+asyncio.run(batch_completions())
+```
+
+## Embeddings with Cosine Similarity
+
+Generate embeddings and search for the most similar text. The response is a typed `CreateEmbeddingResponse` with `.data[i].embedding` as a list of floats.
+
+```python
+from model_calling import Client
+
+def cosine_similarity(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
+    return dot / (norm_a * norm_b)
+
+corpus = [
+    "The cat sat on the mat.",
+    "A dog ran in the park.",
+    "Machine learning is a subset of artificial intelligence.",
+    "Deep learning uses neural networks with many layers."
+]
+
+query = "What is AI?"
+
+with Client() as client:
+    corpus_response = client.embedding(model="ollama/nomic-embed-text", input=corpus)
+    query_response = client.embedding(model="ollama/nomic-embed-text", input=query)
+    
+    corpus_embeddings = [item.embedding for item in corpus_response.data]
+    query_embedding = query_response.data[0].embedding
+    
+    scores = [cosine_similarity(query_embedding, emb) for emb in corpus_embeddings]
+    
+    best_idx = max(range(len(scores)), key=lambda i: scores[i])
+    print(f"Query: {query}")
+    print(f"Best match: {corpus[best_idx]} (score: {scores[best_idx]:.3f})")
+```
+
+## Using the Gateway from Official SDKs
+
+Point the official `openai` or `anthropic` SDK at the gateway instead of using the library directly. Install the gateway with `pip install 'model-calling[server]'` and start it with `model-calling`.
+
+```python
+import openai
+import anthropic
+
+openai_client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+response = openai_client.chat.completions.create(
+    model="ollama/qwen3:4b",
+    messages=[{"role": "user", "content": "Hello from the openai SDK"}]
+)
+print(response.choices[0].message.content)
+
+anthropic_client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
+message = anthropic_client.messages.create(
+    model="ollama/qwen3:4b",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello from the anthropic SDK"}]
+)
+print(next(b.text for b in message.content if b.type == "text"))
+```
+
+The gateway serves `POST /v1/chat/completions`, `POST /v1/messages`, and `POST /v1/embeddings`. It reads backend credentials from its environment (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and so on) and does not check client keys. Requests that include `api_base`, `api_key`, or `drop_params` in the body are rejected with a 400. The gateway drops unsupported parameters by default; set `MODEL_CALLING_STRICT_PARAMS=true` in the environment to raise 400 errors instead.
+
+## Gateway with curl
+
+A minimal example calling the gateway directly. The response follows the Chat Completions format.
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ollama/qwen3:4b",
+    "messages": [{"role": "user", "content": "Hello from curl"}]
+  }'
+```
+
+For streaming, add `"stream": true` and parse the SSE lines. Chat Completions streams end with `data: [DONE]`; Messages streams use `event:` and `data:` lines and end with a `message_stop` event.
+
+## Using Callbacks
+
+Subclass `Callback` and override the async hooks you need. Pass instances to `Client(callbacks=[...])` or per-prefix in `config`. A callback that raises is logged and ignored; it never changes the outcome of a request.
+
+```python
+import asyncio
+from model_calling import Client
+from model_calling.callbacks import Callback
+
+class LoggingCallback(Callback):
+    async def on_request_start(self, model, messages, **kwargs):
+        print(f"Request starting for model: {model}")
+    
+    async def on_request_end(self, model, messages, response, **kwargs):
+        if kwargs.get("cancelled"):
+            print(f"Request to {model} was cancelled early")
+        else:
+            print(f"Request to {model} completed")
+    
+    async def on_error(self, model, messages, error, **kwargs):
+        print(f"Error with {model}: {error}")
+
+async def main():
+    async with Client(callbacks=[LoggingCallback()]) as client:
+        response = await client.acompletion(
+            model="ollama/qwen3:4b",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        print(response.choices[0].message.content)
+
 asyncio.run(main())
 ```
 
-## More Examples
+Every request ends with exactly one `on_request_end` or `on_error`. Streams call `on_stream_chunk` for each internal event before it is yielded. A stream stopped early (via `break` or task cancellation) gets `on_request_end(cancelled=True)`, not `on_error`.
 
-For more examples, see the [examples directory](https://github.com/rdwj/model-calling/tree/main/examples) in the repository.
+## Overriding Configuration per Call
+
+Override `api_base` or `api_key` on individual calls, or set them client-wide via `config`.
+
+```python
+from model_calling import Client
+
+config = {
+    "vllm": {"base_url": "http://192.168.1.100:8000/v1"},
+    "openrouter": {"api_key": "sk-or-v1-custom-key"}
+}
+
+with Client(config=config) as client:
+    response = client.completion(
+        model="vllm/gpt-oss-20b",
+        messages=[{"role": "user", "content": "Hello"}]
+    )
+    print(response.choices[0].message.content)
+    
+    response = client.completion(
+        model="openrouter/mistralai/mistral-nemo",
+        messages=[{"role": "user", "content": "Hello"}],
+        api_key="sk-or-v1-override"
+    )
+    print(response.choices[0].message.content)
+```
+
+The `config` parameter maps a prefix to settings merged over the defaults: `base_url`, `api_key`, `headers`, `callbacks`, and `transport` (an httpx transport, mostly for tests). Per-call `api_base` and `api_key` override both the client config and environment variables.

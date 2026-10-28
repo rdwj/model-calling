@@ -1,206 +1,190 @@
-# Model Calling
+# model-calling
 
 [![PyPI version](https://badge.fury.io/py/model-calling.svg)](https://badge.fury.io/py/model-calling)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A unified API for calling multiple LLM providers through a consistent, OpenAI-compatible interface.
+An LLM client library for Python that speaks OpenAI Chat Completions and Anthropic Messages over Ollama, vLLM, OpenAI-compatible, and OpenRouter backends. Use it in-process or as a gateway.
 
-## Key Features
-
-- 🔄 **OpenAI-compatible API**: Uses the familiar chat completions format
-- ☎️ **Multiple Backends**: Support for Ollama, vLLM, OpenAI, Anthropic, Cohere, and more
-- 🛠️ **Function Calling**: Unified support for tools/function calling across models
-- 📊 **Streaming Support**: Efficient streaming for all supported models
-- 🔧 **Runtime Configuration**: Adjust model settings without restarting
-- 📦 **Importable Library**: Can be used as a service or imported library
-
-## Installation
+## Install
 
 ```bash
-pip install model-calling
+pip install model-calling              # library only
+pip install 'model-calling[server]'    # adds the gateway (FastAPI + uvicorn)
+pip install 'model-calling[moderation]' # adds moderation endpoint (torch + transformers)
 ```
 
-## Quick Example
+The library depends on httpx and pydantic. Importing it never loads FastAPI and never reads `.env`.
+
+## Quick start
 
 ```python
-from model_calling.client import SyncModelCallingClient
+from model_calling import Client
 
-client = SyncModelCallingClient()
+client = Client()
 
-try:
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",  # Use any model from any provider
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "What is machine learning?"}
-        ]
-    )
-    
-    print(response["choices"][0]["message"]["content"])
-finally:
-    client.close()
+# Chat Completions (OpenAI format)
+response = client.completion(
+    "ollama/qwen3:4b",
+    [{"role": "user", "content": "What is the capital of France?"}]
+)
+print(response.choices[0].message.content)
+
+# Anthropic Messages
+message = client.messages(
+    "vllm/gpt-oss-20b",
+    [{"role": "user", "content": "What is the capital of France?"}],
+    max_tokens=256
+)
+# Reasoning models put a thinking block first; print the text.
+print(next(b.text for b in message.content if b.type == "text"))
+
+# Embeddings
+vectors = client.embedding("ollama/nomic-embed-text", ["hello", "world"])
+print(vectors.data[0].embedding[:5])
+
+client.close()
 ```
 
-## Supported Providers
-
-| Provider | Prefix | Example Models |
-|----------|--------|----------------|
-| Ollama (local) | ollama/ | mistral-small3.1, llama3, qwen |
-| vLLM (cluster) | vllm/ | Any model deployed with vLLM |
-| OpenAI | openai/ | gpt-4, gpt-3.5-turbo |
-| Anthropic | anthropic/ | claude-3-opus, claude-3-sonnet |
-| Cohere | cohere/ | command, command-r |
-
-## Function Calling
-
-Model Calling provides a consistent interface for function calling (tools) across all supported providers:
+### Streaming
 
 ```python
-import json
-from model_calling.client import SyncModelCallingClient
+from model_calling import Client
 
-client = SyncModelCallingClient()
+client = Client()
 
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get the current weather in a location",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "The city and state, e.g. San Francisco, CA"
-                    }
-                },
-                "required": ["location"]
-            }
-        }
-    }
-]
+# Chat Completions stream
+for chunk in client.completion(
+    "ollama/qwen3:4b",
+    [{"role": "user", "content": "Count to five."}],
+    stream=True
+):
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
 
-try:
-    # Initial request with tools
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=[
-            {"role": "user", "content": "What's the weather like in Paris?"}
-        ],
-        tools=tools
-    )
-    
-    # Check if function call was requested
-    message = response["choices"][0]["message"]
-    if "function_call" in message:
-        function_name = message["function_call"]["name"]
-        arguments = json.loads(message["function_call"]["arguments"])
-        
-        # Call your function with the arguments
-        weather_data = get_weather(arguments["location"])
-        
-        # Continue the conversation with the function result
-        final_response = client.chat_completion(
-            model="ollama/mistral-small3.1:24b",
-            messages=[
-                {"role": "user", "content": "What's the weather like in Paris?"},
-                {
-                    "role": "assistant", 
-                    "content": "", 
-                    "function_call": {
-                        "name": "get_weather",
-                        "arguments": json.dumps({"location": "Paris, France"})
-                    }
-                },
-                {
-                    "role": "function", 
-                    "name": "get_weather", 
-                    "content": json.dumps(weather_data)
-                }
-            ]
+# Messages stream
+for event in client.messages(
+    "vllm/gpt-oss-20b",
+    [{"role": "user", "content": "Count to five."}],
+    max_tokens=256,
+    stream=True
+):
+    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+        print(event.delta.text, end="", flush=True)
+
+client.close()
+```
+
+### Async
+
+```python
+from model_calling import Client
+import asyncio
+
+async def main():
+    async with Client() as client:
+        response = await client.acompletion(
+            "ollama/qwen3:4b",
+            [{"role": "user", "content": "Hi!"}]
         )
-        
-        print(final_response["choices"][0]["message"]["content"])
-    else:
-        print(message["content"])
-finally:
-    client.close()
+        print(response.choices[0].message.content)
+
+asyncio.run(main())
 ```
 
-## Using as a Service
-
-Model Calling can be run as a service to provide a unified API for all your applications:
-
-```bash
-# Start the service
-python -m model_calling
-```
-
-Then make API calls to the service:
-
-```bash
-curl http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "ollama/mistral-small3.1:24b",
-    "messages": [
-      {"role": "user", "content": "What is machine learning?"}
-    ]
-  }'
-```
-
-## Using Hosted Providers
-
-To use hosted providers like OpenAI and Anthropic, set your API keys in environment variables or a .env file:
-
-```bash
-# Create a .env file with your API keys
-cp .env.example .env
-# Edit .env with your API keys
-```
-
-Then you can use the hosted models:
+Module-level functions are also available:
 
 ```python
-from model_calling.client import SyncModelCallingClient
+import model_calling
 
-client = SyncModelCallingClient()
-
-try:
-    # OpenAI
-    response = client.chat_completion(
-        model="openai/gpt-4",
-        messages=[
-            {"role": "user", "content": "What is quantum computing?"}
-        ]
-    )
-    
-    # Anthropic
-    response = client.chat_completion(
-        model="anthropic/claude-3-sonnet-20240229",
-        messages=[
-            {"role": "user", "content": "What is quantum computing?"}
-        ]
-    )
-finally:
-    client.close()
+response = model_calling.completion("ollama/qwen3:4b", [...])
+vectors = model_calling.embedding("ollama/nomic-embed-text", ["hello"])
 ```
+
+## Backends
+
+Model routing uses `prefix/name`. Unprefixed names go to Ollama.
+
+| Prefix | Default base_url | Credentials |
+|--------|------------------|-------------|
+| `ollama` | `http://localhost:11434` | none |
+| `vllm` | `http://localhost:8000/v1` | `api_key` in config if needed |
+| `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY`, optional `OPENAI_ORG_ID` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
+
+The library reads only those environment variables. Override per call with `api_base=` / `api_key=`, or per client via `config`.
+
+Anthropic and Cohere backends are not in the library yet; they are planned. The gateway reaches them through legacy adapters: non-streaming Chat Completions only (streaming returns 501), plus Cohere embeddings.
+
+Both formats work over every backend. You can call `client.messages()` against Ollama, vLLM, OpenAI, or OpenRouter; the library translates to their Chat Completions APIs. Likewise for `client.completion()`.
+
+## Strictness
+
+Strict by default: a parameter the backend cannot honor raises `UnsupportedParamsError` (a `BadRequestError` with a `.params` list) before anything is sent. Pass `drop_params=True` (client-wide or per call) to drop them instead.
+
+Example: Ollama cannot force a tool call (`tool_choice` "required" or `{"type": "any"}`). Chat Completions backends cannot take `thinking.budget_tokens`.
+
+Some parameters are always dropped silently: `cache_control` (a caching hint that changes no output) and `user` for Ollama embeddings.
+
+## Gateway
+
+The gateway is a FastAPI server running on the same library code.
+
+```bash
+model-calling  # or: python -m model_calling
+```
+
+Binds `0.0.0.0`, port from `PORT` (default 8000). The gateway reads `.env` (python-dotenv) at startup.
+
+### Endpoints
+
+- `POST /v1/chat/completions` (OpenAI Chat Completions; streaming SSE ending `data: [DONE]`)
+- `POST /v1/messages` (Anthropic Messages; streaming SSE with `event:` lines; errors as Anthropic error bodies)
+- `POST /v1/embeddings` (OpenAI Embeddings)
+- `GET /v1/models`, `POST /v1/models/refresh`, `POST /v1/config/update`, `POST /v1/moderations`, `GET /` health
+
+Point the official SDKs at it:
+
+```python
+import openai
+import anthropic
+
+openai_client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+anthropic_client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
+```
+
+The gateway does not check client keys; it uses its own backend keys from its environment.
+
+### Strict mode
+
+The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_PARAMS=true` (accepts true/false/1/0/yes/no) to turn on strict mode: 400 with message "\<provider\> cannot honor \<param\>".
+
+Set a backend's URL at runtime with `POST /v1/config/update`, for example `{"prefix": "ollama", "config": {"base_url": "http://ollama:11434"}}`. The `OLLAMA_BASE_URL` and `VLLM_BASE_URL` variables the container files set are logged at startup but not applied yet. This endpoint is unauthenticated, so keep the gateway on a trusted network.
+
+Environment: `OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `PORT`, `MODEL_CALLING_STRICT_PARAMS`.
 
 ## Documentation
 
-For complete documentation, visit the [Model Calling Documentation](https://github.com/rdwj/model-calling/tree/main/docs).
+For complete documentation, visit the [model-calling documentation](https://github.com/rdwj/model-calling/tree/main/docs).
 
 ## Examples
 
-Check out the [examples directory](https://github.com/rdwj/model-calling/tree/main/examples) for more examples of how to use Model Calling, including:
+See the [examples directory](https://github.com/rdwj/model-calling/tree/main/examples) for more code samples.
 
-- Basic chat completions
-- Function calling
-- Streaming responses
-- Building agents
-- Working with different providers
+## Testing
+
+```bash
+uv sync
+uv run pytest                 # offline suite; no network
+uv run pytest -m integration  # needs a running gateway backed by Ollama
+uv run pytest -m live         # one cheap OpenRouter call per format
+```
+
+The offline suite runs the gateway in-process against recorded backend fixtures and validates output with the official `openai` and `anthropic` SDK types. See [tests/README.md](https://github.com/rdwj/model-calling/blob/main/tests/README.md) for the harness, fixture recorder, and integration scripts.
 
 ## License
 
-Apache License 2.0. See [LICENSE](https://github.com/rdwj/model-calling/blob/main/LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/rdwj/model-calling/blob/main/LICENSE) and [NOTICE](https://github.com/rdwj/model-calling/blob/main/NOTICE).
+
+## Acknowledgements
+
+This project was developed with assistance from AI tools. It was inspired by the need for a flexible approach to building LLM applications with locally-hosted and cloud models.

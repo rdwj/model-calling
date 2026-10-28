@@ -1,505 +1,641 @@
-# Model Calling API Documentation
+# API Reference
 
-A unified API for calling multiple LLM providers through a consistent, OpenAI-compatible interface.
+Complete reference for the model-calling library and gateway.
 
-- [Introduction](#introduction)
-- [Getting Started](#getting-started)
-- [API Reference](#api-reference)
-  - [Chat Completions](#chat-completions)
-  - [Models](#models)
-  - [Configuration](#configuration)
-- [Tools & Function Calling](#tools--function-calling)
-- [Working with Different Providers](#working-with-different-providers)
-- [Client Libraries](#client-libraries)
-- [Monitoring & Observability](#monitoring--observability)
-- [Examples](#examples)
+## Client
 
-## Introduction
+The `Client` class provides the in-process API for calling LLM backends.
 
-Model Calling provides a unified API for working with multiple large language models (LLMs) through a consistent interface. This allows developers to build applications that can easily switch between different models and providers without changing their code.
+```python
+from model_calling import Client
 
-The API follows the OpenAI API format, making it familiar to developers already working with LLMs, while extending it to support multiple providers including:
-
-- Local models via Ollama
-- Cluster-deployed models via vLLM
-- Hosted providers: OpenAI, Anthropic, Cohere, and more
-
-Key features include:
-- Consistent interface for all models
-- Tool/function calling across supported models
-- Streaming support
-- Runtime configuration
-- Client libraries for Python
-
-## Getting Started
-
-### Installation
-
-```bash
-pip install model-calling
+client = Client(
+    config=None,
+    callbacks=(),
+    drop_params=False,
+)
 ```
 
-### Starting the Service
+### Constructor arguments
+
+**`config`**: dict mapping model prefix (`ollama`, `vllm`, `openai`, `openrouter`) to settings. Each prefix accepts:
+
+- `base_url` (str): API endpoint for this backend
+- `api_key` (str): authentication key
+- `headers` (dict): additional HTTP headers
+- `callbacks` (list): callbacks that run for this prefix only, after the client-wide ones
+- `transport` (httpx transport): mostly for tests
+
+Settings merge over the defaults from `providers.default_configs()`.
+
+**`callbacks`**: sequence of `Callback` instances. These run for every prefix, before any prefix-specific callbacks.
+
+**`drop_params`**: bool. When True, parameters the backend cannot honor are dropped silently. When False (the default), they raise `UnsupportedParamsError`.
+
+### Config example
+
+```python
+client = Client(
+    config={
+        "ollama": {"base_url": "http://192.168.1.100:11434"},
+        "vllm": {"base_url": "http://cluster.local:8000/v1", "api_key": "cluster-token"},
+        "openai": {"api_key": "sk-..."},
+    },
+    drop_params=True,
+)
+```
+
+### Closing
+
+Async calls pool HTTP connections per prefix and per event loop. After async use, close the pool with `await client.aclose()` or `async with Client() as client:`.
+
+Sync calls run on a private event-loop thread with a pool of their own. After sync use, close with `client.close()` or `with Client() as client:`.
+
+`aclose()` closes both the async pool on the current loop and the sync thread, if sync calls started one. An unclosed client holds its connections until the process exits.
+
+### Sync vs async
+
+Every call method has an async form (`acompletion`, `amessages`, `aembedding`) and a sync form (`completion`, `messages`, `embedding`). Async methods return coroutines or async iterators. Sync methods return values or sync iterators, and run the call on a background thread.
+
+One `Client` can serve both; async and sync calls keep separate pools.
+
+### Pooling
+
+Connections are pooled by backend prefix and reused across calls. Each prefix gets one pooled client per event loop (async) or one for the sync thread (sync). A `Client` with custom config creates its own pools; the module-level functions share a default `Client`.
+
+## Call methods
+
+The client provides six methods: async and sync forms of `completion` (Chat Completions), `messages` (Anthropic Messages), and `embedding` (OpenAI Embeddings).
+
+### acompletion
+
+```python
+async def acompletion(
+    model: str,
+    messages: list[dict],
+    *,
+    stream: bool = False,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> ChatCompletion | AsyncIterator[ChatCompletionChunk]
+```
+
+Make a Chat Completions call. `model` is `prefix/name`, as `ollama/qwen3:4b`. Unprefixed names default to Ollama.
+
+With `stream=True`, returns an async iterator of `ChatCompletionChunk` objects. The iterator returns once the backend has accepted the request, so a refusal raises here, not mid-loop.
+
+Other keyword arguments are Chat Completions request fields, such as `temperature`, `max_tokens`, `top_p`, `stop`, `tools`, `tool_choice`, `response_format`, `stream_options`, `reasoning_effort`, and `seed`. Only one choice is supported: `n` greater than 1 is a `BadRequestError`.
+
+Returns a `ChatCompletion` for non-streaming calls, shaped like `openai.types.chat.ChatCompletion`.
+
+### completion
+
+```python
+def completion(
+    model: str,
+    messages: list[dict],
+    *,
+    stream: bool = False,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> ChatCompletion | Iterator[ChatCompletionChunk]
+```
+
+Sync form of `acompletion`. Streams are sync iterators.
+
+### amessages
+
+```python
+async def amessages(
+    model: str,
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    stream: bool = False,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> Message | AsyncIterator[MessageStreamEvent]
+```
+
+Make an Anthropic Messages call over any backend. `model` is `prefix/name`.
+
+`max_tokens` is required. With `stream=True`, returns an async iterator of stream events (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`). The iterator returns once the backend has accepted the request.
+
+Other keyword arguments are Messages request fields: `system` (str or list of content blocks), `tools`, `tool_choice`, `thinking` (dict with `type`, `budget_tokens`), `stop_sequences`, `metadata`, `temperature`, `top_p`, `top_k`.
+
+Returns a `Message` for non-streaming calls, shaped like `anthropic.types.Message`.
+
+### messages
+
+```python
+def messages(
+    model: str,
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    stream: bool = False,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> Message | Iterator[MessageStreamEvent]
+```
+
+Sync form of `amessages`. Streams are sync iterators.
+
+### aembedding
+
+```python
+async def aembedding(
+    model: str,
+    input: str | list[str] | list[int] | list[list[int]],
+    *,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> CreateEmbeddingResponse
+```
+
+Make an OpenAI Embeddings call. `model` is `prefix/name`, as `ollama/nomic-embed-text`.
+
+`input` is a string, a list of strings, a token array, or a list of token arrays. Ollama accepts text only; token arrays raise `BadRequestError`.
+
+Other keyword arguments are Embeddings request fields: `dimensions`, `encoding_format` (`"float"` or `"base64"`), `user`.
+
+Returns a `CreateEmbeddingResponse` shaped like `openai.types.CreateEmbeddingResponse`.
+
+### embedding
+
+```python
+def embedding(
+    model: str,
+    input: str | list[str] | list[int] | list[list[int]],
+    *,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> CreateEmbeddingResponse
+```
+
+Sync form of `aembedding`.
+
+### Common parameters
+
+All call methods accept:
+
+- `api_base`: override the backend URL for this call
+- `api_key`: override the API key for this call
+- `drop_params`: override the client's `drop_params` setting for this call
+
+These take precedence over the client's config.
+
+## Module-level functions
+
+The library exports six functions at module level:
+
+```python
+from model_calling import (
+    acompletion,
+    amessages,
+    aembedding,
+    completion,
+    messages,
+    embedding,
+)
+```
+
+These are thin wrappers over a lazily created default `Client()`. They take the same arguments as the corresponding `Client` methods. Use them for simple scripts and one-off calls. For custom config or callbacks, create your own `Client`.
+
+To access the default client directly:
+
+```python
+from model_calling.library import default_client
+
+client = default_client()
+```
+
+## Model prefixes and default base URLs
+
+Model names are `prefix/name`. Unprefixed names default to `ollama`.
+
+| Prefix | Default base_url | Credentials |
+|--------|------------------|-------------|
+| `ollama` | `http://localhost:11434` | none |
+| `vllm` | `http://localhost:8000/v1` | `api_key` in config if the server requires one |
+| `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` (env), optional `OPENAI_ORG_ID` (env) |
+| `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` (env) |
+
+The library reads only these environment variables. It never reads `.env` files. The gateway (with the `server` extra) does read `.env` at startup.
+
+Base URLs for vLLM, OpenAI, and OpenRouter include `/v1`, matching the openai SDK convention.
+
+Anthropic and Cohere backends are not available in the library yet (planned). Passing `anthropic/...` or `cohere/...` raises `BadRequestError` with message "no provider for ...". The gateway still reaches them through legacy adapters (non-streaming Chat Completions only, plus Cohere embeddings).
+
+## Strictness and drop_params
+
+The library is strict by default. A parameter the backend cannot honor raises `UnsupportedParamsError` (a `BadRequestError`) before the request is sent. The exception's `.params` attribute lists the unsupported parameter names.
+
+Examples of unsupported parameters:
+
+- Ollama cannot force a tool call: `tool_choice` set to `"required"` or `{"type": "any"}` raises.
+- Chat Completions backends cannot accept `thinking.budget_tokens` (a Messages-only field).
+- Ollama embeddings take no fields beyond `dimensions` and `user`.
+
+Pass `drop_params=True` (client-wide or per call) to drop unsupported parameters instead of raising.
+
+Some parameters are always dropped silently, never an error:
+
+- `cache_control` (a caching hint that changes no output)
+- `user` for Ollama embeddings
+
+Some requests cannot be expressed at all, regardless of `drop_params`:
+
+- Token arrays for Ollama embeddings (`input` must be text)
+- `top_k` on `openai/` models (not a Chat Completions parameter)
+
+These raise `BadRequestError` with `status=None`.
+
+## Response types
+
+All responses are pydantic models shaped like the official SDK types:
+
+- `ChatCompletion` and `ChatCompletionChunk` validate against `openai.types.chat.ChatCompletion` and `ChatCompletionChunk`
+- `Message` and `MessageStreamEvent` (and its subtypes) validate against `anthropic.types.Message` and the stream events
+- `CreateEmbeddingResponse` validates against `openai.types.CreateEmbeddingResponse`
+
+Access fields as attributes:
+
+```python
+response = completion(model="qwen3:4b", messages=[...])
+text = response.choices[0].message.content
+```
+
+Convert to a dict with `.to_dict()`:
+
+```python
+wire = response.to_dict()
+```
+
+Unknown fields from the backend (such as vLLM's `reasoning` in `ChatCompletionMessage`) are kept and accessible as attributes. The response models are permissive: they validate the known structure and preserve everything else.
+
+## Errors
+
+All errors the library raises inherit from `APIError`. Catch it to handle every failure.
+
+### Hierarchy
+
+```
+APIError
+├── APIConnectionError
+│   └── APITimeoutError
+├── APIResponseValidationError
+└── APIStatusError
+    ├── BadRequestError (400, or refused before sending)
+    │   └── UnsupportedParamsError
+    ├── AuthenticationError (401)
+    ├── PermissionDeniedError (403)
+    ├── NotFoundError (404)
+    ├── RateLimitError (429)
+    └── InternalServerError (500+)
+```
+
+### Attributes
+
+Every `APIError` carries:
+
+- `message` (str): human-readable error description
+- `provider` (str | None): backend prefix that raised the error (`ollama`, `vllm`, `openai`, `openrouter`)
+- `status` (int | None): HTTP status code from the backend, or `None` if no usable response arrived
+- `body` (Any): the backend's raw error body, if one was received
+
+When `status` is `None`, no backend response arrived. This happens for connection failures, timeouts, requests the library refuses before sending (strict mode rejections, malformed requests), and errors a backend reports inside a stream.
+
+### UnsupportedParamsError
+
+A `BadRequestError` subclass raised when strict mode rejects a parameter. Adds:
+
+- `params` (list[str]): names of the unsupported parameters
+
+### Stream errors
+
+Errors inside a stream (a backend reports failure mid-stream, or the connection breaks) raise from the iterator. The exception type matches the backend's error kind when it names one (rate limit, not found, invalid request). Otherwise it is `APIError` or `APIConnectionError`.
+
+## Callbacks
+
+Attach callbacks to observe requests, responses, and errors. Subclass `model_calling.callbacks.Callback` and override async methods.
+
+```python
+from model_calling.callbacks import Callback
+
+class LoggingCallback(Callback):
+    async def on_request_start(self, model, messages, **params):
+        print(f"Calling {model}")
+    
+    async def on_request_end(self, model, messages, response, **params):
+        print(f"Response from {model}")
+```
+
+Pass callbacks to the `Client`:
+
+```python
+client = Client(callbacks=[LoggingCallback()])
+```
+
+Or per-prefix in the config:
+
+```python
+client = Client(
+    config={
+        "ollama": {"callbacks": [LoggingCallback()]},
+    }
+)
+```
+
+Client-wide callbacks run first, then prefix-specific callbacks.
+
+### Hooks
+
+All hooks are async methods. A callback that raises is logged and ignored; it never changes the outcome of the request.
+
+**`async def on_request_start(model: str, messages: list[dict], **params) -> None`**
+
+Called before sending a request. `model` is the backend's model name (prefix stripped). `params` is the native request body minus model and messages (for Chat Completions and Messages calls).
+
+**`async def on_request_end(model: str, messages: list[dict], response: dict, **params) -> None`**
+
+Called after receiving a response. `response` is the backend's response body (a dict), or for a stream the last internal event (`model_calling.core.StreamEvent`).
+
+A consumer that stops a stream early (breaking out of the loop and closing the iterator, or task cancellation) gets `on_request_end` with `cancelled=True` in `params`. This is not an error; it is the expected path for early termination.
+
+**`async def on_stream_chunk(model: str, messages: list[dict], chunk: dict, **params) -> None`**
+
+Called for each event in a streaming response, before it is yielded to the caller. `chunk` is the internal event (`model_calling.core.StreamEvent`), the same shape for every backend (not the raw backend line).
+
+**`async def on_error(model: str, messages: list[dict], error: Exception, **params) -> None`**
+
+Called when an error occurs. `error` is the exception that will be raised. A stream stopped early does not trigger this; it gets `on_request_end` with `cancelled=True`.
+
+**`async def on_embedding_request_start(model: str, input_texts: list[str], **params) -> None`**
+
+Called before sending an embedding request. `input_texts` is the input as a batch: a list of strings, or a list of token arrays. A single string or token array arrives as a list of one.
+
+**`async def on_embedding_request_end(model: str, input_texts: list[str], response: dict, **params) -> None`**
+
+Called after receiving an embedding response. `response` is the backend's response body. The `input_texts` parameter carries the same input as `on_embedding_request_start`.
+
+### Guarantees
+
+Every call ends with exactly one `on_request_end` or `on_error`. A stream that completes normally gets `on_request_end`. A stream stopped early gets `on_request_end(cancelled=True)`. A stream or non-stream call that fails gets `on_error`.
+
+Callbacks run in the order they were registered (client-wide, then prefix-specific). A callback that raises does not prevent later callbacks from running.
+
+## Gateway HTTP API
+
+The gateway serves OpenAI Chat Completions, Anthropic Messages, and OpenAI Embeddings over HTTP. It translates requests and forwards them to backends using the library `Client`.
+
+Start the gateway:
 
 ```bash
-# Start the service on http://localhost:8000
+model-calling
+```
+
+Or:
+
+```bash
 python -m model_calling
 ```
 
-### Basic Usage
+The gateway listens on `0.0.0.0:8000`. Override the port with the `PORT` environment variable.
 
-```python
-import requests
+### Environment variables
 
-response = requests.post(
-    "http://localhost:8000/v1/chat/completions",
-    json={
-        "model": "ollama/mistral-small3.1:24b",
-        "messages": [
-            {"role": "user", "content": "What is machine learning?"}
-        ]
-    }
-)
+- `OPENAI_API_KEY`: OpenAI backend credential
+- `OPENAI_ORG_ID`: OpenAI organization ID (optional)
+- `OPENROUTER_API_KEY`: OpenRouter backend credential
+- `ANTHROPIC_API_KEY`: Anthropic backend credential (legacy adapters only, for now)
+- `COHERE_API_KEY`: Cohere backend credential (legacy adapters only)
+- `PORT`: gateway listen port (default 8000)
+- `MODEL_CALLING_STRICT_PARAMS`: enable strict mode (`true`, `false`, `1`, `0`, `yes`, `no`; default `false`)
 
-print(response.json()["choices"][0]["message"]["content"])
+The gateway reads `.env` at startup with python-dotenv.
+
+### Endpoints
+
+#### POST /v1/chat/completions
+
+OpenAI Chat Completions. Request and response match the OpenAI API.
+
+Streaming: SSE (`text/event-stream`) with `data:` lines, ending with `data: [DONE]`.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:4b",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "stream": false
+  }'
 ```
 
-## API Reference
+#### POST /v1/messages
 
-### Chat Completions
+Anthropic Messages. Request and response match the Anthropic API.
 
-The primary endpoint for generating text from models.
+Streaming: SSE with `event:` and `data:` lines. Each event is named by its `type` (`message_start`, `content_block_start`, etc.).
 
-```
-POST /v1/chat/completions
-```
+`max_tokens` is required. Requests without it return 400.
 
-#### Request Body
+Example:
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| model | string | Yes | Model identifier in format `provider/model-name` |
-| messages | array | Yes | Array of message objects with `role` and `content` |
-| temperature | number | No | Sampling temperature (0-2), defaults to 1 |
-| top_p | number | No | Nucleus sampling parameter (0-1), defaults to 1 |
-| n | integer | No | Number of completions to generate, defaults to 1 |
-| stream | boolean | No | Whether to stream responses, defaults to false |
-| max_tokens | integer | No | Maximum tokens to generate, provider-dependent |
-| tools | array | No | Array of tool objects the model may use |
-| stop | string/array | No | Sequence(s) where the model should stop generating |
-
-##### Message Object
-
-| Field | Type | Description |
-|-------|------|-------------|
-| role | string | Role of the message sender: "system", "user", "assistant", or "tool" |
-| content | string | Content of the message |
-| name | string | Optional name for tool messages |
-| function_call | object | Optional function call information for assistant messages |
-
-##### Tool Object
-
-```json
-{
-  "type": "function",
-  "function": {
-    "name": "get_weather",
-    "description": "Get weather information for a location",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "location": {
-          "type": "string",
-          "description": "The city and state, e.g. San Francisco, CA"
-        }
-      },
-      "required": ["location"]
-    }
-  }
-}
+```bash
+curl -X POST http://localhost:8000/v1/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:4b",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "max_tokens": 512
+  }'
 ```
 
-#### Response Object
+#### POST /v1/embeddings
 
-```json
-{
-  "id": "chatcmpl-123abc",
-  "object": "chat.completion",
-  "created": 1694268762,
-  "model": "ollama/mistral-small3.1:24b",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "Machine learning is a subset of artificial intelligence..."
-      },
-      "finish_reason": "stop"
-    }
-  ]
-}
+OpenAI Embeddings. Request and response match the OpenAI API.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ollama/nomic-embed-text",
+    "input": ["hello", "world"]
+  }'
 ```
 
-For function calls, the response includes a `function_call` property in the message:
+#### GET /v1/models
 
-```json
-{
-  "id": "chatcmpl-123abc",
-  "object": "chat.completion",
-  "created": 1694268762,
-  "model": "ollama/mistral-small3.1:24b",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "",
-        "function_call": {
-          "name": "get_weather",
-          "arguments": "{\"location\":\"San Francisco, CA\"}"
-        }
-      },
-      "finish_reason": "function_call"
-    }
-  ]
-}
-```
+List available models. Returns a list of model IDs the gateway knows about.
 
-### Models
-
-List available models.
-
-```
-GET /v1/models
-```
-
-#### Response
+Response format:
 
 ```json
 {
   "object": "list",
   "data": [
-    {"id": "ollama/mistral-small3.1:24b", "object": "model"},
-    {"id": "ollama/llama3:8b", "object": "model"},
-    {"id": "openai/gpt-4", "object": "model"},
-    {"id": "anthropic/claude-3-opus-20240229", "object": "model"}
+    {"id": "ollama/qwen3:4b", "object": "model"},
+    {"id": "openai/gpt-4", "object": "model"}
   ]
 }
 ```
 
-### Configuration
+#### POST /v1/config/update
 
-Update configuration for a model type.
+Update a prefix's runtime config. Changes apply to the next request.
 
-```
-POST /v1/config/update
-```
-
-#### Request Body
+Request body:
 
 ```json
 {
   "prefix": "ollama",
-  "config": {
-    "base_url": "http://localhost:11434",
-    "supports_function_call": true
+  "config": {"base_url": "http://192.168.1.100:11434"}
+}
+```
+
+Response: 200 OK.
+
+Use this to set backend URLs at runtime. The `OLLAMA_BASE_URL` and `VLLM_BASE_URL` environment variables are logged at startup but not applied yet. Use `/v1/config/update` to point the gateway elsewhere.
+
+#### POST /v1/models/refresh
+
+Re-check one model's capabilities (tool calls, streaming, vision, JSON mode, reasoning) and return them.
+
+Request body:
+
+```json
+{"model": "ollama/qwen3:4b"}
+```
+
+Response: `{"model": ..., "capabilities": {...}, "status": "refreshed"}`.
+
+#### POST /v1/moderations
+
+Content moderation with Granite Guardian (requires the `moderation` extra). Returns safety scores.
+
+#### GET /
+
+Health check. Returns `{"status": "ok"}`.
+
+### Reserved request fields
+
+Request bodies must not contain `api_base`, `api_key`, or `drop_params`. These are internal library parameters. The gateway returns 400 if they are present.
+
+### Strictness
+
+The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_PARAMS=true` to turn on strict mode. In strict mode, a parameter the backend cannot honor returns 400 with message "`<provider>` cannot honor `<param>`".
+
+### Error bodies
+
+Chat Completions and Embeddings errors use the OpenAI error format:
+
+```json
+{
+  "error": {
+    "message": "...",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": null
   }
 }
 ```
 
-## Tools & Function Calling
-
-Model Calling supports OpenAI-compatible function calling (also known as tools) across multiple providers. This allows the model to request that your application call specific functions.
-
-### Basic Example
-
-#### 1. Define your tools
+Messages errors use the Anthropic error format:
 
 ```json
-"tools": [
-  {
-    "type": "function",
-    "function": {
-      "name": "get_weather",
-      "description": "Get current weather in a location",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "location": {
-            "type": "string",
-            "description": "City name"
-          }
-        },
-        "required": ["location"]
-      }
-    }
+{
+  "type": "error",
+  "error": {
+    "type": "invalid_request_error",
+    "message": "..."
   }
-]
+}
 ```
 
-#### 2. Send a request that might need function calling
+Errors inside a stream are delivered as SSE events in the same format.
+
+### Status mapping
+
+- Backend 4xx passes through, except 401/403 (credential refused) which become 502
+- Backend 5xx and unreadable responses become 502
+- Timeouts become 504
+- Requests rejected before sending (validation, strict mode) become 400
+
+An error the backend reports inside a stream maps by its kind:
+
+- Rate limit becomes 429
+- Not found becomes 404
+- Invalid request becomes 400
+- Everything else becomes 502
+
+### Streaming format
+
+Chat Completions streams send `data:` lines and end with `data: [DONE]`:
+
+```
+data: {"id":"...","object":"chat.completion.chunk","choices":[...]}
+
+data: [DONE]
+```
+
+Messages streams send `event:` and `data:` pairs. The `event` is the event type:
+
+```
+event: message_start
+data: {"type":"message_start","message":{...}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{...}}
+
+event: message_stop
+data: {"type":"message_stop"}
+```
+
+### Using the official SDKs
+
+Point the `openai` SDK at the gateway:
 
 ```python
-response = client.chat_completion(
-    model="ollama/mistral-small3.1:24b",
-    messages=[
-        {"role": "user", "content": "What's the weather in Paris?"}
-    ],
-    tools=tools
+import openai
+
+client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+
+response = client.chat.completions.create(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
 )
 ```
 
-#### 3. Check if a function call was requested
+Point the `anthropic` SDK at the gateway:
 
 ```python
-message = response["choices"][0]["message"]
-if "function_call" in message:
-    function_name = message["function_call"]["name"]
-    arguments = json.loads(message["function_call"]["arguments"])
-    
-    # Call your function with the arguments
-    function_result = get_weather(arguments["location"])
-    
-    # Continue the conversation with the function result
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=[
-            {"role": "user", "content": "What's the weather in Paris?"},
-            {
-                "role": "assistant", 
-                "content": "", 
-                "function_call": {
-                    "name": "get_weather",
-                    "arguments": json.dumps({"location": "Paris, France"})
-                }
-            },
-            {
-                "role": "function", 
-                "name": "get_weather", 
-                "content": json.dumps(function_result)
-            }
-        ]
-    )
-    
-    # Final response with information from the function
-    final_answer = response["choices"][0]["message"]["content"]
-    print(final_answer)
-```
+import anthropic
 
-### Function Calling Support
+client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
 
-Different models have varying levels of support for function calling:
-
-| Provider | Model Examples | Function Calling Support |
-|----------|---------------|-------------------------|
-| Ollama | mistral-small, llama3 | Yes (selected models) |
-| OpenAI | gpt-4, gpt-3.5-turbo | Yes |
-| Anthropic | claude-3 family | Yes |
-| Cohere | command | Not yet |
-| vLLM | Depends on deployed model | Depends on model |
-
-## Working with Different Providers
-
-Model Calling supports multiple model providers through a unified interface. Simply specify the provider in the model name.
-
-### Provider Prefixes
-
-| Provider | Prefix | Example |
-|----------|--------|---------|
-| Ollama (local) | ollama/ | "ollama/mistral-small3.1:24b" |
-| vLLM (cluster) | vllm/ | "vllm/mistral-7b" |
-| OpenAI | openai/ | "openai/gpt-4" |
-| Anthropic | anthropic/ | "anthropic/claude-3-opus-20240229" |
-| Cohere | cohere/ | "cohere/command" |
-
-### API Keys for Hosted Providers
-
-For hosted providers, you need to set up API keys:
-
-1. Create a `.env` file with your API keys:
-
-```
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
-COHERE_API_KEY=your_cohere_key
-```
-
-2. The service will automatically load these keys when starting.
-
-## Client Libraries
-
-### Python Client
-
-```python
-from model_calling.client import SyncModelCallingClient
-
-client = SyncModelCallingClient()
-
-try:
-    response = client.chat_completion(
-        model="ollama/mistral-small3.1:24b",
-        messages=[
-            {"role": "user", "content": "What is quantum computing?"}
-        ],
-        temperature=0.7
-    )
-    
-    print(response["choices"][0]["message"]["content"])
-finally:
-    client.close()
-```
-
-### Async Python Client
-
-```python
-import asyncio
-from model_calling.client import ModelCallingClient
-
-async def main():
-    client = ModelCallingClient()
-    
-    try:
-        response = await client.chat_completion(
-            model="anthropic/claude-3-sonnet-20240229",
-            messages=[
-                {"role": "user", "content": "Explain neural networks."}
-            ]
-        )
-        
-        print(response["choices"][0]["message"]["content"])
-    finally:
-        await client.close()
-
-asyncio.run(main())
-```
-
-## Monitoring & Observability
-
-Tracing, logging, and token accounting attach through the callback interface in `model_calling.callbacks`. See the [Advanced Topics](advanced.md#monitoring-and-observability) guide for an example.
-
-## Examples
-
-### Basic Chat Completion
-
-```python
-response = client.chat_completion(
-    model="ollama/mistral-small3.1:24b",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "What are the main challenges in AI safety?"}
-    ]
+response = client.messages.create(
+    model="qwen3:4b",
+    messages=[{"role": "user", "content": "Hello"}],
+    max_tokens=512,
 )
 ```
 
-### Streaming Response
-
-```python
-stream = client.chat_completion(
-    model="anthropic/claude-3-sonnet-20240229",
-    messages=[
-        {"role": "user", "content": "Write a short story about robots."}
-    ],
-    stream=True
-)
-
-for chunk in stream:
-    content = chunk["choices"][0]["delta"].get("content", "")
-    print(content, end="", flush=True)
-```
-
-### Function Calling
-
-```python
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_database",
-            "description": "Search for records in a database",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results"
-                    }
-                },
-                "required": ["query"]
-            }
-        }
-    }
-]
-
-response = client.chat_completion(
-    model="openai/gpt-4",
-    messages=[
-        {"role": "user", "content": "Find records about renewable energy projects."}
-    ],
-    tools=tools
-)
-```
-
-### Multi-turn Function Calling Conversation
-
-```python
-messages = [
-    {"role": "user", "content": "I need to analyze the weather for my trip to Tokyo and Berlin."}
-]
-
-# First turn
-response = client.chat_completion(
-    model="ollama/mistral-small3.1:24b",
-    messages=messages,
-    tools=weather_tools
-)
-
-# Add assistant response with function call
-messages.append(response["choices"][0]["message"])
-
-# Add function result
-weather_data = get_weather("Tokyo")
-messages.append({
-    "role": "function",
-    "name": "get_weather",
-    "content": json.dumps(weather_data)
-})
-
-# Next turn from the model
-response = client.chat_completion(
-    model="ollama/mistral-small3.1:24b",
-    messages=messages,
-    tools=weather_tools
-)
-
-# Continue the pattern for multiple function calls
-```
-
-### Using Different Providers
-
-```python
-# Ollama (local)
-response_ollama = client.chat_completion(
-    model="ollama/mistral-small3.1:24b",
-    messages=[{"role": "user", "content": "Hello, who are you?"}]
-)
-
-# OpenAI
-response_openai = client.chat_completion(
-    model="openai/gpt-4",
-    messages=[{"role": "user", "content": "Hello, who are you?"}]
-)
-
-# Anthropic
-response_anthropic = client.chat_completion(
-    model="anthropic/claude-3-sonnet-20240229",
-    messages=[{"role": "user", "content": "Hello, who are you?"}]
-)
-```
-
----
-
-For more detailed examples, check the [examples directory](https://github.com/rdwj/model-calling/tree/main/examples) in the repository.
+The gateway does not check client API keys (pass `"unused"` or any string). It uses its own backend credentials from the environment.
