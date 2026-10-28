@@ -34,8 +34,12 @@ The harness lives in `harness/`:
   library API: `library.use(backend, scenario)` builds a fresh `Client`
   whose prefix config carries the replay transport.
 - `grid.py` parametrizes tests over (ingress, backend, scenario) cells.
-  The gateway's ingress runs in `test_gateway_grid.py`, the library's
-  `library_completion` and `library_messages` in `test_library_grid.py`.
+  The gateway's ingresses (`chat_completions`, `gateway_messages`,
+  `gateway_embeddings`) run in `test_gateway_grid.py`, which also checks
+  that every gateway answer equals the library's for the same cell. The
+  library's `library_completion`, `library_messages`, and
+  `library_embedding` run in `test_library_grid.py`. Embeddings have their
+  own backends and scenarios (`EMBEDDING_BACKENDS`, `embedding_grid`).
   `KNOWN_FAILURES` lists the cells that are expected to fail as strict
   xfails, each naming the epic phase that fixes it. When a fix lands, the
   run fails until the entry is removed.
@@ -65,7 +69,7 @@ uv run python -m tests.harness.record
 uv run python -m tests.harness.record --backend ollama --scenario tools --force
 ```
 
-Ollama must be running with `qwen3:4b` pulled, and recording OpenRouter
+Ollama must be running with `qwen3:4b` and `nomic-embed-text` pulled, and recording OpenRouter
 fixtures needs `OPENROUTER_API_KEY`. Recording vLLM needs `VLLM_BASE_URL`
 (the server root, without `/v1`) and `VLLM_MODEL`, plus `VLLM_API_KEY` if
 the endpoint wants one; `VLLM_VERIFY_TLS=false` skips certificate checks
