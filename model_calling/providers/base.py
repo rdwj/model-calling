@@ -11,7 +11,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import threading
 import uuid
+import weakref
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, ClassVar
@@ -26,6 +28,12 @@ from model_calling.errors import (
     APIError,
     APIResponseValidationError,
     APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
     error_for_status,
 )
 from model_calling.formats import TranslationError
@@ -38,6 +46,20 @@ BAD_GATEWAY = 502
 # Long-lived streams hold their connections, so a pooled client must not cap
 # them; per-call clients never did. Idle connections are still reused.
 POOL_LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
+
+
+# Error kinds backends name inside a stream (Anthropic's and OpenAI's names).
+_STREAM_ERROR_TYPES: dict[str | None, type[APIError]] = {
+    "rate_limit_error": RateLimitError,
+    "rate_limit_exceeded": RateLimitError,
+    "overloaded_error": InternalServerError,
+    "api_error": InternalServerError,
+    "server_error": InternalServerError,
+    "invalid_request_error": BadRequestError,
+    "authentication_error": AuthenticationError,
+    "permission_error": PermissionDeniedError,
+    "not_found_error": NotFoundError,
+}
 
 
 def uses_cache_control(request: Request) -> bool:
@@ -54,38 +76,50 @@ def new_id(prefix: str = "gen-") -> str:
 
 
 class HttpClients:
-    """One pooled `httpx.AsyncClient` per provider prefix, created on first use.
+    """One pooled `httpx.AsyncClient` per provider prefix and event loop,
+    created on first use.
 
     A prefix's config may name a `transport` (tests inject a replay one).
     The client is built once, so a later change to `transport` needs a new
     `HttpClients`; `base_url` and `api_key` are read per request.
 
-    An async client's connections belong to the event loop that opened them.
-    When a caller arrives on a different loop (a script calling `asyncio.run`
-    twice), the prefix gets a fresh client; the old loop is gone, so its
-    client is dropped rather than closed.
+    An async client's connections belong to the event loop that opened them,
+    so each loop gets its own clients: a script calling `asyncio.run` twice,
+    or threads each running a loop, never share connections. A finished
+    loop's clients go with it (they are held weakly by loop) unclosed, since
+    their loop can no longer close them.
     """
 
     def __init__(self) -> None:
-        self._clients: dict[str, tuple[httpx.AsyncClient, asyncio.AbstractEventLoop | None]] = {}
+        self._by_loop: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, dict[str, httpx.AsyncClient]
+        ] = weakref.WeakKeyDictionary()
+        # Clients made outside any running loop (constructing a provider in
+        # sync code); they bind to whichever loop first uses them.
+        self._unbound: dict[str, httpx.AsyncClient] = {}
+        self._lock = threading.Lock()
 
     def get(self, prefix: str, config: Mapping[str, Any]) -> httpx.AsyncClient:
         loop = _running_loop()
-        entry = self._clients.get(prefix)
-        if entry is None or entry[0].is_closed or entry[1] is not loop:
-            client = httpx.AsyncClient(
-                timeout=DEFAULT_TIMEOUT, limits=POOL_LIMITS, transport=config.get("transport")
-            )
-            entry = self._clients[prefix] = (client, loop)
-        return entry[0]
+        with self._lock:
+            clients = self._unbound if loop is None else self._by_loop.setdefault(loop, {})
+            client = clients.get(prefix)
+            if client is None or client.is_closed:
+                client = clients[prefix] = httpx.AsyncClient(
+                    timeout=DEFAULT_TIMEOUT, limits=POOL_LIMITS, transport=config.get("transport")
+                )
+            return client
 
     async def aclose(self) -> None:
-        """Close the clients opened on the current loop and forget the rest."""
+        """Close the clients opened on the current loop."""
         loop = _running_loop()
-        entries, self._clients = list(self._clients.values()), {}
-        for client, owner in entries:
-            if owner is loop or owner is None:
-                await client.aclose()
+        with self._lock:
+            clients = list(self._unbound.values())
+            self._unbound = {}
+            if loop is not None:
+                clients += self._by_loop.pop(loop, {}).values()
+        for client in clients:
+            await client.aclose()
 
 
 def _running_loop() -> asyncio.AbstractEventLoop | None:
@@ -253,14 +287,17 @@ class Provider(ABC):
             async for line in resp.aiter_lines():
                 if line.strip():
                     yield line
-        except httpx.TimeoutException as e:
-            raise APITimeoutError(f"{self.name} stream timed out: {e}", provider=self.name) from e
         except httpx.TransportError as e:
+            # Read timeouts included: once the stream is up, a stall is a broken
+            # connection (the gateway has always answered 502 for it).
             raise APIConnectionError(f"{self.name} stream broke: {e}", provider=self.name) from e
 
     def stream_error(self, event: StreamError) -> APIError:
-        """The exception for a backend failure reported inside a stream."""
-        return APIError(event.message, provider=self.name)
+        """The exception for a backend failure reported inside a stream. There
+        is no HTTP status; the backend's error kind, when it names one,
+        picks the class."""
+        cls = _STREAM_ERROR_TYPES.get(event.error_type, APIError)
+        return cls(event.message, provider=self.name)
 
     def _unreadable_as_backend_error(self, parse):
         try:

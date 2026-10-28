@@ -69,7 +69,8 @@ class ChatCompletionsStreamParser(StreamParser):
         if chunk.get("error"):
             err = chunk["error"]
             message = err.get("message", err) if isinstance(err, dict) else err
-            return [self._error(f"{self.provider} error: {message}")]
+            kind = err.get("type") if isinstance(err, dict) else None
+            return [self._error(f"{self.provider} error: {message}", kind)]
         events: list[StreamEvent] = []
         if not self.started:
             self.started = True
@@ -166,5 +167,5 @@ class ChatCompletionsStreamParser(StreamParser):
         ]
 
     @staticmethod
-    def _error(message: str) -> StreamError:
-        return StreamError(status=BAD_GATEWAY, message=message)
+    def _error(message: str, error_type: str | None = None) -> StreamError:
+        return StreamError(status=BAD_GATEWAY, message=message, error_type=error_type)

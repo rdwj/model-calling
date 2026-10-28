@@ -87,11 +87,11 @@ def ndjson(*lines):
     return lambda req: httpx.Response(200, text="\n".join(lines) + "\n")
 
 
-def broken_stream(req):
+def broken_stream(req, error=httpx.ReadError("connection reset")):
     class Broken(httpx.AsyncByteStream):
         async def __aiter__(self):
             yield (TEXT_LINE + "\n").encode()
-            raise httpx.ReadError("connection reset")
+            raise error
 
     return httpx.Response(200, stream=Broken())
 
@@ -178,8 +178,14 @@ def test_gateway_client_status(error, status):
     assert client_status(error) == status
 
 
-async def test_stream_mid_stream_transport_error_is_connection_error(backend):
-    backend["handler"] = broken_stream
+@pytest.mark.parametrize(
+    "error",
+    [httpx.ReadError("connection reset"), httpx.ReadTimeout("stalled")],
+    ids=["reset", "stall"],
+)
+async def test_stream_mid_stream_transport_error_is_connection_error(backend, error):
+    """A stall after the stream starts is a broken connection, which the gateway answers 502."""
+    backend["handler"] = lambda req: broken_stream(req, error)
     recorder = Recorder()
     events = make_provider(backend, recorder).stream(request(stream=True))
     with pytest.raises(APIConnectionError, match="stream broke"):
