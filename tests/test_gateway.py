@@ -3,6 +3,7 @@
 import pytest
 
 from model_calling.callbacks import Callback
+from tests.harness.replay import fixture_path
 from tests.harness.scenarios import BACKENDS, SCENARIOS
 
 
@@ -105,8 +106,7 @@ async def test_callbacks_run_on_stream(gateway):
     chunk_calls = [c for c in callback.calls if c[0] == "on_stream_chunk"]
 
     # Load the fixture to count expected lines
-    fixture_path = "/Users/wjackson/Developer/model-calling/tests/fixtures/ollama/stream.json"
-    fixture = json.load(open(fixture_path))
+    fixture = json.loads(fixture_path("ollama", "stream").read_text())
     expected_lines = len(fixture["response"]["lines"])
 
     assert len(chunk_calls) == expected_lines

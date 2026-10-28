@@ -20,6 +20,11 @@ from model_calling.core import (
 )
 from model_calling.formats import TranslationError
 from model_calling.providers.ollama import OllamaProvider
+from tests.harness.replay import fixture_path
+
+
+def load_fixture(scenario: str) -> dict:
+    return json.loads(fixture_path("ollama", scenario).read_text())
 
 
 @pytest.fixture
@@ -171,9 +176,7 @@ def test_build_request_tool_choice_none_drops_tools(provider):
 
 
 def test_parse_response_text(provider):
-    fixture = json.load(
-        open("/Users/wjackson/Developer/model-calling/tests/fixtures/ollama/text.json")
-    )
+    fixture = load_fixture("text")
     body = fixture["response"]["json"]
     resp = provider.parse_response(body)
 
@@ -188,9 +191,7 @@ def test_parse_response_text(provider):
 
 
 def test_parse_response_tools(provider):
-    fixture = json.load(
-        open("/Users/wjackson/Developer/model-calling/tests/fixtures/ollama/tools.json")
-    )
+    fixture = load_fixture("tools")
     body = fixture["response"]["json"]
     resp = provider.parse_response(body)
 
@@ -202,9 +203,7 @@ def test_parse_response_tools(provider):
 
 
 def test_parse_response_unique_ids(provider):
-    fixture = json.load(
-        open("/Users/wjackson/Developer/model-calling/tests/fixtures/ollama/text.json")
-    )
+    fixture = load_fixture("text")
     body = fixture["response"]["json"]
     resp1 = provider.parse_response(body)
     resp2 = provider.parse_response(body)
@@ -215,9 +214,7 @@ def test_parse_response_unique_ids(provider):
 
 
 def test_stream_parser_basic(provider):
-    fixture = json.load(
-        open("/Users/wjackson/Developer/model-calling/tests/fixtures/ollama/stream.json")
-    )
+    fixture = load_fixture("stream")
     lines = fixture["response"]["lines"]
 
     parser = provider.stream_parser()
@@ -261,9 +258,7 @@ def test_stream_parser_basic(provider):
 
 
 def test_stream_parser_sequential_block_indexes(provider):
-    fixture = json.load(
-        open("/Users/wjackson/Developer/model-calling/tests/fixtures/ollama/stream.json")
-    )
+    fixture = load_fixture("stream")
     lines = fixture["response"]["lines"]
 
     parser = provider.stream_parser()
@@ -280,9 +275,7 @@ def test_stream_parser_sequential_block_indexes(provider):
 
 def test_stream_parser_truncated_stream_error(provider):
     # Only the first line, no done=true
-    fixture = json.load(
-        open("/Users/wjackson/Developer/model-calling/tests/fixtures/ollama/stream.json")
-    )
+    fixture = load_fixture("stream")
     lines = fixture["response"]["lines"][:1]
 
     parser = provider.stream_parser()
