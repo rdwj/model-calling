@@ -217,12 +217,19 @@ def _content_out(blocks: list, shorthand: bool) -> str | list:
 # --- request ------------------------------------------------------------
 
 
+def _system_text(content: list, where: str) -> list:
+    if not all(isinstance(b, Text) for b in content):
+        raise TranslationError(f"Anthropic {where} may contain only text blocks")
+    return content
+
+
 def _message_in(raw: dict) -> Message:
     rest = dict(raw)
+    role = rest.pop("role")
     content, shorthand = _content_in(rest.pop("content"))
-    return Message(
-        role=rest.pop("role"), content=content, content_shorthand=shorthand, extras=_extras(rest)
-    )
+    if role == "system":
+        _system_text(content, "'system' messages")
+    return Message(role=role, content=content, content_shorthand=shorthand, extras=_extras(rest))
 
 
 def _message_out(msg: Message) -> dict:
@@ -303,9 +310,7 @@ def _request_in(body: dict) -> Request:
     system = _take(rest, "system")
     system_shorthand = isinstance(system, str)
     if system is not None:
-        system, _ = _content_in(system)
-        if not all(isinstance(b, Text) for b in system):
-            raise TranslationError("Anthropic 'system' may contain only text blocks")
+        system = _system_text(_content_in(system)[0], "'system'")
     tools = _take(rest, "tools")
     return Request(
         model=rest.pop("model"),

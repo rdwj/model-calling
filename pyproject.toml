@@ -57,7 +57,7 @@ dev = [
     "pip-audit==2.10.1",
     "requests==2.34.2",
     "openai==3.35.1",
-    "anthropic==1.15.0",
+    "anthropic==2.0.0",
 ]
 
 [project.urls]
@@ -97,4 +97,4 @@ asyncio_mode = "auto"
 # Supply-chain rule: never resolve a release (direct or transitive) published
 # after this timestamp. When updating dependencies, move it forward to no later
 # than 7 days before the update, then re-run the audit.
-exclude-newer = "2026-10-20T02:25:00Z"
+exclude-newer = "2026-10-21T15:52:00Z"

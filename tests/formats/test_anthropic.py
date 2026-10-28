@@ -201,10 +201,30 @@ def test_foreign_opaque_block_is_rejected():
         fmt.response_from_internal(resp)
 
 
-def test_system_rejects_non_text_blocks():
-    body = {**REQUEST, "system": [{"type": "image", "source": {"type": "url", "url": "x"}}]}
+IMAGE_BLOCK = {"type": "image", "source": {"type": "url", "url": "https://x/a.png"}}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {**REQUEST, "system": [IMAGE_BLOCK]},
+        # anthropic 2.0 allows system-role messages, text only.
+        {**REQUEST, "messages": [{"role": "system", "content": [IMAGE_BLOCK]}]},
+    ],
+    ids=["top_level", "system_message"],
+)
+def test_system_rejects_non_text_blocks(body):
     with pytest.raises(TranslationError, match="only text blocks"):
         fmt.request_to_internal(body)
+
+
+def test_system_message_round_trips():
+    body = {
+        **REQUEST,
+        "messages": [{"role": "system", "content": "Be brief."}, *REQUEST["messages"]],
+    }
+    original = validate_anthropic_request(copy.deepcopy(body))
+    assert fmt.request_from_internal(fmt.request_to_internal(original)) == original
 
 
 def user_turn(*blocks) -> dict:

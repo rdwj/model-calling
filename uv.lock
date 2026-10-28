@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-10-20T02:25:00Z"
+exclude-newer = "2026-10-21T15:52:00Z"
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -211,7 +211,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "1.15.0"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -223,9 +223,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/37/5a2a4316df8babd28f096477a707cd75f240b4264c97fb128c32375105d6/anthropic-1.15.0.tar.gz", hash = "sha256:90caa9df83e2fc8bddb4ddeb83b7191bce255f635c03eae055deec521741df08", size = 1726101, upload-time = "2026-10-15T19:45:34.635Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/4a/70da82b54cdfda7c4bf089f9e895dc2d559b26e76daf367d124e5d9ec71c/anthropic-2.0.0.tar.gz", hash = "sha256:f063562a869be5642046fa112ba3326259bf156f51d6f66a06d15e9e543b9522", size = 1764549, upload-time = "2026-10-21T15:51:52.694Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/65/54437e7edea49a3be9ef56f6b5965999bfdc52b9dadc9b448124ca51a594/anthropic-1.15.0-py3-none-any.whl", hash = "sha256:10189a7993c5c71a0a2d4bb80020ca6a2fd27679f51e627405da37251d15ff49", size = 2047755, upload-time = "2026-10-15T19:45:32.951Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/e9/5b31953d8f9adf03a253c918c66eedf3cb79d98f5821f3123482cf0b2e5c/anthropic-2.0.0-py3-none-any.whl", hash = "sha256:6b866360b0ad26af29bf6282af6a5f9fe74414dbc1a77ad68c16047348a8958d", size = 2101520, upload-time = "2026-10-21T15:51:54.549Z" },
 ]
 
 [[package]]
@@ -1266,7 +1266,7 @@ provides-extras = ["moderation", "examples"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "anthropic", specifier = "==1.15.0" },
+    { name = "anthropic", specifier = "==2.0.0" },
     { name = "black", specifier = "==26.10.1" },
     { name = "flake8", specifier = "==7.4.1" },
     { name = "openai", specifier = "==3.35.1" },
