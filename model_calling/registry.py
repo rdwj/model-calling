@@ -14,7 +14,7 @@ from model_calling.adapter import ModelAdapter
 from model_calling.ollama_adapter import OllamaAdapter
 from model_calling.thinking import ThinkingStyle
 from model_calling.callbacks import DefaultCallback
-from model_calling.providers import HttpClients
+from model_calling.providers import HttpClients, default_configs
 from model_calling.capability_cache import capability_cache
 
 logger = logging.getLogger(__name__)
@@ -113,29 +113,9 @@ class ModelRegistry:
 
         # Default configurations
         self.default_configs = {
-            "ollama": {
-                "base_url": "http://localhost:11434",
-                "callbacks": [self.default_callback],
-            },
-            # OpenAI-compatible base URLs are the API root, /v1 included.
-            "vllm": {
-                "base_url": "http://localhost:8000/v1",
-                "callbacks": [self.default_callback],
-            },
-            "openai": {
-                "base_url": "https://api.openai.com/v1",
-                "api_key": os.environ.get("OPENAI_API_KEY", ""),
-                "headers": (
-                    {"OpenAI-Organization": os.environ["OPENAI_ORG_ID"]}
-                    if os.environ.get("OPENAI_ORG_ID")
-                    else {}
-                ),
-                "callbacks": [self.default_callback],
-            },
-            "openrouter": {
-                "base_url": "https://openrouter.ai/api/v1",
-                "api_key": os.environ.get("OPENROUTER_API_KEY", ""),
-                "callbacks": [self.default_callback],
+            **{
+                prefix: {**config, "callbacks": [self.default_callback]}
+                for prefix, config in default_configs().items()
             },
             "anthropic": {
                 "base_url": "https://api.anthropic.com/v1/messages",

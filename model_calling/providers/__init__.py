@@ -5,6 +5,7 @@ Anthropic and Cohere still go through the legacy adapters in
 `model_calling.registry` until Phase 6 ports them.
 """
 
+import os
 from collections.abc import Mapping
 
 from model_calling.providers.base import HttpClients, Provider, StreamParser
@@ -26,6 +27,37 @@ PROVIDERS: dict[str, type[Provider]] = {
 DEFAULT_PREFIX = "ollama"
 
 
+def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
+    """Settings for every ported prefix, as `provider_for` reads them.
+
+    Local backends get their usual local URLs. Hosted backends take their
+    keys from the environment; nothing here reads a `.env` file.
+    """
+    org = environ.get("OPENAI_ORG_ID")
+    return {
+        "ollama": {"base_url": "http://localhost:11434"},
+        # OpenAI-compatible base URLs are the API root, /v1 included.
+        "vllm": {"base_url": "http://localhost:8000/v1"},
+        "openai": {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": environ.get("OPENAI_API_KEY", ""),
+            "headers": {"OpenAI-Organization": org} if org else {},
+        },
+        "openrouter": {
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": environ.get("OPENROUTER_API_KEY", ""),
+        },
+    }
+
+
+def split_model(model_name: str) -> tuple[str, str]:
+    """`prefix/name` to (prefix, name). Unprefixed names default to Ollama."""
+    if "/" in model_name:
+        prefix, short_name = model_name.split("/", 1)
+        return prefix, short_name
+    return DEFAULT_PREFIX, model_name
+
+
 def provider_for(
     model_name: str, configs: Mapping[str, dict], clients: HttpClients | None = None
 ) -> Provider | None:
@@ -36,10 +68,7 @@ def provider_for(
     `ModelRegistry.default_configs`. With `clients`, the provider shares its
     prefix's pooled HTTP client instead of opening one per call.
     """
-    if "/" in model_name:
-        prefix, short_name = model_name.split("/", 1)
-    else:
-        prefix, short_name = DEFAULT_PREFIX, model_name
+    prefix, short_name = split_model(model_name)
     cls = PROVIDERS.get(prefix)
     if cls is None:
         return None
@@ -66,5 +95,7 @@ __all__ = [
     "Provider",
     "StreamParser",
     "VLLMProvider",
+    "default_configs",
     "provider_for",
+    "split_model",
 ]

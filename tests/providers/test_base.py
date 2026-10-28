@@ -297,3 +297,37 @@ def test_config_headers_go_on_every_request():
         "authorization": "Bearer k",
         "OpenAI-Organization": "org-1",
     }
+
+
+def test_http_clients_replace_a_client_from_another_loop():
+    import asyncio
+
+    clients = HttpClients()
+
+    async def get():
+        return clients.get("ollama", {})
+
+    first, second = asyncio.run(get()), asyncio.run(get())
+    assert first is not second
+
+
+async def test_http_clients_reuse_on_the_same_loop():
+    clients = HttpClients()
+    assert clients.get("ollama", {}) is clients.get("ollama", {})
+    await clients.aclose()
+
+
+@pytest.mark.parametrize(
+    "environ, prefix, expected",
+    [
+        ({}, "ollama", {"base_url": "http://localhost:11434"}),
+        ({"OPENROUTER_API_KEY": "k"}, "openrouter", {"api_key": "k"}),
+        ({"OPENAI_ORG_ID": "org"}, "openai", {"headers": {"OpenAI-Organization": "org"}}),
+        ({}, "openai", {"api_key": "", "headers": {}}),
+    ],
+)
+def test_default_configs_read_only_the_given_environment(environ, prefix, expected):
+    from model_calling.providers import default_configs
+
+    config = default_configs(environ)[prefix]
+    assert expected.items() <= config.items()

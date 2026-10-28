@@ -7,6 +7,7 @@ request into a `Request`, hands it to the provider, and translates the
 `Response` or `StreamEvent`s it gets back.
 """
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -50,24 +51,40 @@ class HttpClients:
     A prefix's config may name a `transport` (tests inject a replay one).
     The client is built once, so a later change to `transport` needs a new
     `HttpClients`; `base_url` and `api_key` are read per request.
+
+    An async client's connections belong to the event loop that opened them.
+    When a caller arrives on a different loop (a script calling `asyncio.run`
+    twice), the prefix gets a fresh client; the old loop is gone, so its
+    client is dropped rather than closed.
     """
 
     def __init__(self) -> None:
-        self._clients: dict[str, httpx.AsyncClient] = {}
+        self._clients: dict[str, tuple[httpx.AsyncClient, asyncio.AbstractEventLoop | None]] = {}
 
     def get(self, prefix: str, config: Mapping[str, Any]) -> httpx.AsyncClient:
-        client = self._clients.get(prefix)
-        if client is None or client.is_closed:
+        loop = _running_loop()
+        entry = self._clients.get(prefix)
+        if entry is None or entry[0].is_closed or entry[1] is not loop:
             client = httpx.AsyncClient(
                 timeout=DEFAULT_TIMEOUT, limits=POOL_LIMITS, transport=config.get("transport")
             )
-            self._clients[prefix] = client
-        return client
+            entry = self._clients[prefix] = (client, loop)
+        return entry[0]
 
     async def aclose(self) -> None:
-        clients, self._clients = list(self._clients.values()), {}
-        for client in clients:
-            await client.aclose()
+        """Close the clients opened on the current loop and forget the rest."""
+        loop = _running_loop()
+        entries, self._clients = list(self._clients.values()), {}
+        for client, owner in entries:
+            if owner is loop or owner is None:
+                await client.aclose()
+
+
+def _running_loop() -> asyncio.AbstractEventLoop | None:
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
 
 
 class StreamParser(ABC):
