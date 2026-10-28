@@ -61,6 +61,7 @@ async def test_replay_rejects_a_tampered_fixture(gateway, tamper, match):
     with pytest.raises(AssertionError, match=f"differs from the recording.*{match}"):
         replay.check()
     replay.failures.clear()
+    replay._pending.clear()
 
 
 def test_replay_rejects_unrecorded_requests():
@@ -157,3 +158,24 @@ def test_validate_anthropic_request_is_strict(message, match):
     body = {"model": "m", "max_tokens": 1, "messages": [message]}
     with pytest.raises(ValueError, match=match):
         validate_anthropic_request(body)
+
+
+def test_replay_check_reports_unused_exchanges():
+    replay = ReplayTransport([exchange()])
+    with pytest.raises(AssertionError, match="never requested"):
+        replay.check()
+
+
+def test_replay_compares_types_exactly():
+    replay = ReplayTransport([exchange(sent={"stream": True})])
+    with httpx.Client(transport=replay) as client:
+        with pytest.raises(AssertionError, match="stream: recorded True, sent 1"):
+            client.post(URL, json={"stream": 1})
+
+
+def test_replay_records_a_non_json_body():
+    replay = ReplayTransport([exchange(sent={})])
+    with httpx.Client(transport=replay) as client:
+        with pytest.raises(AssertionError, match="isn't JSON"):
+            client.post(URL, content=b"not json")
+    assert replay.failures

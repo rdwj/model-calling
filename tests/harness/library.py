@@ -24,6 +24,8 @@ class Library:
 
         Returns the transport so tests can inspect what the client sent.
         """
+        if self.client is not None:
+            raise RuntimeError("use() a backend once per test")
         backend = BACKENDS[backend_name]
         replay = ReplayTransport([Exchange.load(fixture_path(backend_name, scenario_name))])
         config = {**backend.gateway_config, "transport": replay}
@@ -36,7 +38,9 @@ class Library:
 async def library():
     lib = Library()
     yield lib
-    if lib.client is not None:
-        await lib.client.aclose()
-    for replay in lib.replays:
-        replay.check()
+    try:
+        for replay in lib.replays:
+            replay.check()
+    finally:
+        if lib.client is not None:
+            await lib.client.aclose()

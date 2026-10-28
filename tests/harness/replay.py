@@ -76,17 +76,23 @@ class Exchange:
         return request.method == self.method and _strip_query(request.url) == self.url
 
     def body_mismatch(self, request: httpx.Request) -> Optional[str]:
-        """Describe how the sent body differs from the recorded one, or None."""
-        sent = json.loads(request.content) if request.content else None
-        if sent == self.request_json:
-            return None
+        """Describe how the sent body differs from the recorded one, or None.
+
+        Compared as canonical JSON, so `true` never matches `1`.
+        """
+        try:
+            sent = json.loads(request.content) if request.content else None
+        except ValueError:
+            return f"sent a body that isn't JSON: {request.content[:200]!r}"
         recorded = self.request_json
+        if _canonical(sent) == _canonical(recorded):
+            return None
         if not (isinstance(sent, dict) and isinstance(recorded, dict)):
             return f"recorded {recorded!r}, sent {sent!r}"
         fields = sorted(
             k
             for k in recorded.keys() | sent.keys()
-            if recorded.get(k, _ABSENT) != sent.get(k, _ABSENT)
+            if _canonical(recorded.get(k, _ABSENT)) != _canonical(sent.get(k, _ABSENT))
         )
         return "; ".join(
             f"{k}: recorded {recorded.get(k, _ABSENT)!r}, sent {sent.get(k, _ABSENT)!r}"
@@ -109,6 +115,10 @@ class Exchange:
 _ABSENT = "<absent>"
 
 
+def _canonical(value) -> str:
+    return json.dumps(value, sort_keys=True)
+
+
 def _strip_query(url: httpx.URL) -> str:
     return str(url.copy_with(query=None))
 
@@ -128,9 +138,13 @@ class ReplayTransport(httpx.AsyncBaseTransport, httpx.BaseTransport):
         self.failures: List[str] = []
 
     def check(self) -> None:
-        """Fail if any request went unanswered, even if the caller swallowed it."""
+        """Fail if any request went unanswered, even if the caller swallowed
+        it, or if a recorded exchange was never requested."""
         if self.failures:
             raise AssertionError("Replay failed: " + " || ".join(self.failures))
+        if self._pending:
+            unused = "; ".join(f"{e.method} {e.url} ({e.source})" for e in self._pending)
+            raise AssertionError(f"Recorded exchanges were never requested: {unused}")
 
     def _answer(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)

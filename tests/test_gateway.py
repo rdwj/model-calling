@@ -121,7 +121,7 @@ async def test_callbacks_run_on_stream(gateway):
 @pytest.mark.asyncio
 async def test_invalid_request_returns_400_with_error_body(gateway):
     """Invalid requests (e.g. n=2) should return 400 with OpenAI error body."""
-    gateway.use("ollama", "text")
+    replay = gateway.use("ollama", "text")
 
     body = SCENARIOS["text"].chat_completions_body(BACKENDS["ollama"].model_for(SCENARIOS["text"]))
     body["n"] = 2  # Not supported
@@ -132,6 +132,9 @@ async def test_invalid_request_returns_400_with_error_body(gateway):
     data = resp.json()
     assert "error" in data
     assert "message" in data["error"]
+    # Rejected before reaching the backend, so the fixture goes unused.
+    assert replay.requests == []
+    replay._pending.clear()
     assert "type" in data["error"]
     assert data["error"]["type"] == "invalid_request_error"
 
