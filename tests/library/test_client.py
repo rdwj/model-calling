@@ -239,25 +239,19 @@ STRICT_CASES = {
         {"tools": [SCENARIOS["tools"].tools[0]], "tool_choice": "required"},
         "tool_choice",
     ),
-    "ollama_cached_block": (
-        "messages",
-        "ollama/m",
-        {"messages": [{"role": "user", "content": [CACHED_TEXT]}]},
-        "cache_control",
-    ),
-    "ollama_cached_tool": ("messages", "ollama/m", {"tools": [CACHED_TOOL]}, "cache_control"),
     "vllm_thinking_budget": (
         "messages",
         "vllm/m",
         {"thinking": {"type": "enabled", "budget_tokens": 1024}},
         "thinking.budget_tokens",
     ),
-    "openrouter_cached_system": (
-        "messages",
-        "openrouter/m",
-        {"system": [CACHED_TEXT]},
-        "cache_control",
-    ),
+}
+# A caching hint changes no output, so every backend drops it even in strict mode.
+CACHE_CASES = {
+    "ollama_cached_block": ("ollama/m", {"messages": [{"role": "user", "content": [CACHED_TEXT]}]}),
+    "ollama_cached_tool": ("ollama/m", {"tools": [CACHED_TOOL]}),
+    "openrouter_cached_system": ("openrouter/m", {"system": [CACHED_TEXT]}),
+    "vllm_cached_tool": ("vllm/m", {"tools": [CACHED_TOOL]}),
 }
 
 
@@ -302,6 +296,16 @@ async def test_drop_params_sends_without_the_parameter(family, model, params, na
             await call(client, family, model, params, **call_kwargs)
     top_level = name.split(".")[0]
     assert top_level not in json.dumps(sent[0]), sent[0]
+
+
+@pytest.mark.parametrize("model, params", CACHE_CASES.values(), ids=CACHE_CASES.keys())
+async def test_cache_control_is_dropped_silently_in_strict_mode(model, params):
+    sent = []
+    transport = mock(lambda req: sent.append(json.loads(req.content)) or httpx.Response(500))
+    async with strict_client(transport) as client:
+        with pytest.raises(InternalServerError):
+            await call(client, "messages", model, params)
+    assert len(sent) == 1 and "cache_control" not in json.dumps(sent[0]), sent
 
 
 @pytest.mark.parametrize("stream", [False, True])

@@ -41,7 +41,6 @@ from model_calling.providers.base import (
     Provider,
     StreamParser,
     new_id,
-    uses_cache_control,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,8 +102,6 @@ class OllamaProvider(Provider):
         choice = request.tool_choice
         if choice is not None and choice.mode in FORCED_TOOL_CHOICES:
             names.append("tool_choice")
-        if uses_cache_control(request):
-            names.append("cache_control")
         return names
 
     def build_request(self, request: Request) -> dict:

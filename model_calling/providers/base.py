@@ -22,7 +22,7 @@ import httpx
 from pydantic import ValidationError
 
 from model_calling.callbacks import Callback
-from model_calling.core import Request, Response, StreamError, StreamEvent, Tool, ToolResult
+from model_calling.core import Request, Response, StreamError, StreamEvent
 from model_calling.errors import (
     APIConnectionError,
     APIError,
@@ -60,14 +60,6 @@ _STREAM_ERROR_TYPES: dict[str | None, type[APIError]] = {
     "permission_error": PermissionDeniedError,
     "not_found_error": NotFoundError,
 }
-
-
-def uses_cache_control(request: Request) -> bool:
-    """Whether any system block, message block, tool result, or tool sets `cache_control`."""
-    blocks = [*(request.system or []), *(b for m in request.messages for b in m.content)]
-    nested = [c for b in blocks if isinstance(b, ToolResult) for c in b.content or ()]
-    tools = [t for t in request.tools or () if isinstance(t, Tool)]
-    return any(getattr(x, "cache_control", None) is not None for x in (*blocks, *nested, *tools))
 
 
 def new_id(prefix: str = "gen-") -> str:
