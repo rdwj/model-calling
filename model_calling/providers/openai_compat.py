@@ -37,7 +37,8 @@ from model_calling.formats.chat_completions import (
     tool_call_in,
     usage_in,
 )
-from model_calling.providers.base import BAD_GATEWAY, BackendError, Provider, StreamParser, new_id
+from model_calling.errors import APIError
+from model_calling.providers.base import Provider, StreamParser, new_id
 from model_calling.providers.openai_compat_stream import ChatCompletionsStreamParser
 
 logger = logging.getLogger(__name__)
@@ -243,8 +244,10 @@ class OpenAICompatProvider(Provider):
     def parse_response(self, body: dict) -> Response:
         if body.get("error") and not body.get("choices"):
             # OpenRouter reports some upstream failures inside an HTTP 200.
-            raise BackendError(
-                BAD_GATEWAY, f"{self.name} returned an error: {self.error_message(body)}"
+            raise APIError(
+                f"{self.name} returned an error: {self.error_message(body)}",
+                provider=self.name,
+                body=body,
             )
         choices = body.get("choices")
         if not choices:

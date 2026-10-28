@@ -7,7 +7,7 @@ Anthropic and Cohere still go through the legacy adapters in
 
 from collections.abc import Mapping
 
-from model_calling.providers.base import BackendError, HttpClients, Provider, StreamParser
+from model_calling.providers.base import HttpClients, Provider, StreamParser
 from model_calling.providers.ollama import OllamaProvider
 from model_calling.providers.openai_compat import (
     OpenAICompatProvider,
@@ -57,7 +57,6 @@ def provider_for(
 
 
 __all__ = [
-    "BackendError",
     "HttpClients",
     "OllamaProvider",
     "OpenAICompatProvider",

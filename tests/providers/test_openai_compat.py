@@ -22,7 +22,7 @@ from model_calling.core import (
     UrlSource,
 )
 from model_calling.formats import TranslationError
-from model_calling.providers.base import BackendError
+from model_calling.errors import APIError
 from model_calling.providers.openai_compat import (
     OpenAIProvider,
     OpenRouterProvider,
@@ -580,7 +580,7 @@ def test_parse_response_finish_reason_mapping(
 
 def test_parse_response_error_without_choices_raises(provider):
     body = {"error": {"message": "Model not found", "type": "invalid_request_error"}, "choices": []}
-    with pytest.raises(BackendError, match="returned an error"):
+    with pytest.raises(APIError, match="returned an error"):
         provider.parse_response(body)
 
 

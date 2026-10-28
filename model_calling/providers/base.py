@@ -20,17 +20,20 @@ from pydantic import ValidationError
 
 from model_calling.callbacks import Callback
 from model_calling.core import Request, Response, StreamError, StreamEvent
+from model_calling.errors import (
+    APIConnectionError,
+    APIError,
+    APIResponseValidationError,
+    APITimeoutError,
+    error_for_status,
+)
 from model_calling.formats import TranslationError
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 300.0
-# Backend 5xx and transport failures reach the client as a bad gateway.
+# The status a mid-stream StreamError maps to at the gateway.
 BAD_GATEWAY = 502
-GATEWAY_TIMEOUT = 504
-# The backend refused the gateway's credential: a gateway fault, not the
-# client's, so it is reported as a bad gateway too.
-_CREDENTIAL_REFUSED = (401, 403)
 # Long-lived streams hold their connections, so a pooled client must not cap
 # them; per-call clients never did. Idle connections are still reused.
 POOL_LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
@@ -39,15 +42,6 @@ POOL_LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
 def new_id(prefix: str = "gen-") -> str:
     """A unique id for a response or tool call the backend didn't name."""
     return f"{prefix}{uuid.uuid4().hex}"
-
-
-class BackendError(Exception):
-    """The backend refused or failed a request. `status` is what the client sees."""
-
-    def __init__(self, status: int, message: str):
-        super().__init__(message)
-        self.status = status
-        self.message = message
 
 
 class HttpClients:
@@ -160,7 +154,12 @@ class Provider(ABC):
                 try:
                     native = resp.json()
                 except ValueError as e:
-                    raise BackendError(BAD_GATEWAY, f"{self.name} sent a non-JSON body") from e
+                    raise APIResponseValidationError(
+                        f"{self.name} sent a non-JSON body",
+                        provider=self.name,
+                        status=resp.status_code,
+                        body=resp.text,
+                    ) from e
             result = self._unreadable_as_backend_error(lambda: self.parse_response(native))
         except Exception as e:
             await self._notify("on_error", body, e)
@@ -205,9 +204,7 @@ class Provider(ABC):
                     await resp.aclose()
         except _StreamFailed as failed:
             # Reported to the consumer as an event, to the callbacks as an error.
-            await self._notify(
-                "on_error", body, BackendError(failed.event.status, failed.event.message)
-            )
+            await self._notify("on_error", body, self.stream_error(failed.event))
             yield failed.event
             return
         except BaseException as e:
@@ -225,33 +222,37 @@ class Provider(ABC):
             async for line in resp.aiter_lines():
                 if line.strip():
                     yield line
+        except httpx.TimeoutException as e:
+            raise APITimeoutError(f"{self.name} stream timed out: {e}", provider=self.name) from e
         except httpx.TransportError as e:
-            raise BackendError(BAD_GATEWAY, f"{self.name} stream broke: {e}") from e
+            raise APIConnectionError(f"{self.name} stream broke: {e}", provider=self.name) from e
+
+    def stream_error(self, event: StreamError) -> APIError:
+        """The exception for a backend failure reported inside a stream."""
+        return APIError(event.message, provider=self.name)
 
     def _unreadable_as_backend_error(self, parse):
         try:
             return parse()
         except (TranslationError, ValidationError, KeyError, TypeError, AttributeError) as e:
-            raise BackendError(
-                BAD_GATEWAY, f"{self.name} sent a response we could not read: {e}"
+            raise APIResponseValidationError(
+                f"{self.name} sent a response we could not read: {e}", provider=self.name
             ) from e
 
     async def _send(self, pending) -> httpx.Response:
         try:
             return await pending
         except httpx.TimeoutException as e:
-            raise BackendError(GATEWAY_TIMEOUT, f"{self.name} timed out: {e}") from e
+            raise APITimeoutError(f"{self.name} timed out: {e}", provider=self.name) from e
         except httpx.TransportError as e:
-            raise BackendError(
-                BAD_GATEWAY, f"cannot reach {self.name} at {self.endpoint()}: {e}"
+            raise APIConnectionError(
+                f"cannot reach {self.name} at {self.endpoint()}: {e}", provider=self.name
             ) from e
 
-    def _backend_error(self, status: int, body: Any) -> BackendError:
+    def _backend_error(self, status: int, body: Any) -> APIError:
         message = f"{self.name} returned HTTP {status}: {self.error_message(body)}"
         logger.warning(message)
-        if status >= 500 or status in _CREDENTIAL_REFUSED:
-            return BackendError(BAD_GATEWAY, message)
-        return BackendError(status, message)
+        return error_for_status(status, message, provider=self.name, body=body)
 
     async def _notify(self, hook: str, body: dict, *args: Any) -> None:
         """Run one callback hook for every registered callback.

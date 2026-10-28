@@ -11,8 +11,21 @@ import pytest
 
 from model_calling.callbacks import Callback
 from model_calling.core import Message, MessageStart, Request, StreamError, Text
-from model_calling.gateway import chat_completions
-from model_calling.providers import BackendError, HttpClients, OllamaProvider, provider_for
+from model_calling.errors import (
+    APIConnectionError,
+    APIError,
+    APIResponseValidationError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+)
+from model_calling.gateway import chat_completions, client_status
+from model_calling.providers import HttpClients, OllamaProvider, provider_for
 
 DONE_LINE = json.dumps(
     {"model": "m", "message": {"role": "assistant", "content": ""}, "done": True}
@@ -83,25 +96,37 @@ def broken_stream(req):
     return httpx.Response(200, stream=Broken())
 
 
+UNREADABLE_TOOL_CALL = {
+    "model": "m",
+    "message": {"tool_calls": [{"function": {"arguments": {}}}]},
+    "done": True,
+}
+
+
 @pytest.mark.parametrize(
-    "handler, status",
+    "handler, error_type, status",
     [
-        (lambda req: httpx.Response(200, text="<html>not json</html>"), 502),
-        (lambda req: httpx.Response(500, json={"error": "boom"}), 502),
-        (lambda req: httpx.Response(429, json={"error": "slow down"}), 429),
-        (lambda req: httpx.Response(401, json={"error": "bad key"}), 502),
-        (lambda req: httpx.Response(403, json={"error": "forbidden"}), 502),
         (
-            lambda req: httpx.Response(
-                200,
-                json={
-                    "model": "m",
-                    "message": {"tool_calls": [{"function": {"arguments": {}}}]},
-                    "done": True,
-                },
-            ),
-            502,
+            lambda req: httpx.Response(200, text="<html>not json</html>"),
+            APIResponseValidationError,
+            200,
         ),
+        (lambda req: httpx.Response(500, json={"error": "boom"}), InternalServerError, 500),
+        (lambda req: httpx.Response(429, json={"error": "slow down"}), RateLimitError, 429),
+        (lambda req: httpx.Response(401, json={"error": "bad key"}), AuthenticationError, 401),
+        (lambda req: httpx.Response(403, json={"error": "forbidden"}), PermissionDeniedError, 403),
+        (lambda req: httpx.Response(418, json={"error": "teapot"}), APIStatusError, 418),
+        (
+            lambda req: httpx.Response(200, json=UNREADABLE_TOOL_CALL),
+            APIResponseValidationError,
+            None,
+        ),
+        (
+            lambda req: (_ for _ in ()).throw(httpx.ConnectError("refused")),
+            APIConnectionError,
+            None,
+        ),
+        (lambda req: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), APITimeoutError, None),
     ],
     ids=[
         "non_json",
@@ -109,23 +134,55 @@ def broken_stream(req):
         "rate_limited",
         "credential_refused",
         "credential_forbidden",
+        "other_status",
         "unreadable_tool_call",
+        "unreachable",
+        "timeout",
     ],
 )
-async def test_complete_maps_backend_failures(backend, handler, status):
+async def test_complete_raises_the_backends_real_status(backend, handler, error_type, status):
     backend["handler"] = handler
     recorder = Recorder()
-    with pytest.raises(BackendError) as err:
+    with pytest.raises(error_type) as err:
         await make_provider(backend, recorder).complete(request())
-    assert err.value.status == status
+    assert (err.value.status, err.value.provider) == (status, "ollama")
     assert recorder.hooks == ["start", "error"]
 
 
-async def test_stream_mid_stream_transport_error_is_backend_error(backend):
+async def test_error_carries_the_raw_body(backend):
+    backend["handler"] = lambda req: httpx.Response(404, json={"error": "model 'm' not found"})
+    with pytest.raises(NotFoundError) as err:
+        await make_provider(backend).complete(request())
+    assert err.value.body == {"error": "model 'm' not found"}
+    assert "model 'm' not found" in err.value.message
+
+
+@pytest.mark.parametrize(
+    "error, status",
+    [
+        (NotFoundError("x", status=404), 404),
+        (RateLimitError("x", status=429), 429),
+        (BadRequestError("x", status=400), 400),
+        (AuthenticationError("x", status=401), 502),
+        (PermissionDeniedError("x", status=403), 502),
+        (InternalServerError("x", status=503), 502),
+        (APIResponseValidationError("x", status=200), 502),
+        (APIConnectionError("x"), 502),
+        (APIError("x"), 502),
+        (APITimeoutError("x"), 504),
+    ],
+    ids=lambda v: type(v).__name__ if isinstance(v, Exception) else str(v),
+)
+def test_gateway_client_status(error, status):
+    """The gateway hides backend 5xx and credential refusals behind a 502."""
+    assert client_status(error) == status
+
+
+async def test_stream_mid_stream_transport_error_is_connection_error(backend):
     backend["handler"] = broken_stream
     recorder = Recorder()
     events = make_provider(backend, recorder).stream(request(stream=True))
-    with pytest.raises(BackendError, match="stream broke"):
+    with pytest.raises(APIConnectionError, match="stream broke"):
         async for _ in events:
             pass
     assert recorder.hooks[-1] == "error"
