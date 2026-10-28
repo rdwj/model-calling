@@ -53,6 +53,8 @@ _KNOWN_STOP_REASONS = {
     "model_context_window_exceeded",
 }
 _THINKING_MODES = {"enabled", "adaptive", "disabled"}
+# Thinking modes whose `output_config.effort` becomes the internal effort.
+_EFFORT_MODES = {"enabled", "adaptive"}
 _TOOL_CHOICE_MODES = {"auto", "any", "tool", "none"}
 _CACHE_TTLS = {None, "5m", "1h"}
 _TOOL_RESULT_CONTENT_TYPES = {"text", "image"}
@@ -311,13 +313,42 @@ def _thinking_in(rest: dict) -> ThinkingConfig | None:
     if (rest.get("thinking") or {}).get("type") not in _THINKING_MODES:
         return None
     th = dict(rest.pop("thinking"))
+    mode = th.pop("type")
     return ThinkingConfig(
-        mode=th.pop("type"), budget_tokens=_take(th, "budget_tokens"), extras=_extras(th)
+        mode=mode,
+        budget_tokens=_take(th, "budget_tokens"),
+        effort=_effort_in(rest) if mode in _EFFORT_MODES else None,
+        extras=_extras(th),
     )
+
+
+def _effort_in(rest: dict) -> str | None:
+    """Move `output_config.effort` onto the thinking config, where backends
+    that take a reasoning effort read it. The rest of `output_config` stays
+    in extras."""
+    config = rest.get("output_config")
+    if not isinstance(config, dict) or not isinstance(config.get("effort"), str):
+        return None
+    config = dict(config)
+    effort = config.pop("effort")
+    if config:
+        rest["output_config"] = config
+    else:
+        del rest["output_config"]
+    return effort
 
 
 def _thinking_out(th: ThinkingConfig | None) -> dict | None:
     return None if th is None else _out(th, {"type": th.mode, "budget_tokens": th.budget_tokens})
+
+
+def _output_config_out(req: Request) -> dict | None:
+    """`output_config` from extras, with the thinking effort put back."""
+    config = req.extras_for(FORMAT).get("output_config")
+    effort = req.thinking.effort if req.thinking is not None else None
+    if effort is None:
+        return None
+    return {**(config or {}), "effort": effort}
 
 
 def _request_in(body: dict) -> Request:
@@ -366,6 +397,7 @@ def request_from_internal(req: Request) -> dict:
             "top_k": req.top_k,
             "stop_sequences": req.stop,
             "thinking": _thinking_out(req.thinking),
+            "output_config": _output_config_out(req),
             "stream": req.stream,
         },
     )

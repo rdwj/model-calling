@@ -162,6 +162,23 @@ def test_request_decodes_to_typed_blocks():
     assert req.extras == {"anthropic": {"metadata": {"user_id": "u-123"}}}
 
 
+@pytest.mark.parametrize(
+    "thinking, output_config, effort, extras",
+    [
+        ({"type": "enabled", "budget_tokens": 1024}, {"effort": "low"}, "low", {}),
+        ({"type": "adaptive"}, {"effort": "max", "format": None}, "max", {"format": None}),
+        # Disabled thinking has no effort to carry; output_config stays verbatim.
+        ({"type": "disabled"}, {"effort": "low"}, None, {"effort": "low"}),
+        (None, {"effort": "low"}, None, {"effort": "low"}),
+    ],
+)
+def test_output_config_effort_moves_onto_thinking(thinking, output_config, effort, extras):
+    body = {**REQUEST, "thinking": thinking, "output_config": output_config}
+    req = fmt.request_to_internal(body)
+    assert (req.thinking.effort if req.thinking else None) == effort
+    assert req.extras_for("anthropic").get("output_config", {}) == extras
+
+
 def test_response_round_trip_is_lossless():
     original = validate_anthropic_message(RESPONSE)
     out = fmt.response_from_internal(fmt.response_to_internal(RESPONSE))
@@ -258,6 +275,19 @@ EDGE_REQUESTS = {
     "null_temperature": {**REQUEST, "temperature": None},
     "null_thinking": {**REQUEST, "thinking": None},
     "unknown_thinking": {**REQUEST, "thinking": {"type": "between_tools"}},
+    "thinking_effort": {
+        **REQUEST,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "low"},
+    },
+    "thinking_effort_and_format": {
+        **REQUEST,
+        "output_config": {"effort": "high", "format": {"type": "json_schema", "schema": {}}},
+    },
+    "effort_without_thinking": {
+        **{k: v for k, v in REQUEST.items() if k != "thinking"},
+        "output_config": {"effort": "low"},
+    },
     "unknown_tool_choice": {**REQUEST, "tool_choice": {"type": "auto_v2"}},
     "system_shorthand": {**REQUEST, "system": "Be terse."},
     "streaming": {**REQUEST, "stream": True},
