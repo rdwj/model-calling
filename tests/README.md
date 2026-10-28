@@ -30,7 +30,12 @@ The harness lives in `harness/`:
   scenario)` points it at a backend and replays that fixture by setting
   the replay transport as the prefix config's `transport`, which the
   provider's pooled HTTP client picks up.
+- `library.py` provides the `library` fixture, the same idea for the
+  library API: `library.use(backend, scenario)` builds a fresh `Client`
+  whose prefix config carries the replay transport.
 - `grid.py` parametrizes tests over (ingress, backend, scenario) cells.
+  The gateway's ingress runs in `test_gateway_grid.py`, the library's
+  `library_completion` and `library_messages` in `test_library_grid.py`.
   `KNOWN_FAILURES` lists the cells that are expected to fail as strict
   xfails, each naming the epic phase that fixes it. When a fix lands, the
   run fails until the entry is removed.
@@ -45,7 +50,9 @@ The harness lives in `harness/`:
   fails the test at teardown if any replay rejected a request.
 
 To add a scenario, define it in `scenarios.py`, record it (below), and add
-a check for each ingress in `test_gateway_grid.py`.
+a check for each ingress in `test_gateway_grid.py` and
+`test_library_grid.py`. A backend with `in_grid=False` (`vllm_messages`) is
+recorded and validated on its own until a provider can reach it.
 
 ## Fixtures and the recorder
 
