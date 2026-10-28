@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from tests.harness.grid import Cell, grid
+from tests.harness.grid import GATEWAY_INGRESSES, Cell, grid
 from tests.harness.replay import ReplayTransport
 from tests.harness.scenarios import BACKENDS, SCENARIOS
 from tests.harness.sdk import (
@@ -93,7 +93,7 @@ CHECKS = {
 }
 
 
-@pytest.mark.parametrize("cell", grid())
+@pytest.mark.parametrize("cell", grid(ingresses=GATEWAY_INGRESSES))
 async def test_cell(gateway, cell: Cell):
     replay = gateway.use(cell.backend, cell.scenario)
     await CHECKS[(cell.ingress, cell.scenario)](gateway, cell, replay)

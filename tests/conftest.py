@@ -20,7 +20,7 @@ import dotenv
 import httpx
 import pytest
 
-pytest_plugins = ["tests.harness.gateway"]
+pytest_plugins = ["tests.harness.gateway", "tests.harness.library"]
 
 TESTS_DIR = Path(__file__).parent
 INTEGRATION_DIR = TESTS_DIR / "integration"

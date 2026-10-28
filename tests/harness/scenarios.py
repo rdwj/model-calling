@@ -27,6 +27,13 @@ WEATHER_TOOL = {
     },
 }
 
+# WEATHER_TOOL as an Anthropic Messages tool.
+ANTHROPIC_WEATHER_TOOL = {
+    "name": WEATHER_TOOL["function"]["name"],
+    "description": WEATHER_TOOL["function"]["description"],
+    "input_schema": WEATHER_TOOL["function"]["parameters"],
+}
+
 TEXT_PROMPT = "Reply with exactly one word: pong"
 TOOL_PROMPT = "Use the get_weather tool to look up the weather in Paris."
 
@@ -37,6 +44,8 @@ class Scenario:
     prompt: str
     stream: bool = False
     tools: Tuple[dict, ...] = ()
+    # The same tools as Anthropic Messages tools.
+    anthropic_tools: Tuple[dict, ...] = ()
     # Room for a reasoning model (gpt-oss) to think before it answers.
     max_tokens: int = 256
     # When set, the backend is asked for a model that doesn't exist.
@@ -56,12 +65,25 @@ class Scenario:
             body["tools"] = list(self.tools)
         return body
 
+    def messages_body(self, model: str) -> dict:
+        body = {
+            "model": model,
+            "messages": self.messages(),
+            "max_tokens": self.max_tokens,
+            "stream": self.stream,
+        }
+        if self.anthropic_tools:
+            body["tools"] = list(self.anthropic_tools)
+        return body
+
 
 SCENARIOS = {
     s.name: s
     for s in (
         Scenario("text", TEXT_PROMPT),
-        Scenario("tools", TOOL_PROMPT, tools=(WEATHER_TOOL,)),
+        Scenario(
+            "tools", TOOL_PROMPT, tools=(WEATHER_TOOL,), anthropic_tools=(ANTHROPIC_WEATHER_TOOL,)
+        ),
         Scenario("stream", TEXT_PROMPT, stream=True),
         Scenario("backend_error", TEXT_PROMPT, missing_model=True),
     )

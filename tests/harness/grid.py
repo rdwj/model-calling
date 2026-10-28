@@ -13,7 +13,10 @@ import pytest
 
 from tests.harness.scenarios import GRID_BACKENDS, SCENARIOS
 
-INGRESSES = ("chat_completions",)
+# The gateway's HTTP ingress, and the library API's two call families.
+GATEWAY_INGRESSES = ("chat_completions",)
+LIBRARY_INGRESSES = ("library_completion", "library_messages")
+INGRESSES = GATEWAY_INGRESSES + LIBRARY_INGRESSES
 
 # (ingress, backend, scenario) -> reason, naming the phase that fixes it.
 KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {}
