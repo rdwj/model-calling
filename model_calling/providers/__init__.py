@@ -82,6 +82,7 @@ def provider_for(
         callbacks=config.get("callbacks", ()),
         http_client=clients.get(prefix, config) if clients is not None else None,
         extra_headers=config.get("headers"),
+        model_info_cache=clients.model_info if clients is not None else None,
     )
 
 

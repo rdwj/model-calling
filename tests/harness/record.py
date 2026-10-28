@@ -208,6 +208,30 @@ def record_one(
     return exchange
 
 
+def record_model_info(client: httpx.Client, backend: Backend, scenario: Scenario) -> Exchange:
+    """Record the model lookup a scenario's native body depends on (Ollama's
+    /api/show). Only local backends need one, so no key or target swap."""
+    url, body = backend.native_provider(scenario).model_info_request()
+    resp = client.post(url, json=body)
+    return Exchange(
+        method="POST",
+        url=url,
+        request_json=body,
+        status=resp.status_code,
+        content_type=resp.headers.get("content-type", "").split(";")[0],
+        response_json=resp.json(),
+        lines=None,
+        meta={
+            "backend": backend.name,
+            "scenario": scenario.name,
+            "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(
+                timespec="seconds"
+            ),
+            "recorder": "tests/harness/record.py",
+        },
+    )
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--backend", choices=sorted(ALL_BACKENDS), action="append")
@@ -233,6 +257,15 @@ def main(argv=None) -> int:
         target = _target(backend)
         with httpx.Client(timeout=REQUEST_TIMEOUT, verify=target.verify_tls) as client:
             for scenario, path in todo:
+                info = getattr(backend, "model_info_fixture", lambda s: None)(scenario)
+                info_path = info and fixture_path(backend.name, info)
+                if info_path and (args.force or not info_path.exists()):
+                    if target.url != backend.endpoint:
+                        sys.exit(
+                            f"{backend.name}: model lookups are recorded only for local backends"
+                        )
+                    record_model_info(client, backend, scenario).save(info_path)
+                    print(f"saved  {info_path}")
                 exchange = record_one(client, backend, scenario, target)
                 exchange.save(path)
                 print(f"saved  {path} (HTTP {exchange.status})")

@@ -2,14 +2,14 @@
   "meta": {
     "backend": "ollama",
     "scenario": "thinking",
-    "recorded_at": "2026-10-28T22:28:57+00:00",
+    "recorded_at": "2026-10-28T23:29:28+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
     "method": "POST",
     "url": "http://localhost:11434/api/chat",
     "json": {
-      "model": "qwen3:4b",
+      "model": "gpt-oss:20b",
       "messages": [
         {
           "role": "user",
@@ -19,7 +19,7 @@
       "options": {
         "num_predict": 2048
       },
-      "think": true,
+      "think": "low",
       "stream": false
     }
   },
@@ -27,22 +27,22 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "model": "qwen3:4b",
-      "created_at": "2026-10-28T22:28:57.786708Z",
+      "model": "gpt-oss:20b",
+      "created_at": "2026-10-28T23:29:28.216484Z",
       "message": {
         "role": "assistant",
         "content": "391",
-        "thinking": "Okay, so I need to figure out what 17 multiplied by 23 is. Let me think. Hmm, multiplication... I remember there are different ways to do this. Maybe I can break it down into smaller parts. Let me try the standard multiplication method.\n\nFirst, I'll write it out:\n\n  17\nx 23\n------\n\nSo, multiplying 17 by 3 first. 17 times 3 is... let's see, 10 times 3 is 30, and 7 times 3 is 21, so 30 + . Wait, no, 17 times 3: 10*3=30, 7*3=21, so 30+21=51. Right, so that's 51.\n\nThen, multiplying 17 by 20. Wait, because the 23 is 20 + 3. So, 17 times 20. Hmm, 17 times 2 is 34, so times 10 is 340. So 17*20=340.\n\nThen add those two results together: 51 + 340. Let's see, 50 + 340 is 390, so plus 1 is 391. So 17*23=391?\n\nWait, let me check another way to make sure. Maybe using the distributive property. 17*(20 + 3) = 17*20 + 17*3 = 340 + 51 = 391. Yeah, same result.\n\nAlternatively, I can do it vertically:\n\n    17\n  x 23\n  ----\n    51  (17*3)\n  340   (17*20, shifted one position)\n  ----\n  391\n\nAdding 51 and 340 gives 391. That seems right.\n\nWait, another way: 23*17. Let's do 20*17 = 340, 3*17=51, same as before. 340+51=391.\n\nOr maybe use another method, like (10 + 7)*(20 + 3). But that might be more complicated.\n\nWait, 17*23. Let me think if there's a trick. Sometimes people use (a+b)(a-b)=a\u00b2 - b\u00b2, but 23 and 17 are not symmetric around a square. Wait, 23-17=6, so maybe not helpful.\n\nAlternatively, 17*23 = (20 - 3)*(20 + 3) = 20\u00b2 - 3\u00b2 = 400 - 9 = 391. Oh! That's a good one. Difference of squares.\n\nYes, because (a - b)(a + b) = a\u00b2 - b\u00b2. So here, a is 20, b is 3. So (20 - 3)(20 + 3) = 20\u00b2 - 3\u00b2 = 400 - 9 = 391. Perfect, that's a quicker way and confirms the answer is 391.\n\nSo I think that's correct. Let me just check with actual multiplication.\n\n17 times 23:\n\n23\nx17\n----\n23*7 = 161\n23*10 = 230\n161 + 230 = 391.\n\nWait, no, wait. Wait, if you do it vertically with 23 on top:\n\n  23\nx 17\n------\n  161 (23*7)\n 230  (23*10, shifted one position)\n------\n 391\n\nYes, same result. 161 + 230 = 391. So that's correct.\n\nSo all methods lead to 391. I think that's the answer.\n"
+        "thinking": "Compute 17*23 = 391."
       },
       "done": true,
       "done_reason": "stop",
-      "total_duration": 11575458875,
-      "load_duration": 2645708,
-      "prompt_eval_count": 26,
-      "prompt_eval_cached_count": 1,
-      "prompt_eval_duration": 57854000,
-      "eval_count": 906,
-      "eval_duration": 11511616000
+      "total_duration": 1703271333,
+      "load_duration": 1078613291,
+      "prompt_eval_count": 81,
+      "prompt_eval_cached_count": 0,
+      "prompt_eval_duration": 238673000,
+      "eval_count": 20,
+      "eval_duration": 378871000
     }
   }
 }

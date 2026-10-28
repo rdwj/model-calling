@@ -2,6 +2,7 @@
 
 import json
 
+import httpx
 import pytest
 
 from model_calling.core import (
@@ -20,7 +21,7 @@ from model_calling.core import (
 )
 from model_calling.formats import TranslationError, anthropic, chat_completions
 from model_calling.providers.ollama import OllamaProvider
-from tests.harness.replay import fixture_path
+from tests.harness.replay import Exchange, ReplayTransport, fixture_path
 
 
 def load_fixture(scenario: str) -> dict:
@@ -224,6 +225,88 @@ def test_unsupported_params(provider, to_internal, body, refused):
     """What strict mode refuses: forced tool calls, one call per turn, strict tools."""
     request = to_internal({"model": "qwen3:4b", "messages": HI, **body})
     assert provider.unsupported_params(request) == refused
+
+
+# --- thinking levels ---
+
+GPT_OSS_INFO = Exchange.load(fixture_path("ollama", "model_info-gpt_oss_20b"))
+# qwen3:4b's `thinking` from /api/show (Ollama 0.40): on/off only.
+QWEN3_INFO = {"thinking": {"values": [True], "default": True}}
+
+
+def thinking_request(mode="enabled", effort="low") -> Request:
+    return Request(
+        model="m",
+        messages=[Message(role="user", content=[Text(text="Hi")])],
+        thinking=ThinkingConfig(mode=mode, effort=effort),
+    )
+
+
+@pytest.mark.parametrize(
+    "info, mode, effort, think",
+    [
+        (GPT_OSS_INFO.response_json, "enabled", "low", "low"),
+        (GPT_OSS_INFO.response_json, "adaptive", "high", "high"),
+        # A level the model doesn't define, a model without levels, a failed
+        # lookup: thinking on, at the model's own pace.
+        (GPT_OSS_INFO.response_json, "enabled", "max", True),
+        (QWEN3_INFO, "enabled", "low", True),
+        (None, "enabled", "low", True),
+        (GPT_OSS_INFO.response_json, "disabled", None, False),
+    ],
+)
+def test_build_request_think(provider, info, mode, effort, think):
+    provider.use_model_info(info)
+    assert provider.build_request(thinking_request(mode, effort))["think"] == think
+
+
+@pytest.mark.parametrize(
+    "request_, needed",
+    [
+        (thinking_request(), True),
+        (thinking_request(effort=None), False),
+        (thinking_request(mode="disabled", effort=None), False),
+        (Request(model="m", messages=[]), False),
+    ],
+)
+def test_needs_model_info_only_for_an_effort(provider, request_, needed):
+    assert provider.needs_model_info(request_) is needed
+
+
+def replayed_provider(exchanges, cache) -> tuple[OllamaProvider, ReplayTransport]:
+    replay = ReplayTransport(exchanges)
+    provider = OllamaProvider(
+        model="gpt-oss:20b",
+        base_url="http://localhost:11434",
+        http_client=httpx.AsyncClient(transport=replay),
+        model_info_cache=cache,
+    )
+    return provider, replay
+
+
+async def test_prepare_looks_up_each_model_once():
+    cache: dict = {}
+    first, replay = replayed_provider([GPT_OSS_INFO], cache)
+    await first.prepare(thinking_request())
+    assert first.think_levels == ("low", "medium", "high")
+    second, unused = replayed_provider([], cache)
+    await second.prepare(thinking_request())
+    assert second.think_levels == ("low", "medium", "high")
+    assert len(replay.requests) == 1 and not unused.requests
+    replay.check()
+
+
+async def test_prepare_falls_back_when_the_lookup_fails():
+    url, body = OllamaProvider(
+        model="gpt-oss:20b", base_url="http://localhost:11434"
+    ).model_info_request()
+    missing = Exchange("POST", url, body, 404, "application/json", {"error": "model not found"})
+    cache: dict = {}
+    provider, replay = replayed_provider([missing], cache)
+    await provider.prepare(thinking_request())
+    assert provider.build_request(thinking_request())["think"] is True
+    assert not cache, "a failed lookup must not be cached"
+    replay.check()
 
 
 # --- parse_response tests ---

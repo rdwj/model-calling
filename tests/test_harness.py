@@ -171,7 +171,7 @@ OPENAI_COMPAT_BACKENDS = ("openai_compat", "vllm")
 # the Chat Completions-only fields reach each backend that can take them.
 NATIVE_FIELDS = [
     ("reasoning_effort", OPENAI_COMPAT_BACKENDS, ("reasoning_effort",), "low"),
-    ("reasoning_effort", ("ollama",), ("think",), True),
+    ("reasoning_effort", ("ollama",), ("think",), "low"),
     ("tool_required", OPENAI_COMPAT_BACKENDS, ("tool_choice",), "required"),
     (
         "tool_named",

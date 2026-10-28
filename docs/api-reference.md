@@ -134,6 +134,7 @@ Other keyword arguments are Messages request fields: `system` (str or list of co
 On Ollama, vLLM, and OpenAI-compatible backends:
 
 - `thinking` turns reasoning on. Ollama takes it as `think`; Chat Completions backends take `output_config.effort` as `reasoning_effort` and have no token budget.
+- An effort level (`output_config.effort`, or `reasoning_effort` in `completion()`) reaches Ollama as a `think` level for models that define levels, such as gpt-oss (`"low"`, `"medium"`, `"high"`). The first such call for a model asks Ollama's `/api/show` which levels it takes, and the answer is cached for the life of the client. Other models get `think: true` and reason at their own pace.
 - A `tool_result` with `is_error: true` reaches the model as its content alone. None of these backends has an error flag for tool results, so put the failure in the content.
 - `metadata` and `cache_control` are ignored.
 

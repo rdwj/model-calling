@@ -91,6 +91,10 @@ class HttpClients:
         # sync code); they bind to whichever loop first uses them.
         self._unbound: dict[str, httpx.AsyncClient] = {}
         self._lock = threading.Lock()
+        # What providers have looked up about a backend's model, by
+        # (provider name, base_url, model); see Provider.prepare. Not tied to
+        # a loop: it holds plain data, not connections.
+        self.model_info: dict[tuple[str, str, str], Any] = {}
 
     def get(self, prefix: str, config: Mapping[str, Any]) -> httpx.AsyncClient:
         loop = _running_loop()
@@ -146,9 +150,12 @@ class Provider(ABC):
         timeout: float = DEFAULT_TIMEOUT,
         http_client: httpx.AsyncClient | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        model_info_cache: dict | None = None,
     ):
         """Without `http_client`, each call opens and closes its own client.
-        `extra_headers` go on every request, after auth."""
+        `extra_headers` go on every request, after auth. `model_info_cache`
+        keeps model lookups across calls (`HttpClients.model_info`); without
+        it, each call that needs one looks it up again."""
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -156,6 +163,7 @@ class Provider(ABC):
         self.timeout = timeout
         self.http_client = http_client
         self.extra_headers = dict(extra_headers or {})
+        self.model_info_cache = {} if model_info_cache is None else model_info_cache
 
     # --- what each provider defines --------------------------------------
 
@@ -176,6 +184,39 @@ class Provider(ABC):
         drops. The library refuses such a request unless the caller passes
         `drop_params=True`; the gateway still drops them."""
         return []
+
+    # Some bodies depend on what the backend says about its model (Ollama's
+    # thinking levels). `prepare` looks that up once per model and hands it
+    # to `use_model_info` before `build_request` runs.
+
+    def needs_model_info(self, request: Request) -> bool:
+        """Whether `build_request` needs the model lookup for `request`."""
+        return False
+
+    def model_info_request(self) -> tuple[str, dict]:
+        """The URL and JSON body that look up this provider's model."""
+        raise NotImplementedError(f"{self.name} has no model lookup")
+
+    def use_model_info(self, info: Any) -> None:
+        """Take the lookup's JSON answer, or None when it failed."""
+
+    async def prepare(self, request: Request) -> None:
+        """Look up the model if `request` needs it. A failed lookup is
+        logged and passed on as None (and not cached): the provider falls
+        back to what it sends without one, and the call itself reports any
+        real problem with the model."""
+        if not self.needs_model_info(request):
+            return
+        key = (self.name, self.base_url, self.model)
+        if key not in self.model_info_cache:
+            url, body = self.model_info_request()
+            try:
+                self.model_info_cache[key] = await self._post_json(url, body)
+            except APIError as e:
+                logger.warning("%s model lookup for %s failed: %s", self.name, self.model, e)
+                self.use_model_info(None)
+                return
+        self.use_model_info(self.model_info_cache[key])
 
     @abstractmethod
     def parse_response(self, body: dict) -> Response:
@@ -215,6 +256,7 @@ class Provider(ABC):
     # --- shared HTTP ------------------------------------------------------
 
     async def complete(self, request: Request) -> Response:
+        await self.prepare(request)
         body = self.build_request(request)
         body["stream"] = False
         await self._notify("on_request_start", body)
@@ -277,6 +319,7 @@ class Provider(ABC):
         sees each internal event before it is yielded, and `on_request_end`
         gets the last one.
         """
+        await self.prepare(request)
         body = self.build_request(request)
         body["stream"] = True
         await self._notify("on_request_start", body)

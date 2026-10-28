@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 
 CHAT_PATH = "/api/chat"
 EMBED_PATH = "/api/embed"
+# Model metadata, including which `think` values the model takes.
+SHOW_PATH = "/api/show"
 # Ollama has no tool_choice, so it can't make the model call a tool.
 FORCED_TOOL_CHOICES = ("any", "tool")
 # Formats whose tool definitions can ask for strict schema adherence.
@@ -104,10 +106,31 @@ def _strict(tool: Any) -> bool:
 
 
 class OllamaProvider(Provider):
+    """`think` takes a bool, or a named level for models that define levels
+    (gpt-oss: "low", "medium", "high"). Which ones a model takes comes from
+    `/api/show`, looked up only for a request with a thinking effort."""
+
     name = "ollama"
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        # The model's named thinking levels, once looked up.
+        self.think_levels: tuple[str, ...] = ()
 
     def endpoint(self) -> str:
         return f"{self.base_url}{CHAT_PATH}"
+
+    def needs_model_info(self, request: Request) -> bool:
+        thinking = request.thinking
+        return thinking is not None and thinking.mode != "disabled" and thinking.effort is not None
+
+    def model_info_request(self) -> tuple[str, dict]:
+        return f"{self.base_url}{SHOW_PATH}", {"model": self.model}
+
+    def use_model_info(self, info: Any) -> None:
+        thinking = (info or {}).get("thinking") or {}
+        values = thinking.get("values") or []
+        self.think_levels = tuple(v for v in values if isinstance(v, str))
 
     # --- request ----------------------------------------------------------
 
@@ -152,13 +175,24 @@ class OllamaProvider(Provider):
         if options:
             body["options"] = options
         if request.thinking is not None:
-            body["think"] = request.thinking.mode != "disabled"
+            body["think"] = self._think(request.thinking)
         fmt = request.response_format
         if fmt is not None and fmt.type == "json_object":
             body["format"] = "json"
         elif fmt is not None and fmt.type == "json_schema":
             body["format"] = fmt.json_schema or "json"
         return body
+
+    def _think(self, thinking: Any) -> bool | str:
+        """The effort as a level when the model has it, otherwise on or off.
+        A model without levels thinks at its own pace."""
+        if thinking.mode != "disabled" and thinking.effort in self.think_levels:
+            return thinking.effort
+        if thinking.mode != "disabled" and thinking.effort is not None:
+            logger.debug(
+                "%s has no thinking level %r; sending think=true", self.model, thinking.effort
+            )
+        return thinking.mode != "disabled"
 
     def _tool_out(self, tool: Any) -> dict:
         if not isinstance(tool, Tool):

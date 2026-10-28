@@ -79,6 +79,9 @@ recorded and validated on its own until a provider can reach it.
 ## Fixtures and the recorder
 
 `fixtures/<backend>/<scenario>.json` holds one recorded backend exchange.
+A body that depends on what the backend says about its model (Ollama's
+thinking levels, from `/api/show`) also replays that lookup, recorded
+alongside as `model_info-<model>.json`.
 See [fixtures/README.md](fixtures/README.md) for the format and for known
 provider divergences. To record missing fixtures:
 
@@ -87,7 +90,7 @@ uv run python -m tests.harness.record
 uv run python -m tests.harness.record --backend ollama --scenario tools --force
 ```
 
-Ollama must be running with `qwen3:4b`, `gemma3`, and `nomic-embed-text` pulled, and recording OpenRouter
+Ollama must be running with `qwen3:4b`, `gemma3`, `gpt-oss:20b`, and `nomic-embed-text` pulled, and recording OpenRouter
 fixtures needs `OPENROUTER_API_KEY`. Recording vLLM needs `VLLM_BASE_URL`
 (the server root, without `/v1`) and `VLLM_MODEL`, plus `VLLM_API_KEY` if
 the endpoint wants one; `VLLM_VERIFY_TLS=false` skips certificate checks

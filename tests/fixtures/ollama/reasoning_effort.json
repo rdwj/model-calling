@@ -2,14 +2,14 @@
   "meta": {
     "backend": "ollama",
     "scenario": "reasoning_effort",
-    "recorded_at": "2026-10-28T23:14:19+00:00",
+    "recorded_at": "2026-10-28T23:29:28+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
     "method": "POST",
     "url": "http://localhost:11434/api/chat",
     "json": {
-      "model": "qwen3:4b",
+      "model": "gpt-oss:20b",
       "messages": [
         {
           "role": "user",
@@ -19,7 +19,7 @@
       "options": {
         "num_predict": 2048
       },
-      "think": true,
+      "think": "low",
       "stream": false
     }
   },
@@ -27,22 +27,22 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "model": "qwen3:4b",
-      "created_at": "2026-10-28T23:14:19.519289Z",
+      "model": "gpt-oss:20b",
+      "created_at": "2026-10-28T23:29:28.630418Z",
       "message": {
         "role": "assistant",
-        "content": "To find the product of 17 and 23, we can use multiple methods to verify the result.\n\n---\n\n### Method 1: Distributive Property\n\nWe can express the multiplication as:\n\n$$\n17 \\times 23 = 17 \\times (20 + 3) = (17 \\times 20) + (17 \\times 3)\n$$\n\n$$\n17 \\times 20 = 340,\\quad 17 \\times 3 = 51\n$$\n\n$$\n340 + 51 = 391\n$$\n\n---\n\n### Method 2: Long Multiplication\n\nSet up the multiplication:\n\n```\n    23\n  \u00d7 17\n------\n   161  (23 \u00d7 7)\n  230   (23 \u00d7 10, shifted one position)\n------\n  391\n```\n\nAdding the results: $161 + 230 = 391$\n\n---\n\n### Method 3: Difference of Squares\n\nRecognize that:\n\n$$\n17 = 20 - 3,\\quad 23 = 20 + 3\n$$\n\nSo:\n\n$$\n(20 - 3)(20 + 3) = 20^2 - 3^2 = 400 - 9 = 391\n$$\n\nThis confirms the result using a more algebraic approach.\n\n---\n\nAll methods consistently yield the same result.\n\n### Final Answer\n\n$$\n\\boxed{391}\n$$",
-        "thinking": "Okay, so I need to figure out what 17 multiplied by 23 is. Let me think. Hmm, I remember that multiplying two numbers can be done in a few different ways. Maybe I can use the standard multiplication method here. Let me try that.\n\nFirst, I'll write down 17 and 23. Let's do it step by step. \n\nSo, 17 times 23. Let me break it down. Maybe using the distributive property? Like, 17 times (20 + 3) which would be 17*20 + 17*3. That might be easier.\n\nLet me calculate 17*20 first. 17*2 is 34, so 17*20 is 340. Then 17*3 is 51. So adding those together: 340 + 51. Let's see, 340 + 50 is 390, then +1 is 391. So that would be 391?\n\nWait, let me check another way to make sure I didn't make a mistake. Maybe long multiplication.\n\nSet it up:\n\n    23\n  x 17\n  -----\nFirst multiply 23 by 7: 23*7. Let's do 20*7=140 and 3*7=21, so 140+21=161.\n\nThen multiply 23 by 10 (since the next digit is 1 in the tens place), which is 23*10=230.\n\nNow add those two results together: 161 + 230. Let's see, 161 + 200 = 361, then +30 = 391. So that's the same answer as before. Hmm, so 391.\n\nWait, let me try another method. Maybe using the formula (a + b)(c + d) but that might be overcomplicating. Alternatively, I can just do the multiplication step by step.\n\nAlternatively, use the fact that 17*23 is the same as (15 + 2)(20 + 3). Let's see, but maybe that's more complicated.\n\nAlternatively, use calculator-like steps. Let's see:\n\n17 * 20 = 340\n\n17 * 3 = 51\n\n340 + 51 = 391. Yep, same result.\n\nWait, maybe I can check with another approach. Let's see, 23 * 17.\n\nLet me do 20*17 = 340, and 3*17=51, so 340 +51=391. Same thing.\n\nAlternatively, 17*23. Let's do 10*23=230, 7*23=161, then 230 + 161 = 391. Yep, that's the same.\n\nSo all methods lead to 391. I think that's the correct answer. Let me verify with actual multiplication.\n\nLet me write it out:\n\n    23\n  x 17\n  -----\n    161   (23*7)\n  230     (23*10, shifted one position)\n  -----\n  391\n\nYes, adding 161 and 230 gives 391. So I think that's right.\n\nWait, just to be 100% sure, maybe I can use another way. Let's see, 17*23.\n\nWe know that 15*25 is 375, but that might not help. Alternatively, 17*23 is (18 -1)(24 -1). Hmm, not sure.\n\nAlternatively, use the fact that 23 is 20 + 3, so 17*20=340, 17*3=51, sum is 391.\n\nAlternatively, use a calculator if I had one, but since I don't, and all my manual calculations give 391, I think that's the answer.\n\nWait, maybe I can do 17*23 = (20 - 3)(20 + 3) = 20^2 - 3^2 = 400 -9=391. Oh! That's a nice trick. Difference of squares.\n\nYes! Because (a - b)(a + b) = a\u00b2 - b\u00b2. So here, 20 - 3 and 20 + 3? Wait, 17 is 20 - 3, and 23 is 20 + 3. Yes! So (20 - 3)(20 + 3) = 20\u00b2 - 3\u00b2 = 400 - 9 = 391.\n\nOh, that's a clever way. So that confirms it again. So 391 is the answer.\n\nI think that's solid. All methods point to 391. So I'm confident the answer is 391.\n\n**Final Answer**\nThe product of 17 and 23 is \\boxed{391}.\n"
+        "content": "391",
+        "thinking": "Just compute 17*23=391."
       },
       "done": true,
       "done_reason": "stop",
-      "total_duration": 19351987708,
-      "load_duration": 2276750,
-      "prompt_eval_count": 26,
-      "prompt_eval_cached_count": 1,
-      "prompt_eval_duration": 57918000,
-      "eval_count": 1501,
-      "eval_duration": 19282188000
+      "total_duration": 403892500,
+      "load_duration": 3620500,
+      "prompt_eval_count": 81,
+      "prompt_eval_cached_count": 76,
+      "prompt_eval_duration": 53537000,
+      "eval_count": 20,
+      "eval_duration": 343354000
     }
   }
 }

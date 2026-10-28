@@ -10,6 +10,7 @@ exchange.
 
 import base64
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Mapping, Optional, Tuple
@@ -477,13 +478,31 @@ class Backend:
         """The model id a client sends the gateway for `scenario`."""
         return f"{self.config_prefix}/{self.native_model_for(scenario)}"
 
+    def native_provider(self, scenario: Scenario) -> Provider:
+        model = self.native_model_for(scenario)
+        return self.provider(model=model, base_url=self.gateway_config["base_url"])
+
+    def model_info_fixture(self, scenario: Scenario) -> Optional[str]:
+        """The fixture of the model lookup `scenario` needs first, if any."""
+        if self.provider is None:
+            return None
+        model = self.native_model_for(scenario)
+        if not self.native_provider(scenario).needs_model_info(scenario.native_internal(model)):
+            return None
+        return f"{MODEL_INFO_FIXTURE_PREFIX}{re.sub(r'[^0-9A-Za-z.]+', '_', model)}"
+
     def native_request(self, scenario: Scenario) -> dict:
         """The body the gateway sends this backend for `scenario`."""
         model = self.native_model_for(scenario)
         request = scenario.native_internal(model)
         if self.provider is None:
             return anthropic.request_from_internal(request)
-        provider = self.provider(model=model, base_url=self.gateway_config["base_url"])
+        provider = self.native_provider(scenario)
+        info = self.model_info_fixture(scenario)
+        if info is not None:
+            from tests.harness.replay import Exchange, fixture_path
+
+            provider.use_model_info(Exchange.load(fixture_path(self.name, info)).response_json)
         return {**provider.build_request(request), "stream": scenario.stream}
 
 
@@ -500,6 +519,11 @@ REPLAY_API_KEY = "replay-not-a-real-key"
 # Models for scenarios the default model can't run. qwen3:4b, gpt-oss-20b,
 # and the OpenRouter reasoning model all think.
 OLLAMA_VISION_MODEL = "gemma3"
+# gpt-oss takes named thinking levels; qwen3 only turns thinking on.
+OLLAMA_REASONING_MODEL = "gpt-oss:20b"
+# Fixtures of a provider's model lookup (Ollama's /api/show) are named this
+# plus the model.
+MODEL_INFO_FIXTURE_PREFIX = "model_info-"
 OPENROUTER_VISION_MODEL = "google/gemma-3-4b-it"
 OPENROUTER_REASONING_MODEL = "openai/gpt-oss-20b"
 VLLM_NO_VISION = "vLLM serves gpt-oss-20b, which takes no image input"
@@ -516,7 +540,7 @@ BACKENDS = {
             config_prefix="ollama",
             gateway_config={"base_url": OLLAMA_URL},
             provider=OllamaProvider,
-            capability_models={VISION: OLLAMA_VISION_MODEL},
+            capability_models={VISION: OLLAMA_VISION_MODEL, REASONING: OLLAMA_REASONING_MODEL},
             # Ollama has no tool_choice, parallel switch, or strict tools.
             refuses={
                 "tool_required": ("tool_choice",),
@@ -674,12 +698,18 @@ def refused_params(backend_name: str, scenario_name: str) -> Optional[Tuple[str,
 
 def exchanges_for(backend_name: str, scenario_name: str) -> list:
     """The recorded exchanges a cell replays: none for a refused one, which
-    must never reach the backend."""
-    from tests.harness.replay import Exchange
+    must never reach the backend, and a model lookup before the call when
+    the provider needs one."""
+    from tests.harness.replay import Exchange, fixture_path
 
     if refused_params(backend_name, scenario_name):
         return []
-    return [Exchange.load(fixture_for(backend_name, scenario_name))]
+    exchanges = [Exchange.load(fixture_for(backend_name, scenario_name))]
+    backend, scenario = ALL_BACKENDS[backend_name], ALL_SCENARIOS[scenario_name]
+    info = getattr(backend, "model_info_fixture", lambda s: None)(scenario)
+    if info is not None:
+        exchanges.insert(0, Exchange.load(fixture_path(backend_name, info)))
+    return exchanges
 
 
 def fixture_for(backend_name: str, scenario_name: str) -> Path:
