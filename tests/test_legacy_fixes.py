@@ -7,6 +7,8 @@ moderation endpoint.
 import subprocess
 import sys
 
+from model_calling.adapter import create_openai_response
+
 # Imports every model_calling module except the entry point (which may
 # configure logging) and the torch-dependent moderation adapter, then fails
 # naming the first one that configured the root logger.
@@ -29,3 +31,8 @@ def test_importing_the_library_leaves_root_logging_alone():
         [sys.executable, "-c", _IMPORT_ALL], capture_output=True, text=True, timeout=60
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_legacy_response_ids_are_unique_within_a_second():
+    ids = {create_openai_response(model="m", content="x")["id"] for _ in range(5)}
+    assert len(ids) == 5, ids

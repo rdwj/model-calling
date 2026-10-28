@@ -4,6 +4,7 @@ Base adapter classes for translating between OpenAI API format and model-specifi
 
 import time
 import json
+import uuid
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Dict, List, Any, Optional, Sequence, Callable, TypeVar, Awaitable
@@ -159,7 +160,7 @@ def create_openai_response(
         finish_reason = "function_call"
 
     return {
-        "id": f"chatcmpl-{int(time.time())}",
+        "id": f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
         "created": int(time.time()),
         "model": model,
