@@ -9,7 +9,10 @@ exchange.
 """
 
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Optional, Tuple
+
+from model_calling.formats import chat_completions
+from model_calling.providers import OllamaProvider, Provider
 
 WEATHER_TOOL = {
     "type": "function",
@@ -79,20 +82,27 @@ class Backend:
     gateway_config: dict = field(default_factory=dict)
     # Fixture recording needs an OpenRouter key.
     needs_openrouter_key: bool = False
+    # The provider that builds this backend's native body. Backends without
+    # one take the Chat Completions body as is.
+    provider: Optional[type[Provider]] = None
 
     def native_request(self, scenario: Scenario) -> dict:
+        """The body the gateway sends this backend for `scenario`."""
         model = self.missing_native_model if scenario.missing_model else self.native_model
-        if self.config_prefix == "ollama":
-            # Mirrors OllamaAdapter.translate_request for these scenarios.
-            body = {"model": model, "messages": scenario.messages(), "stream": scenario.stream}
-            if scenario.tools:
-                body["tools"] = list(scenario.tools)
+        body = scenario.chat_completions_body(model)
+        if self.provider is None:
             return body
-        return scenario.chat_completions_body(model)
+        request = chat_completions.request_to_internal(body)
+        provider = self.provider(model=model, base_url=self.gateway_config["base_url"])
+        return {**provider.build_request(request), "stream": scenario.stream}
 
 
 OLLAMA_URL = "http://localhost:11434"
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Where replay expects vLLM. Recording sends to VLLM_BASE_URL and VLLM_MODEL
+# from the environment and stores these in their place.
+VLLM_URL = "http://localhost:8000"
+VLLM_MODEL = "gpt-oss-20b"
 # Placeholder credential for replay. Real keys only ever come from the
 # environment, in the recorder and live tests.
 REPLAY_API_KEY = "replay-not-a-real-key"
@@ -108,6 +118,7 @@ BACKENDS = {
             endpoint=f"{OLLAMA_URL}/api/chat",
             config_prefix="ollama",
             gateway_config={"base_url": OLLAMA_URL},
+            provider=OllamaProvider,
         ),
         Backend(
             name="openai_compat",
@@ -118,6 +129,15 @@ BACKENDS = {
             config_prefix="openai",
             gateway_config={"base_url": OPENROUTER_CHAT_URL, "api_key": REPLAY_API_KEY},
             needs_openrouter_key=True,
+        ),
+        Backend(
+            name="vllm",
+            gateway_model=f"vllm/{VLLM_MODEL}",
+            native_model=VLLM_MODEL,
+            missing_native_model="model-calling-missing",
+            endpoint=f"{VLLM_URL}/v1/chat/completions",
+            config_prefix="vllm",
+            gateway_config={"base_url": VLLM_URL},
         ),
     )
 }

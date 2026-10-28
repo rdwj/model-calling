@@ -16,14 +16,17 @@ from tests.harness.scenarios import BACKENDS, SCENARIOS
 INGRESSES = ("chat_completions",)
 
 # (ingress, backend, scenario) -> reason, naming the phase that fixes it.
-_HOSTED_CALLBACK_CRASH = (
-    "Phase 2: hosted adapters pass **translated_request to callbacks, so the body's "
-    "'model' key collides with the positional model name and every call returns 500"
+_CALLBACK_CRASH = (
+    "Phase 2: the legacy OpenAI and vLLM adapters pass **translated_request to "
+    "callbacks, so the body's 'model' key collides with the positional model name "
+    "and every non-streaming call returns 500"
 )
 KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
-    ("chat_completions", "openai_compat", "text"): _HOSTED_CALLBACK_CRASH,
-    ("chat_completions", "openai_compat", "tools"): _HOSTED_CALLBACK_CRASH,
-    ("chat_completions", "openai_compat", "backend_error"): _HOSTED_CALLBACK_CRASH,
+    ("chat_completions", "openai_compat", "text"): _CALLBACK_CRASH,
+    ("chat_completions", "openai_compat", "tools"): _CALLBACK_CRASH,
+    ("chat_completions", "openai_compat", "backend_error"): _CALLBACK_CRASH,
+    ("chat_completions", "vllm", "text"): _CALLBACK_CRASH,
+    ("chat_completions", "vllm", "tools"): _CALLBACK_CRASH,
     ("chat_completions", "openai_compat", "stream"): (
         "Phase 2: server.stream_response appends /v1/chat/completions to the hosted "
         "adapter's full endpoint URL and sends no auth header"
