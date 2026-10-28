@@ -1,87 +1,77 @@
 # Next Session — api-shapes
 
-## Next: Phase 5, Anthropic Messages conformance
+## Next: Phase 4, Chat Completions conformance
 
-Prove the Messages ingress end to end over Ollama, vLLM, and OpenRouter for
-every Messages feature a client sends, not just text and one tool. Phase 3
-already built `POST /v1/messages`, the full SSE event sequence, and a
-4-scenario `gateway_messages` row; the translator in
-`model_calling/formats/anthropic.py` already parses system blocks, images,
-`tool_choice`, `tool_result` with `is_error`, `thinking`, and
-`stop_sequences` (checked 2026-10-28). What's missing is coverage per
-backend, SDK-client cells, `count_tokens`, and typed-block input.
+Close out the Chat Completions ingress the way Phase 5 closed Messages.
+Much of Phase 4 already landed with Phase 5 (checked 2026-10-28): the
+`library_completion` and `chat_completions` rows pass text, parallel tools,
+image, `json_schema`, stream with usage, tool history, and system blocks on
+ollama, vllm, and openai_compat, and the request parser accepts every field
+in work item 1. What's missing is SDK-client cells, live coverage through
+our code, and scenarios for the fields only Chat Completions has.
 
-1. **New grid scenarios** (record, then cells for `library_messages`,
-   `gateway_messages`, and the Chat Completions ingresses where the
-   scenario applies). In `tests/harness/scenarios.py`: system as a list of
-   blocks; a multi-turn tool exchange whose `tool_result` has
-   `is_error: true`; parallel tool calls (two cities); image input (base64
-   PNG, committed small; needs a vision model per backend: Ollama
-   `gemma3`/`llava:7b` are pulled, a cheap OpenRouter vision model, vLLM's
-   model if it has vision, otherwise a strict xfail naming the reason);
-   `thinking` enabled; streaming with usage. Scenarios may need fields
-   `Scenario` doesn't have yet (system, prior turns, image); extend it
-   rather than special-casing the recorder.
-2. **SDK-client cells.** A grid ingress that drives the in-process server
-   with `anthropic.Anthropic(base_url=..., http_client=<ASGI transport>)`
-   for every Messages scenario, streaming through the SDK's own stream
-   helper. This is the client Claude Code-style apps use.
-3. **`POST /v1/messages/count_tokens`.** No backend here has a native
-   counter; return an estimate and document it as one (README,
-   api-reference). Validate the body against the SDK's
-   `MessageTokensCount`.
-4. **Typed blocks as input.** `messages()` accepts the `Message.content`
-   it returned (pydantic blocks) as the next assistant turn, as the
-   `anthropic` SDK does. Then simplify the `.to_dict()` workaround in
-   `docs/examples.md`.
-5. **Live check through our code.** A `-m live` test runs `amessages`
-   (text and tools) through `Client` over OpenRouter, and through the
-   gateway; spend goes to the ledger. Phase 5's definition of done needs
-   it.
+1. **SDK-client cells.** An `sdk_completion` ingress beside `sdk_messages`
+   in `tests/test_sdk_grid.py`: `openai.AsyncOpenAI(base_url=.../v1,
+   http_client=httpx2.AsyncClient(transport=httpx2.ASGITransport(app)))`
+   for every Chat Completions scenario, streaming with the SDK's own
+   iterator, reusing `COMPLETION_CHECKS`. openai 3.35.1 runs on httpx2 too
+   (checked 2026-10-28), so the anthropic pattern carries over.
+2. **Chat Completions-only scenarios** (record, cells for the Chat
+   Completions ingresses; Messages cells only where a faithful form exists):
+   `reasoning_effort` (a reasoning model per backend, as `thinking` does);
+   `tool_choice` forced (`"required"`) and named (`{"type": "function",
+   ...}`), with Ollama's refusal in strict mode as the expected result
+   there, not an xfail; `parallel_tool_calls: false`; a tool with
+   `strict: true` and a parameterless tool; `max_completion_tokens` and
+   `seed`. Assert the native body carries each field (strict replay does
+   most of this) and that `function_call` never appears.
+3. **Ollama think levels.** Ollama's `think` takes `"low"`/`"medium"`/
+   `"high"` for models that support levels (gpt-oss) and a bool otherwise.
+   Today the provider sends only a bool, so effort is lost. Confirm the
+   current Ollama API docs before changing it; record with `gpt-oss:20b`
+   (pulled) if levels are kept.
+4. **Live through our code.** A `-m live` test runs `acompletion` (text,
+   tools, stream with usage) through `Client` over OpenRouter and through
+   the gateway with the `openai` SDK, as `tests/live/test_messages_live.py`
+   does for Messages.
 
-**Sequencing.** 1 first (fixtures gate everything else), recording Ollama
-and OpenRouter early and vLLM as soon as its settings are confirmed. Then 2,
-which reuses the new scenarios. 3 and 4 are independent and small. 5 last.
-If the session runs long, stop after 4 with 5 written up; don't cut 2.
+**Sequencing.** 2 first (fixtures gate the rest), then 1 over all
+scenarios, then 3, then 4 last. If the session runs long, stop after 1 with
+3 and 4 written up; don't cut 1.
 
 **Constraints for the session:**
-- Exit predicate: `HOME=$(mktemp -d) uv run pytest` green, with every new
-  scenario present in the Messages rows for ollama, vllm, and
-  openai_compat (passing, or a strict xfail naming the backend limitation
-  and phase); the existing cells unchanged; `uv run pytest -m live`
-  passing with the new spend committed to `tests/live/spend.jsonl`.
-- vLLM: record against the cluster rdwj is using now. The recorder reads
-  `VLLM_BASE_URL` (server root, no `/v1`), `VLLM_MODEL`, optional
-  `VLLM_API_KEY` and `VLLM_VERIFY_TLS` from the environment; fixtures store
-  the replay URL and `gpt-oss-20b`, never the real host.
-- OpenRouter budget: the full $5 epic budget (decided 2026-10-28), enforced
-  by the ledger guard; about $0.00001 was spent before this session. Log
-  every paid call; prefer cheap models.
-- Phase 5's definition of done (Remaining epic phases) should be fully met;
-  say plainly in the session summary if any clause isn't.
+- Exit predicate: `HOME=$(mktemp -d) uv run pytest` green, every new
+  scenario present in the Chat Completions rows (library, gateway, SDK) for
+  ollama, vllm, and openai_compat, passing or a strict xfail naming the
+  backend limitation; the existing cells' gateway bodies unchanged (diff
+  them as Phase 5 did); `uv run pytest -m live` passing with spend
+  committed.
+- vLLM: same cluster as Phase 5. The port-forward command is in rdwj's
+  `~/.zshrc` comment (`oc port-forward -n gpt-oss-model ... 18000:8000`);
+  record with `VLLM_VERIFY_TLS=false`. `VLLM_MODEL` is the served name
+  `redhataigpt-oss-20b`; that is not a typo.
+- OpenRouter: within the $5 epic budget (about $0.00006 spent). Cheap models.
 
 **Session start protocol:**
 - Premise checks (before item 1, report before acting): `main` matches
-  `origin/main` at the plan commit after `c7d6638`; "Test Package" is green;
-  `HOME=$(mktemp -d) uv run pytest` shows 541 passed, 1 xfailed;
-  `VLLM_BASE_URL` and `VLLM_MODEL` are set in the environment and
-  `curl $VLLM_BASE_URL/v1/models` answers (if not, ask rdwj for the current
-  cluster's values before recording vLLM); Ollama is up with `qwen3:4b`
-  and a vision model.
+  `origin/main` at the plan commit after `6dc8864`; "Test Package" green;
+  `HOME=$(mktemp -d) uv run pytest` shows 765 passed, 13 xfailed;
+  `curl -k $VLLM_BASE_URL/v1/models` answers (restart the port-forward if
+  not); Ollama up with `qwen3:4b`, `gemma3`, and `gpt-oss:20b`.
 - Rules with history:
-  - Never loosen a grid check or replay matching to make a cell pass;
-    re-record or strict-xfail naming the phase. Record OpenRouter
-    divergences in `tests/fixtures/README.md`.
-  - Read sub-agent output before committing, and run examples against
-    fixtures: last session's doc writers used `content[0].text` on
-    thinking-first responses.
-  - Gateway behavior changes only where this plan says so; diff the
-    gateway grid's bodies, not just pass/fail.
-- Stop-and-ask before: moving the dependency cutoff or changing a pinned
-  version; any change to the vLLM deployment; removing or renaming a
-  public endpoint; force-pushing.
+  - Never loosen a check or replay matching; re-record or strict-xfail.
+    A strict xfail for a backend capability gap with no fixture can never
+    pass (review, 2026-10-28); prefer a real assertion (such as a strict-mode
+    refusal) when one exists.
+  - Read and run sub-agent output before committing: last session's agents
+    shipped duck-typed code, a None crash, and hand-built tests that
+    skipped the real round trip.
+  - Gateway behavior changes only where this plan says so.
+- Stop-and-ask before: moving the dependency cutoff or a pinned version;
+  any change to the vLLM deployment; removing or renaming a public
+  endpoint; force-pushing.
 - Close ritual: `/session-close`, then `/plan-next-session`. Next pick is
-  among Phases 6, 10, and 4.
+  among Phases 6, 10, and 7 (7 is unblocked once 4 is done).
 
 ## Remaining epic phases
 
@@ -100,13 +90,13 @@ Live smoke tests run through OpenRouter, and Claude Code completes a
 tool-using task through the gateway. The epic ends with 0.2.0 on PyPI and a
 pilot project migrated.
 
-Phases 1–3 are done (harness, internal format and adapter port, library API
-with the server on `Client`); see the "What landed" ledger and
+Phases 1–3 and 5 are done (harness, internal format and adapter port,
+library API with the server on `Client`, Messages conformance); see the "What landed" ledger and
 `session-summaries/`. Phase numbers are kept stable because code comments,
 xfail reasons, and summaries cite them, so the gateway-configuration phase
 added on 2026-10-28 is Phase 10 and sits before Phase 9, which it gates.
-Order: Phase 5 next (decided 2026-10-28), with 6 and 10 parallel-ok, then
-4; 7 after 4; 8 after 5 and 6; 9 last.
+Order: Phase 4 next (decided 2026-10-28), with 6 and 10 parallel-ok; 7
+after 4; 8 after 6; 9 last.
 
 ### Phase 4: Chat Completions conformance
 
@@ -336,7 +326,14 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-28): Phase 3 slice 2, Phase 3 complete
+## What landed last session (2026-10-28): Phase 5 complete
+
+All five items plus `json_schema`, `stream_tools`, `output_config.effort`
+and `.format` translation, and review fixes, `35e46c4..6dc8864`. Phase 5's
+definition of done is met. Record:
+`session-summaries/2026-10-28-api-shapes-phase5.md`.
+
+## What landed earlier (2026-10-28): Phase 3 slice 2, Phase 3 complete
 
 All five items plus review fixes, `b8522a3..c7d6638`: server over `Client`,
 `POST /v1/messages`, embeddings, strict mode on the server, the `[server]`
@@ -354,8 +351,10 @@ $0.000002 (re-recording). Full record:
 `session-summaries/2026-10-28-api-shapes-phase3-slice1.md`.
 
 Still open from earlier slices:
-- Document and Refusal block types (Phases 5 and 7).
-- `reasoning_effort` strings for Ollama `think` (Phase 4).
+- Document and Refusal block types. Phase 5 did not do Document blocks
+  (Messages `document` input arrives as an opaque block that every
+  backend refuses); take it up with Phase 6 or as a small slice.
+- `reasoning_effort` strings for Ollama `think` (Phase 4, item 3 above).
 - Responses stream structure (Phase 7).
 - The Phase 6 Anthropic provider must drop unsigned thinking
   (`signature: ""`) before sending it to Anthropic.

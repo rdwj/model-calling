@@ -34,7 +34,7 @@ Scope: expanded twice, both with rdwj's approval: `json_schema` (Phase 5 DoD ite
 - Sub-agent output for count_tokens and typed blocks was largely rewritten (duck typing, a None crash, hand-built rather than round-trip tests).
 
 ## Backlog delta
-Filed none · Closed none · Lesson added to CLAUDE.md (anthropic 2.x uses httpx2) · Deferred: Ollama/vLLM ignore effort level (Ollama sends `think: true` only).
+Filed none · Closed none · Lesson added to CLAUDE.md (anthropic 2.x uses httpx2) · Deferred: Ollama/vLLM ignore effort level (Ollama sends `think: true` only). Missed: Document blocks, listed as still open for Phases 5 and 7, were not done or flagged during the session; carried in the plan.
 
 ## Drift & forward-collisions
 - Backward: Phase 4 work item 1 (`reasoning_effort`, `response_format` json_schema) partly exercised: the provider side now runs under the grid via Messages; Chat Completions ingress cells for json_schema already pass.
