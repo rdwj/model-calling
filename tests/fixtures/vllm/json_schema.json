@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "backend": "vllm",
+    "scenario": "json_schema",
+    "recorded_at": "2026-10-28T22:55:30+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/chat/completions",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the capital of France? Answer as JSON."
+        }
+      ],
+      "max_tokens": 1024,
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "response",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "country": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city",
+              "country"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-a479a84b272af290",
+      "object": "chat.completion",
+      "created": 1793228129,
+      "model": "gpt-oss-20b",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"city\":\"Paris\",\"country\":\"France\"}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "reasoning": "We need to answer the question: \"What is the capital of France?\" Provide it as JSON. So we need JSON like {\"capital\": \"Paris\"} or similar. It's ambiguous but typical. So answer: {\"capital\":\"Paris\"} Probably. We'll output as JSON only. ensure no explanatory text."
+          },
+          "logprobs": null,
+          "finish_reason": "stop",
+          "stop_reason": null,
+          "token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.24.0+rhaiv.13-aa47e83a",
+      "usage": {
+        "prompt_tokens": 78,
+        "total_tokens": 157,
+        "completion_tokens": 79,
+        "prompt_tokens_details": null
+      },
+      "prompt_logprobs": null,
+      "prompt_token_ids": null,
+      "prompt_text": null,
+      "kv_transfer_params": null
+    }
+  }
+}

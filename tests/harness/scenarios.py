@@ -45,6 +45,13 @@ PARALLEL_TOOL_PROMPT = (
 )
 IMAGE_PROMPT = "What color is this image? Reply with one word."
 THINKING_PROMPT = "What is 17 * 23? Reply with just the number."
+JSON_PROMPT = "What is the capital of France? Answer as JSON."
+CAPITAL_SCHEMA = {
+    "type": "object",
+    "properties": {"city": {"type": "string"}, "country": {"type": "string"}},
+    "required": ["city", "country"],
+    "additionalProperties": False,
+}
 SYSTEM_BLOCKS = ("You are a terse assistant.", "Always answer in lowercase.")
 STOP_SEQUENCE = "###"
 # The tool call the tool_error scenario's history made, and its failed result.
@@ -288,6 +295,22 @@ SCENARIOS = {
             native_form=MESSAGES,
             chat_form=False,
             needs=REASONING,
+        ),
+        # Structured output. "response" is the name providers give a schema
+        # that arrives without one, as from Messages.
+        Scenario(
+            "json_schema",
+            JSON_PROMPT,
+            max_tokens=1024,
+            chat_extra={
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "response", "schema": CAPITAL_SCHEMA},
+                }
+            },
+            messages_extra={
+                "output_config": {"format": {"type": "json_schema", "schema": CAPITAL_SCHEMA}}
+            },
         ),
         # The stream scenario with usage asked for. Messages streams always
         # carry usage, and backends are always asked for it, so the native

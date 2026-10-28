@@ -25,6 +25,12 @@ EXPECTED_PARALLEL_TOOLS = [
 ]
 EXPECTED_COLOR = "red"
 EXPECTED_PRODUCT = "391"
+EXPECTED_CAPITAL = {"city": "Paris", "country": "France"}
+
+
+def _capital(text: str):
+    """The answer to the json_schema scenario: the whole text is the JSON object."""
+    assert json.loads(text) == EXPECTED_CAPITAL, text
 
 
 # --- Chat Completions -----------------------------------------------------
@@ -45,6 +51,13 @@ def completion_text(resp, model: str):
 
 def completion_image(resp, model: str):
     _completion_text(resp, model, EXPECTED_COLOR)
+
+
+def completion_json_schema(resp, model: str):
+    validate_chat_completion(resp.to_dict())
+    choice = resp.choices[0]
+    assert choice.finish_reason == "stop"
+    _capital(choice.message.content)
 
 
 def _completion_calls(resp) -> list:
@@ -125,6 +138,7 @@ COMPLETION_CHECKS = {
     "parallel_tools": completion_parallel_tools,
     "tool_error": completion_tool_error,
     "image": completion_image,
+    "json_schema": completion_json_schema,
     "stream": completion_stream,
     "stream_tools": completion_stream_tools,
     "stream_usage": completion_stream_usage,
@@ -156,6 +170,12 @@ def message_thinking(msg, model: str):
     kinds = [b.type for b in msg.content]
     assert kinds[0] == "thinking", kinds
     assert msg.content[0].thinking.strip()
+
+
+def message_json_schema(msg, model: str):
+    validate_anthropic_message(msg.to_dict())
+    assert msg.stop_reason == "end_turn"
+    _capital("".join(b.text for b in msg.content if b.type == "text"))
 
 
 def _message_calls(msg) -> list:
@@ -250,6 +270,7 @@ MESSAGE_CHECKS = {
     "tool_error": message_tool_error,
     "image": message_image,
     "thinking": message_thinking,
+    "json_schema": message_json_schema,
     "stream": message_stream,
     "stream_tools": message_stream_tools,
     "stream_usage": message_stream_usage,

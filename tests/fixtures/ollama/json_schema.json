@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "backend": "ollama",
+    "scenario": "json_schema",
+    "recorded_at": "2026-10-28T22:55:29+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:11434/api/chat",
+    "json": {
+      "model": "qwen3:4b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the capital of France? Answer as JSON."
+        }
+      ],
+      "options": {
+        "num_predict": 1024
+      },
+      "format": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city",
+          "country"
+        ],
+        "additionalProperties": false
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "model": "qwen3:4b",
+      "created_at": "2026-10-28T22:55:29.217408Z",
+      "message": {
+        "role": "assistant",
+        "content": "{\"city\": \"Paris\", \"country\": \"France\"}",
+        "thinking": "We are to output the capital of France as a JSON object.\n The capital of France is Paris.\n We'll create a JSON object that has a key \"capital\" with the value \"Paris\".\n"
+      },
+      "done": true,
+      "done_reason": "stop",
+      "total_duration": 2570108208,
+      "load_duration": 1815919250,
+      "prompt_eval_count": 21,
+      "prompt_eval_cached_count": 0,
+      "prompt_eval_duration": 60483000,
+      "eval_count": 53,
+      "eval_duration": 690688000
+    }
+  }
+}

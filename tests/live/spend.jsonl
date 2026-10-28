@@ -39,3 +39,4 @@
 {"ts": "2026-10-28T22:43:44+00:00", "source": "tests/live", "endpoint": "chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793227422-cGhLpaE2lnBWOHlMmWmk", "cost_usd": 2.88e-07}
 {"ts": "2026-10-28T22:43:44+00:00", "source": "tests/live", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_06VPG9bDu45VSdN8XKfo", "cost_usd": 2.88e-07}
 {"ts": "2026-10-28T22:43:46+00:00", "source": "tests/live", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793227425-BdU3GADG1jwGoGySAhul", "cost_usd": 2.4696e-07}
+{"ts": "2026-10-28T22:55:33+00:00", "source": "record_fixtures", "endpoint": "https://openrouter.ai/api/v1/chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793228131-9e7jvMhuHo6S1C6cfKh4", "cost_usd": 7.92e-07}
