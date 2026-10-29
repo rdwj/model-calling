@@ -1,74 +1,71 @@
 # Next Session — api-shapes
 
-## Next: Phase 6 slice 1, the Anthropic Messages provider
+## Next: Phase 10, gateway configuration and hardening
 
-Give the grid its first Anthropic backend: an `AnthropicProvider` on the
-provider interface, written from the current Messages API spec and the
-`anthropic` 2.0.0 SDK types, reaching vLLM's native `/v1/messages`
-offline and OpenRouter's `/api/v1/messages` live. Cohere v2 is slice 2;
-don't start it.
+Make the gateway configurable from its environment and safe on a shared
+network, per the Phase 10 definition of done below. Two design calls were
+made in planning (2026-10-28) and are not open: URL variables are the API
+root with `/v1`, and `/v1/config/update` is off unless an admin token is set.
 
-1. **`model_calling/providers/anthropic.py`.** Request body from
-   `formats.anthropic.request_from_internal` (already the reference
-   encoder for `vllm_messages`), auth and `anthropic-version` headers, SSE
-   parsing into internal events, stop-reason and usage mapping, images,
-   thinking, `cache_control` pass-through. Drop unsigned thinking
-   (`signature: ""`) before sending. Auth: Anthropic itself takes
-   `x-api-key`; OpenRouter's `/messages` takes `Authorization: Bearer`
-   plus `anthropic-version` (the live smoke test proves it). Register it
-   for the `anthropic/` prefix in `providers/__init__.py`, replacing the
-   legacy `hosted/anthropic_adapter.py` path and its Claude 3 model tables
-   in `registry.py` (lines ~37, 96, 116, 357, 453, 664).
-2. **Grid column.** Turn `vllm_messages` into an in-grid backend served by
-   the new provider (it records today with `provider=None`,
-   `in_grid=False`, and `only_scenarios` of four), then record every
-   scenario it can run. Messages in, Anthropic out must be a lossless
-   pass-through: assert that the native body equals the client's Messages
-   body.
-3. **Messages tool `strict`.** Ten-minute fix found in Phase 4 review: the
-   OpenAI-compatible provider should carry an Anthropic-format tool's
-   `strict` (internal `Tool.extras["anthropic"]`) into the Chat Completions
-   function. Removing `KNOWN_REQUEST_FAILURES`' tool_strict entries is the
-   proof. This is a gateway change; approved in planning (2026-10-28).
-4. **Live.** An OpenRouter Anthropic-backend column in the live tests:
-   text, tools, streaming, thinking through `Client.amessages` and the
-   gateway with a Claude model priced at the low end (check OpenRouter
-   prices first; budget below).
+1. **Backend URLs from the environment.** The gateway applies
+   `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, `VLLM_API_KEY`, and (new, since the
+   Anthropic provider exists) `ANTHROPIC_BASE_URL` to its provider configs.
+   They mean what `base_url` means everywhere else: the API root with `/v1`
+   (Ollama's native root has none). Change `Containerfile` and
+   `podman-compose.yml` to `/v1` values, and make the recorder
+   (`tests/harness/record.py` `_target`) read `VLLM_BASE_URL` as the API root
+   too. `model_calling/config.py` (`load_config`, `active_config`) and its use
+   in `__main__.py` either become the one source or go; no logging-only path
+   survives.
+2. **Protect `POST /v1/config/update`.** 404 unless `MODEL_CALLING_ADMIN_TOKEN`
+   is set; with it set, a request must carry `Authorization: Bearer <token>`
+   or gets 403. Compare with `hmac.compare_digest`. The legacy
+   `model_calling/client.py` (line ~100 calls this endpoint) gains a token
+   argument. This removes nothing public, but it changes default behavior:
+   add it to the migration guide's breaking-changes list.
+3. **No `.env` at import.** Move `load_dotenv()` from `server.py:25` into the
+   entry point (`__main__.py`), so importing `model_calling.server` never
+   reads real keys.
+4. **Docs.** README, `docs/advanced.md`, `docs/api-reference.md`, and
+   `docs/migration-guide.md` (lines ~253, 464 describe the endpoint as open):
+   replace every "not applied yet" note, document the token.
 
-**Sequencing.** 1, then 2 (fixtures prove 1), then 3 (independent and
-small), then 4. If the session runs long, stop after 2 with 3 and 4 in the
-plan; don't cut 2.
+**Sequencing.** 3 first (smallest, and it makes the env-driven tests in 1
+trustworthy), then 1, 2, 4. If the session runs long, stop after 2; don't
+cut the tests that prove 1 and 2.
 
 **Constraints for the session:**
-- Exit predicate: `HOME=$(mktemp -d) uv run pytest` green with the
-  Anthropic column in every Messages ingress row (library, gateway, SDK)
-  and the Chat Completions rows, each cell passing or a strict xfail
-  naming a backend limitation; tool_strict xfails gone; `uv run pytest -m
-  live` passing with spend committed.
-- vLLM: same cluster. Port-forward from rdwj's `~/.zshrc` comment;
-  `VLLM_VERIFY_TLS=false`; `VLLM_MODEL=redhataigpt-oss-20b` (not a typo).
-- OpenRouter: about $0.0001 of the $5 epic budget is spent. Claude calls
-  cost far more than mistral-nemo; keep live Claude calls to a handful and
-  record the per-call price in the commit.
+- Exit predicate is Phase 10's definition of done: a gateway test sets the
+  URL variables and replayed requests go to those hosts; `podman-compose up`
+  reaches the Ollama container with no `/v1/config/update` call; an
+  unauthenticated update gets 404 with no token configured and 403 with one;
+  `python -c "import model_calling.server"` in a directory with a `.env`
+  leaves `os.environ` unchanged; `grep -rn "not applied yet" README.md docs`
+  returns nothing. Plus `HOME=$(mktemp -d) uv run pytest` green.
+- No live spend is needed; this is offline work plus one local
+  `podman-compose up` check.
 
 **Session start protocol:**
 - Premise checks (before item 1, report before acting): `main` matches
-  `origin/main` at the plan commit after `d85cdc3`; "Test Package" green;
-  `HOME=$(mktemp -d) uv run pytest` shows 1055 passed, 37 xfailed;
-  `curl -k $VLLM_BASE_URL/v1/models` answers (restart the port-forward if
-  not) and `POST /v1/messages` still answers there; Ollama up with
-  `qwen3:4b`, `gemma3`, `gpt-oss:20b`. Check the installed `anthropic` SDK
-  types before writing the SSE parser; don't work from memory.
+  `origin/main` at the plan commit after `8f4c4a0`; "Test Package" green on
+  it; `HOME=$(mktemp -d) uv run pytest` shows 1323 passed, 35 xfailed;
+  `grep -rn "not applied yet" README.md docs` still finds the notes (nobody
+  did this in a parallel session); podman machine running.
 - Rules with history:
   - Never loosen a check or replay matching; re-record or strict-xfail.
-  - Read and run sub-agent output before committing, and check every
-    commit passes on its own (Phase 4 had to squash a commit that didn't).
-  - Gateway behavior changes only where this plan says so (items 1 and 3).
-- Stop-and-ask before: moving the dependency cutoff or a pinned version;
-  any change to the vLLM deployment; removing or renaming a public
-  endpoint; force-pushing; any single live run projected over $0.05.
+    Changing the recorder's `VLLM_BASE_URL` meaning must not change any
+    stored fixture URL (they hold `http://localhost:8000/v1` already).
+  - Check every commit passes on its own (done for every commit last
+    session; keep it up).
+  - Gateway behavior changes only where this plan says so.
+- Stop-and-ask before: removing or renaming any public endpoint or
+  environment variable; changing rdwj's `~/.zshrc` (its `VLLM_BASE_URL`
+  is the server root and must gain `/v1` after item 1; tell rdwj, don't
+  edit it); moving the dependency cutoff or a pin; force-pushing.
 - Close ritual: `/session-close`, then `/plan-next-session`. Next pick is
-  among Phase 6 slice 2 (Cohere v2), Phase 10, and Phase 7.
+  among Phase 8 (Claude Code acceptance; its backends are ready), Phase 6
+  slice 2 (Cohere, hand-built fixtures: decided 2026-10-28 that there is
+  no key), and Phase 7.
 
 ## Remaining epic phases
 
@@ -93,8 +90,9 @@ conformance); see the "What landed" ledger and
 `session-summaries/`. Phase numbers are kept stable because code comments,
 xfail reasons, and summaries cite them, so the gateway-configuration phase
 added on 2026-10-28 is Phase 10 and sits before Phase 9, which it gates.
-Order: Phase 6 next (decided 2026-10-28, slice 1 Anthropic, slice 2
-Cohere), with 7 and 10 parallel-ok; 8 after 6; 9 last.
+Order: Phase 6 slice 1 (Anthropic) is done; Phase 10 next (decided
+2026-10-28), then among 8, 6 slice 2 (Cohere, hand-built fixtures: no
+key), and 7; 9 last.
 
 ### Phase 4: Chat Completions conformance
 
@@ -324,7 +322,16 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-28): Phase 4 complete
+## What landed last session (2026-10-28): Phase 6 slice 1
+
+All four items plus review fixes, `c777d03..e155148`: the Anthropic
+Messages provider on `anthropic/`, `vllm_messages` in the grid with
+per-form fixtures and a pass-through test, typed `Tool.strict`, and a live
+Anthropic column on OpenRouter (Haiku 5.5, Haiku 4.5 for thinking). Auth is
+Bearer, as the anthropic 2.0.0 SDK sends it. Claude spend $0.0026. Record:
+`session-summaries/2026-10-28-api-shapes-phase6-slice1.md`.
+
+## What landed earlier (2026-10-28): Phase 4 complete
 
 All four items plus review fixes, `5324bb1..fea1c2b`, and a sync-client
 fix, `d85cdc3`. Phase 4's definition of done is met. Record:
@@ -360,13 +367,15 @@ Still open from earlier slices:
 - Document and Refusal block types. Phase 5 did not do Document blocks
   (Messages `document` input arrives as an opaque block that every
   backend refuses); take it up with Phase 6 or as a small slice.
-- A Messages tool's `strict` is dropped on the way to Chat Completions
-  backends (strict xfail; item 3 above).
 - No grid cell covers `Provider.prepare` on the streaming path, or the
   gateway's default drop path for refused Ollama cells (Phase 4 summary).
 - Responses stream structure (Phase 7).
-- The Phase 6 Anthropic provider must drop unsigned thinking
-  (`signature: ""`) before sending it to Anthropic.
+- From the Phase 6 slice 1 review (low): the Anthropic provider drops
+  Chat Completions extras (`logprobs`, `logit_bias`, `user`) silently
+  instead of refusing them in strict mode; streams lose `stop_details` and
+  `container`; Chat-form `reasoning_effort` (adaptive thinking) is untested
+  live against older Claude models; no cell pins `max_completion_tokens`
+  to Messages `max_tokens`; `/v1/models` lists no `anthropic/` models.
 
 ## What landed earlier (2026-10-28): Phase 2 slice 2
 
@@ -462,10 +471,10 @@ of 23 files.
 
 ## If blocked
 
-- If vLLM's `/v1/messages` is unreachable, build the provider against the
-  four existing `vllm_messages` fixtures, record the OpenRouter Anthropic
-  column instead (mind the budget), and carry the vLLM recordings over.
-- If a backend can't express a scenario (no vision model on vLLM), make it
-  a strict xfail naming the limitation instead of dropping the cell.
-- Phase 10 (gateway configuration) is parallel-ok and small; it's the
-  fallback if Phase 6 stalls on recordings.
+- If podman can't run locally, prove the compose wiring with a gateway
+  test that sets the same environment and leave the `podman-compose up`
+  check as a named gap in the session summary.
+- If the `config.py` path turns out to be load-bearing elsewhere, keep it
+  but make the gateway read it (one source), rather than deleting it.
+- Fallback work in this epic: the Phase 6 slice 1 review leftovers listed
+  under "Still open" (each small, offline).
