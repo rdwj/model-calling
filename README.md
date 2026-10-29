@@ -1,5 +1,8 @@
 # model-calling
 
+[![PyPI version](https://img.shields.io/pypi/v/model-calling.svg)](https://pypi.org/project/model-calling/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 An LLM client library for Python that speaks OpenAI Chat Completions and Anthropic Messages over Ollama, vLLM, OpenAI-compatible, and OpenRouter backends. Use it in-process or as a gateway.
 
 ## Install
@@ -195,15 +198,18 @@ UBI 9 Python 3.12 base, runs as non-root. FIPS variant in `Containerfile-FIPS`.
 ```bash
 uv sync
 uv run pytest                 # offline suite; no network
-uv run pytest -m integration  # needs a running gateway backed by Ollama
-uv run pytest -m live         # one cheap OpenRouter call per format
+uv run pytest -m live         # live smoke tests via OpenRouter (OPENROUTER_API_KEY)
 ```
 
-The offline suite runs the gateway in-process against recorded backend fixtures and validates output with the official `openai` and `anthropic` SDK types. See [tests/README.md](tests/README.md) for the harness, fixture recorder, and integration scripts.
+The offline suite runs the gateway in-process against recorded backend fixtures and validates output with the official `openai` and `anthropic` SDK types. See [tests/README.md](https://github.com/rdwj/model-calling/blob/main/tests/README.md) for the harness and fixture recorder.
+
+## Documentation
+
+The [documentation](https://github.com/rdwj/model-calling/blob/main/docs/README.md) covers the library API, the gateway, model aliases, and migrating from 0.1.x.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache-2.0. See [LICENSE](https://github.com/rdwj/model-calling/blob/main/LICENSE) and [NOTICE](https://github.com/rdwj/model-calling/blob/main/NOTICE).
 
 ## Acknowledgements
 
