@@ -1,8 +1,7 @@
 """
 Backends behind the provider interface in `providers.base`.
 
-Cohere still goes through the legacy adapters in `model_calling.registry`
-until Phase 6 ports it.
+Cohere is not ported yet; it returns as a Cohere v2 provider.
 """
 
 import os

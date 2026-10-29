@@ -151,6 +151,10 @@ models:
 
 Responses carry the alias in `model`, `GET /v1/models` lists the aliases (it no longer queries Ollama or vLLM, or lists fixed OpenAI and Cohere names), and unprefixed names no longer default to Ollama. Cohere models are not reachable through the gateway until the Cohere backend moves to the provider interface. See [Model Aliases](advanced.md#model-aliases).
 
+### POST /v1/models/refresh is removed
+
+The gateway no longer probes model capabilities, so `POST /v1/models/refresh` is gone. The 0.1.x Cohere adapters are removed with it; Cohere returns when a Cohere v2 backend joins the provider interface.
+
 ## From Local Development to Production
 
 A typical workflow starts with Ollama for local iteration, moves to a hosted service (OpenAI, OpenRouter) or vLLM on OpenShift for shared testing, and deploys to production with environment-specific model names and authentication.

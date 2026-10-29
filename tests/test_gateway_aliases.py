@@ -12,7 +12,6 @@ from openai.types import Model
 
 from model_calling.gateway import _check_dimensions, public_message
 from model_calling.aliases import Target
-from tests.harness.gateway import REPLAY_CAPABILITIES
 from tests.harness.replay import ReplayTransport
 from tests.harness.scenarios import (
     ALL_BACKENDS,
@@ -43,13 +42,10 @@ def chat_to(backend: str, model: str, **backend_settings) -> dict:
 def use_replay(gateway, backend_name: str, exchanges: list) -> ReplayTransport:
     """Answer the backend's prefix from `exchanges`, as `Gateway.use` does,
     without registering any alias."""
-    from model_calling.capability_cache import capability_cache
-
     backend = ALL_BACKENDS[backend_name]
     replay = ReplayTransport(exchanges)
-    config = gateway.registry.default_configs[backend.config_prefix]
+    config = gateway.backends.config[backend.config_prefix]
     config.update(backend.gateway_config, transport=replay)
-    capability_cache.set_capability(backend.model_for(TEXT), dict(REPLAY_CAPABILITIES))
     gateway.replays.append(replay)
     return replay
 

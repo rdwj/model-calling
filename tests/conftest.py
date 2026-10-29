@@ -46,11 +46,10 @@ BACKEND_ENV_VARS = (
     "OPENROUTER_API_KEY",
 )
 
-# This module loads before any test module imports model_calling.
-# capability_cache builds a singleton at import time that reads
-# ~/.model_calling/capability_cache.json, so home has to point at an empty
-# directory first. Integration tests talk to a service in another process,
-# and live tests read only the environment, so neither needs the real home.
+# This module loads before any test module imports model_calling. Point
+# home at a temporary directory so offline tests don't read or write the
+# real home. Integration tests talk to a service in another process, and
+# live tests read only the environment, so neither needs the real home.
 _SESSION_HOME = tempfile.mkdtemp(prefix="model-calling-tests-home-")
 atexit.register(shutil.rmtree, _SESSION_HOME, ignore_errors=True)
 os.environ["HOME"] = _SESSION_HOME
@@ -83,18 +82,13 @@ def _is_offline(item: pytest.Item) -> bool:
 
 @pytest.fixture(autouse=True)
 def offline_isolation(request, monkeypatch, tmp_path):
-    """Strip backend env vars, use a per-test capability cache, block the network."""
+    """Strip backend env vars and block the network."""
     if not _is_offline(request.node):
         yield
         return
 
     for var in BACKEND_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
-
-    from model_calling.capability_cache import capability_cache
-
-    monkeypatch.setattr(capability_cache, "cache_file", str(tmp_path / "capability_cache.json"))
-    monkeypatch.setattr(capability_cache, "cache", capability_cache._load_cache())
 
     real_connect = socket.socket.connect
 

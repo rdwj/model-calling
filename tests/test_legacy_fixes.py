@@ -53,4 +53,3 @@ async def test_moderation_never_resolves_to_a_chat_backend(gateway, monkeypatch,
     resp = await gateway.client.post("/v1/moderations", json=body)
     assert resp.status_code == 501, resp.text
     assert "model-calling[moderation]" in resp.json()["detail"]
-    assert not gateway.registry.adapters, "moderation created a chat adapter"

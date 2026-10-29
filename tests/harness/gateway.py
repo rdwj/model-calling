@@ -30,7 +30,7 @@ def grid_alias(model: str) -> str:
     return ALIAS_PREFIX + model.replace("/", ".")
 
 
-# Seeded as verified so the registry never schedules a live capability probe.
+# No longer used, kept for reference in recorded fixtures.
 REPLAY_CAPABILITIES = {
     "supports_function_call": True,
     "supports_streaming": True,
@@ -47,7 +47,7 @@ REPLAY_CAPABILITIES = {
 @dataclass
 class Gateway:
     client: httpx.AsyncClient
-    registry: object
+    backends: object  # The library Client serving ported backends
     # The alias file the gateway reads, and what the harness has put in it.
     config_path: Path
     aliases: Dict[str, dict] = field(default_factory=dict)
@@ -81,15 +81,12 @@ class Gateway:
 
         Returns the transport so tests can inspect what the gateway sent.
         """
-        from model_calling.capability_cache import capability_cache
-
         backend = ALL_BACKENDS[backend_name]
         replay = ReplayTransport(exchanges_for(backend_name, scenario_name, form))
 
-        config = self.registry.default_configs[backend.config_prefix]
+        config = self.backends.config[backend.config_prefix]
         config.update(backend.gateway_config, transport=replay)
         model = backend.model_for(ALL_SCENARIOS[scenario_name])
-        capability_cache.set_capability(model, dict(REPLAY_CAPABILITIES))
         self.alias(model)
         self.replays.append(replay)
         return replay
@@ -97,20 +94,19 @@ class Gateway:
 
 @pytest.fixture
 async def gateway(monkeypatch, tmp_path):
-    """The FastAPI app behind an ASGI transport, with a fresh model registry
+    """The FastAPI app behind an ASGI transport, with a fresh library client
     and an alias file of its own."""
     from model_calling import server
     from model_calling.aliases import AliasStore
-    from model_calling.registry import ModelRegistry
 
-    registry = ModelRegistry()
-    monkeypatch.setattr(server, "registry", registry)
+    backends = server.backend_client()
+    monkeypatch.setattr(server, "CLIENT", backends)
     config_path = tmp_path / "model-calling.yaml"
     monkeypatch.setattr(server, "MODELS", AliasStore(str(config_path)))
     transport = httpx.ASGITransport(app=server.app)
     async with httpx.AsyncClient(transport=transport, base_url=GATEWAY_BASE_URL) as client:
-        gw = Gateway(client=client, registry=registry, config_path=config_path)
+        gw = Gateway(client=client, backends=backends, config_path=config_path)
         yield gw
-    await registry.client.aclose()
+    await backends.aclose()
     for replay in gw.replays:
         replay.check()

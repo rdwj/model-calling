@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from model_calling.config import backend_overrides
-from tests.harness.gateway import GATEWAY_BASE_URL, REPLAY_CAPABILITIES
+from tests.harness.gateway import GATEWAY_BASE_URL
 from tests.harness.replay import ReplayTransport
 from tests.harness.scenarios import (
     ALL_BACKENDS,
@@ -76,8 +76,6 @@ ENV_ROUTED = [
 async def test_backend_variables_route_gateway_requests(
     env_gateway, backend_name, path, form, recorded_url, env_url
 ):
-    from model_calling.capability_cache import capability_cache
-
     backend, scenario = ALL_BACKENDS[backend_name], ALL_SCENARIOS["text"]
     # The recorded exchanges, moved to the host the environment names. Replay
     # answers only an exact URL, so a request anywhere else fails the test.
@@ -87,10 +85,9 @@ async def test_backend_variables_route_gateway_requests(
     ]
     assert all(e.url.startswith(env_url) for e in exchanges)
     replay = ReplayTransport(exchanges)
-    env_gateway.registry.default_configs[backend.config_prefix]["transport"] = replay
+    env_gateway.backends.config[backend.config_prefix]["transport"] = replay
     env_gateway.replays.append(replay)
     model = backend.model_for(scenario)
-    capability_cache.set_capability(model, dict(REPLAY_CAPABILITIES))
 
     alias = env_gateway.alias(model)
     body = (
@@ -114,7 +111,7 @@ def auth(value):
 
 
 def openrouter_url(gateway) -> str:
-    return gateway.registry.default_configs["openrouter"]["base_url"]
+    return gateway.backends.config["openrouter"]["base_url"]
 
 
 @pytest.mark.parametrize("authorization", [None, f"Bearer {ADMIN_TOKEN}"])

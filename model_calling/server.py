@@ -6,22 +6,34 @@ import contextlib
 import hmac
 import logging
 import os
-from typing import Any, List, Optional, Union
+from typing import List, Optional, Union
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 
 from model_calling import __version__
 from model_calling import gateway
 from model_calling.aliases import AliasStore
-from model_calling.providers import PROVIDERS, split_model
-from model_calling.registry import registry
-from model_calling.config import admin_token
+from model_calling.callbacks import DefaultCallback
+from model_calling.config import admin_token, backend_overrides
+from model_calling.library import Client
+
+
+def backend_client() -> Client:
+    """The library client for ported backends, with environment overrides."""
+    return Client(config=backend_overrides(), callbacks=[DefaultCallback()], drop_params=True)
+
+
+# The library client the gateway serves aliases with; closed when the
+# server stops. Unsupported parameters are dropped, as the gateway
+# always has. Backend URLs and keys set in the environment override the
+# library defaults.
+CLIENT = backend_client()
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    await registry.client.aclose()
+    await CLIENT.aclose()
 
 
 app = FastAPI(title="Model Calling Service", version=__version__, lifespan=lifespan)
@@ -57,12 +69,6 @@ MODELS = AliasStore.from_env()
 MODEL_OWNER = "model-calling"
 
 
-def _ported(body: Any) -> bool:
-    """Whether the library `Client` serves this request's model prefix."""
-    model = body.get("model") if isinstance(body, dict) else None
-    return isinstance(model, str) and split_model(model)[0] in PROVIDERS
-
-
 class ModerationRequest(BaseModel):
     input: Union[str, List[str]]
     model: Optional[str] = None
@@ -81,8 +87,7 @@ async def moderations(request: Request):
         logger.error(f"Invalid request format: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid request format: {e}")
 
-    # Moderation always runs on Granite Guardian. Resolving the model through
-    # the chat registry would send unprefixed names to Ollama's chat API.
+    # Moderation always runs on Granite Guardian, never on an alias.
     model_name = validated_request.model or "granite-guardian"
     # Imported lazily: torch and transformers are an optional extra
     try:
@@ -136,16 +141,14 @@ async def list_models():
 async def chat_completions(request: Request):
     """OpenAI Chat Completions, for any configured model."""
     body = await request.json()
-    return await gateway.chat_completions(
-        registry.client, body, MODELS.current(), drop_params=DROP_PARAMS
-    )
+    return await gateway.chat_completions(CLIENT, body, MODELS.current(), drop_params=DROP_PARAMS)
 
 
 @app.post("/v1/messages")
 async def messages(request: Request):
     """Anthropic Messages over every ported backend."""
     body = await request.json()
-    return await gateway.messages(registry.client, body, MODELS.current(), drop_params=DROP_PARAMS)
+    return await gateway.messages(CLIENT, body, MODELS.current(), drop_params=DROP_PARAMS)
 
 
 @app.post("/v1/messages/count_tokens")
@@ -158,9 +161,7 @@ async def count_tokens(request: Request):
 async def create_embeddings(request: Request):
     """OpenAI Embeddings, for any configured model."""
     body = await request.json()
-    return await gateway.embeddings(
-        registry.client, body, MODELS.current(), drop_params=DROP_PARAMS
-    )
+    return await gateway.embeddings(CLIENT, body, MODELS.current(), drop_params=DROP_PARAMS)
 
 
 def require_admin(request: Request) -> None:
@@ -188,57 +189,13 @@ async def update_config(request: Request):
     if not prefix:
         raise HTTPException(status_code=400, detail="Missing prefix parameter")
 
-    # Update the registry configuration
-    registry.update_config(prefix, config)
+    # Update the client configuration directly
+    if prefix in CLIENT.config:
+        CLIENT.config[prefix].update(config)
+    else:
+        CLIENT.config[prefix] = config
 
     return {"status": "ok", "message": f"Updated configuration for {prefix}"}
-
-
-@app.post("/v1/models/refresh")
-async def refresh_model(request: Request):
-    """Force refresh of model capabilities"""
-    body = await request.json()
-    model_name = body.get("model")
-
-    if not model_name:
-        raise HTTPException(status_code=400, detail="Missing model parameter")
-
-    # Clear the adapter cache to force re-verification
-    registry.adapters = {}
-
-    # Ported prefixes without a legacy adapter (vllm, openrouter) have no
-    # capability probe; report the registry's capabilities for them.
-    adapter = registry.get_adapter(model_name)
-    if not adapter and _ported(body):
-        adapter = registry.get_capabilities(model_name, ignore_cache=True)
-    if not adapter:
-        raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
-
-    # Return the updated capabilities
-    capabilities = {
-        "supports_function_call": (
-            adapter.supports_function_call if hasattr(adapter, "supports_function_call") else False
-        ),
-        "supports_streaming": (
-            adapter.supports_streaming if hasattr(adapter, "supports_streaming") else False
-        ),
-        "supports_system_messages": (
-            adapter.supports_system_messages
-            if hasattr(adapter, "supports_system_messages")
-            else False
-        ),
-        "supports_vision": (
-            adapter.supports_vision if hasattr(adapter, "supports_vision") else False
-        ),
-        "supports_json_mode": (
-            adapter.supports_json_mode if hasattr(adapter, "supports_json_mode") else False
-        ),
-        "supports_reasoning": (
-            adapter.supports_reasoning if hasattr(adapter, "supports_reasoning") else False
-        ),
-    }
-
-    return {"model": model_name, "capabilities": capabilities, "status": "refreshed"}
 
 
 if __name__ == "__main__":

@@ -72,39 +72,9 @@ Supply-chain attacks are getting faster and more frequent, so every external dep
 
 To update dependencies: move the cutoff, run `uv lock --upgrade`, update the `==` pins in `pyproject.toml` to match the lock, audit, and run the test suite.
 
-## Adding New Model Adapters
+## Adding New Model Backends
 
-One of the most valuable contributions is adding support for new model backends. To add a new adapter:
-
-1. Create a new adapter class that extends `ModelAdapter` (and `StreamingAdapter` if appropriate).
-2. Implement all required methods for translating between the OpenAI API format and your model's format.
-3. Register the adapter with the registry in an appropriate place.
-4. Add capability detection for the new model type.
-5. Include tests that verify basic functionality, function calling, and streaming (if supported).
-
-Example:
-
-```python
-from model_calling.adapter import ModelAdapter
-from model_calling.registry import registry
-
-class MyCustomAdapter(ModelAdapter):
-    def __init__(self, model_config):
-        super().__init__(model_config)
-        # Initialize model-specific config
-        
-    async def translate_request(self, openai_format_request):
-        # Convert from OpenAI format to your model's format
-        
-    async def translate_response(self, model_response):
-        # Convert from your model's response to OpenAI format
-        
-    async def call_model(self, translated_request):
-        # Make the API call to your model
-
-# Register in appropriate initialization code
-registry.register_adapter_class("mymodel", MyCustomAdapter)
-```
+To add support for a new backend, implement the `Provider` interface in `model_calling/providers/`. Providers translate between the library's internal format and a backend's API. See `model_calling/providers/base.py` and existing providers in that directory for the interface and patterns.
 
 ## Testing Guidelines
 

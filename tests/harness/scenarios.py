@@ -546,7 +546,7 @@ class Backend:
 
 
 OLLAMA_URL = "http://localhost:11434"
-# The registry's default OpenRouter base URL.
+# The library's default OpenRouter base URL.
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
 # Where replay expects vLLM. Recording sends to VLLM_BASE_URL and VLLM_MODEL
 # from the environment and stores these in their place.

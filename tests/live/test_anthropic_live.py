@@ -49,8 +49,8 @@ def body(scenario: str, name: str | None = None) -> dict:
 async def sdk(gateway, cost):
     from model_calling import server
 
-    gateway.registry.default_configs["anthropic"].update(config())
-    gateway.registry.client.callbacks.append(cost)
+    gateway.backends.config["anthropic"].update(config())
+    gateway.backends.callbacks.append(cost)
     http = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=server.app), timeout=TIMEOUT_S)
     client = anthropic.AsyncAnthropic(
         base_url=GATEWAY_BASE_URL, api_key=SDK_API_KEY, http_client=http

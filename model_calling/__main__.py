@@ -56,7 +56,7 @@ def main():
 
     # The default URLs, environment overrides applied, for backends the
     # alias file names without one.
-    config = model_calling.server.registry.client.config
+    config = model_calling.server.CLIENT.config
     logger.info(f"Starting model-calling service on port {port}")
     for prefix in LOGGED_BACKENDS:
         logger.info(f"{prefix} base URL: {config[prefix]['base_url']}")

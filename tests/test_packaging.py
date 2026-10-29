@@ -75,7 +75,7 @@ def dotenv_dir(tmp_path):
 
 
 def test_importing_the_server_does_not_read_dotenv(dotenv_dir):
-    code = f"""
+    code = """
 import os
 before = dict(os.environ)
 import model_calling.server
@@ -92,7 +92,7 @@ def test_the_entry_point_reads_dotenv_from_the_working_directory(dotenv_dir):
 
 
 def test_backend_urls_in_dotenv_reach_the_server(dotenv_dir):
-    expr = "model_calling.server.registry.client.config['ollama']['base_url']"
+    expr = "model_calling.server.CLIENT.config['ollama']['base_url']"
     result = run_in(dotenv_dir, _RUN_MAIN.format(expr=expr))
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "http://ollama.from-dotenv:11434"

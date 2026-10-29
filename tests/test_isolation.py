@@ -16,13 +16,6 @@ def test_home_is_a_scratch_directory():
     assert Path(os.path.expanduser("~")).name.startswith("model-calling-tests-home-")
 
 
-def test_capability_cache_lives_in_tmp_path(tmp_path):
-    from model_calling.capability_cache import capability_cache
-
-    assert Path(capability_cache.cache_file).parent == tmp_path
-    assert capability_cache.cache["models"] == {}
-
-
 def test_dotenv_loading_is_disabled():
     import dotenv
 

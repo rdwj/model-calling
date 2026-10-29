@@ -249,7 +249,7 @@ Base URLs for Anthropic, vLLM, OpenAI, and OpenRouter include `/v1`, matching th
 
 The `anthropic` prefix sends Anthropic Messages to `{base_url}/messages`, so it also reaches OpenRouter's and vLLM's Messages endpoints when `base_url` points there. It authenticates with `Authorization: Bearer`, as the `anthropic` 2.x SDK does, and sends `anthropic-version: 2026-10-21`. Messages requests pass through unchanged. Chat Completions requests are translated: a missing `max_tokens` becomes 4096, `reasoning_effort` becomes adaptive thinking at that effort (OpenAI's `minimal`, which Messages lacks, sends no thinking and is reported as unsupported `thinking.effort`), `parallel_tool_calls` without tools is not sent, and `seed`, `presence_penalty`, `frequency_penalty`, and a `json_object` response format are unsupported. Thinking blocks without a signature (from another backend) are dropped from assistant turns, since Anthropic rejects them, and a turn left empty goes with them. Thinking signed by another server, such as vLLM, is sent as is and Anthropic will reject it.
 
-The Cohere backend is not available in the library yet (planned). Passing `cohere/...` raises `BadRequestError` with message "no provider for ...". The gateway still reaches it through a legacy adapter (non-streaming Chat Completions only, plus embeddings).
+The Cohere backend is not available in the library yet (planned). Passing `cohere/...` raises `BadRequestError` with message "no provider for ...".
 
 ## Strictness and drop_params
 
@@ -435,7 +435,6 @@ The gateway listens on `0.0.0.0:8000`. Override the port with the `PORT` environ
 - `OPENAI_ORG_ID`: OpenAI organization ID (optional)
 - `OPENROUTER_API_KEY`: OpenRouter backend credential
 - `ANTHROPIC_API_KEY`: Anthropic backend credential
-- `COHERE_API_KEY`: Cohere backend credential (legacy adapters only)
 - `PORT`: gateway listen port (default 8000)
 - `MODEL_CALLING_STRICT_PARAMS`: enable strict mode (`true`, `false`, `1`, `0`, `yes`, `no`; default `false`)
 
@@ -557,18 +556,6 @@ Request body:
 Response: 200 OK.
 
 For backend URLs that should hold from startup, set `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, and `MODEL_CALLING_ANTHROPIC_BASE_URL` instead (see [Environment Variables](advanced.md#environment-variables)).
-
-#### POST /v1/models/refresh
-
-Re-check one model's capabilities (tool calls, streaming, vision, JSON mode, reasoning) and return them.
-
-Request body:
-
-```json
-{"model": "ollama/qwen3:4b"}
-```
-
-Response: `{"model": ..., "capabilities": {...}, "status": "refreshed"}`.
 
 #### POST /v1/moderations
 

@@ -26,7 +26,7 @@ needs a backend gets it from a recorded fixture.
 The harness lives in `harness/`:
 
 - `gateway.py` provides the `gateway` fixture: the FastAPI app behind
-  `httpx.ASGITransport` with a fresh registry. `gateway.use(backend,
+  `httpx.ASGITransport` with a fresh library client. `gateway.use(backend,
   scenario)` points it at a backend and replays that fixture by setting
   the replay transport as the prefix config's `transport`, which the
   provider's pooled HTTP client picks up.

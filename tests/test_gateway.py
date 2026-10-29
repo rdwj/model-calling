@@ -54,7 +54,7 @@ async def test_backend_error_returns_exact_status_and_error_body(gateway):
 async def test_callbacks_run_on_ollama_text(gateway):
     """Callbacks used to be skipped on the Ollama path. Verify they run."""
     callback = RecordingCallback()
-    gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
+    gateway.backends.config["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "text")
 
     body = SCENARIOS["text"].chat_completions_body(
@@ -80,7 +80,7 @@ async def test_callbacks_run_on_ollama_text(gateway):
 async def test_callbacks_run_on_backend_error(gateway):
     """on_error callback should be called when the backend fails."""
     callback = RecordingCallback()
-    gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
+    gateway.backends.config["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "backend_error")
 
     body = SCENARIOS["backend_error"].chat_completions_body(
@@ -103,7 +103,7 @@ async def test_callbacks_run_on_backend_error(gateway):
 async def test_callbacks_run_on_stream(gateway):
     """on_stream_chunk gets each internal event; on_request_end the last."""
     callback = RecordingCallback()
-    gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
+    gateway.backends.config["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "stream")
 
     body = SCENARIOS["stream"].chat_completions_body(
@@ -223,7 +223,7 @@ async def test_a_body_field_named_self_is_just_a_field(gateway):
         sent.append(json.loads(request.content))
         return httpx.Response(200, json=answer)
 
-    config = gateway.registry.default_configs["vllm"]
+    config = gateway.backends.config["vllm"]
     config.update(transport=httpx.MockTransport(backend))
     body = {"model": gateway.alias("vllm/m"), "messages": [{"role": "user", "content": "x"}]}
     body["self"] = 1
@@ -238,7 +238,7 @@ async def test_messages_stream_error_after_start_is_an_error_event(gateway):
 
     recorded = Exchange.load(fixture_path("ollama", "stream"))
     recorded.lines = recorded.lines[:2] + [json.dumps({"error": "model crashed"})]
-    config = gateway.registry.default_configs["ollama"]
+    config = gateway.backends.config["ollama"]
     config.update(BACKENDS["ollama"].gateway_config, transport=ReplayTransport([recorded]))
     body = SCENARIOS["stream"].messages_body(gateway.alias(BACKENDS["ollama"].gateway_model))
     resp = await gateway.client.post("/v1/messages", json=body)
@@ -249,13 +249,6 @@ async def test_messages_stream_error_after_start_is_an_error_event(gateway):
         "type": "api_error",
         "message": "the backend error: model crashed",
     }
-
-
-async def test_refresh_reports_capabilities_for_a_vllm_model(gateway):
-    """vLLM lost its legacy adapter in Phase 2, and refresh 404ed since."""
-    resp = await gateway.client.post("/v1/models/refresh", json={"model": "vllm/gpt-oss-20b"})
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["status"] == "refreshed"
 
 
 FORCED_TOOL = {
