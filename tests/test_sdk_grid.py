@@ -74,7 +74,7 @@ def model(cell: Cell) -> str:
 
 
 def recorded_status(cell: Cell) -> int:
-    return Exchange.load(fixture_for(cell.backend, cell.scenario)).status
+    return Exchange.load(fixture_for(cell.backend, cell.scenario, cell.form)).status
 
 
 # --- sdk_messages -----------------------------------------------------------
@@ -196,13 +196,13 @@ async def check_refused(sdk, openai_sdk, cell: Cell, replay, monkeypatch):
         await call(sdk, openai_sdk, cell)
     assert err.value.status_code == BAD_REQUEST
     params = ", ".join(refused_params(cell.backend, cell.scenario))
-    assert f"{cell.backend} cannot honor {params}" in err.value.message
+    assert f"{BACKENDS[cell.backend].provider.name} cannot honor {params}" in err.value.message
     assert not replay.requests, "a refused request reached the backend"
 
 
 @pytest.mark.parametrize("cell", grid(ingresses=SDK_INGRESSES))
 async def test_cell(gateway, sdk, openai_sdk, cell: Cell, monkeypatch):
-    replay = gateway.use(cell.backend, cell.scenario)
+    replay = gateway.use(cell.backend, cell.scenario, cell.form)
     if refused_params(cell.backend, cell.scenario):
         await check_refused(sdk, openai_sdk, cell, replay, monkeypatch)
     elif cell.ingress == "sdk_messages":

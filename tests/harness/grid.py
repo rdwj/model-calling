@@ -17,6 +17,8 @@ from tests.harness.scenarios import (
     EMBEDDING_BACKENDS,
     EMBEDDING_SCENARIOS,
     GRID_BACKENDS,
+    CHAT_COMPLETIONS,
+    MESSAGES,
     SCENARIOS,
 )
 
@@ -37,11 +39,12 @@ LIBRARY_EMBEDDING_INGRESSES = ("library_embedding",)
 # (ingress, backend, scenario) -> reason, naming the phase that fixes it.
 KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
     **{
-        (ingress, "vllm", "parallel_tools"): (
+        (ingress, backend, "parallel_tools"): (
             "gpt-oss-20b on vLLM 0.24 makes one tool call per turn even when asked for "
             "two (backend limitation, found in Phase 5)"
         )
         for ingress in INGRESSES
+        for backend in ("vllm", "vllm_messages")
     },
     **{
         (ingress, "openai_compat", "parallel_tools_off"): (
@@ -69,6 +72,15 @@ class Cell:
     ingress: str
     backend: str
     scenario: str
+
+    @property
+    def form(self) -> str | None:
+        """The wire form this cell's ingress sends; None for embeddings."""
+        if self.ingress in MESSAGES_INGRESSES:
+            return MESSAGES
+        if self.ingress in CHAT_COMPLETIONS_INGRESSES:
+            return CHAT_COMPLETIONS
+        return None
 
     @property
     def id(self) -> str:

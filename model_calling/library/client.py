@@ -69,7 +69,7 @@ class Client:
         callbacks: Sequence[Callback] = (),
         drop_params: bool = False,
     ):
-        """`config` maps a model prefix (`ollama`, `vllm`, `openai`,
+        """`config` maps a model prefix (`anthropic`, `ollama`, `vllm`, `openai`,
         `openrouter`) to settings merged over `providers.default_configs()`:
         `base_url`, `api_key`, `headers`, `callbacks`, and `transport` (an
         httpx transport, mostly for tests). `callbacks` run for every prefix,

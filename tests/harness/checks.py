@@ -324,6 +324,7 @@ MESSAGE_CHECKS = {
     "reasoning_effort": message_thinking,
     "tool_required": message_tools,
     "tool_named": message_tools,
+    "tool_strict": message_tools,
     "tool_parameterless": message_parameterless_tool,
     "parallel_tools_off": message_parallel_tools_off,
 }

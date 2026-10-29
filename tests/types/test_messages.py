@@ -28,7 +28,7 @@ def test_parse_text_message():
     body = ex.response_json
 
     msg = Message.model_validate(body)
-    assert msg.id == "chatcmpl-b2dbe5df708ea2de"
+    assert msg.id == "chatcmpl-83e77d68a01d286d"
     assert msg.type == "message"
     assert msg.role == "assistant"
     assert msg.model == "gpt-oss-20b"
@@ -39,7 +39,7 @@ def test_parse_text_message():
     thinking = msg.content[0]
     assert isinstance(thinking, ThinkingBlock)
     assert thinking.type == "thinking"
-    assert thinking.signature == "612d929483144601a9a203d0871a1e27"
+    assert thinking.signature == "8e2c48cd160b4c21b55f9bf04baf5de5"
     assert "Reply with exactly one word: pong" in thinking.thinking
 
     # Check text block
@@ -66,7 +66,7 @@ def test_parse_tools_message():
     tool_use = msg.content[1]
     assert isinstance(tool_use, ToolUseBlock)
     assert tool_use.type == "tool_use"
-    assert tool_use.id == "chatcmpl-tool-8c8315903144a66a"
+    assert tool_use.id == "chatcmpl-tool-949af81aa3b58b84"
     assert tool_use.name == "get_weather"
     assert tool_use.input == {"location": "Paris"}
 

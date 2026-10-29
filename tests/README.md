@@ -59,7 +59,10 @@ The harness lives in `harness/`:
 - `scenarios.py` defines the requests and backends shared by the tests and
   the recorder. A scenario is written in both wire forms where both can
   express it; `native_form` picks the one the backend body is built from,
-  so strict replay proves the other form sends the same body. A backend's
+  so strict replay proves the other form sends the same body. A backend
+  that speaks Messages (`vllm_messages`) builds its body from the ingress's
+  own form instead, and where the Chat Completions form's body differs it
+  replays `<scenario>.chat_completions.json`. A backend's
   `capability_models` names the model it uses for a scenario that needs
   vision or reasoning.
 - `checks.py` holds what each scenario must return, checked on the typed
@@ -73,8 +76,9 @@ The harness lives in `harness/`:
   fails the test at teardown if any replay rejected a request.
 
 To add a scenario, define it in `scenarios.py`, record it (below), and add
-its checks to `checks.py` (`COMPLETION_CHECKS` and `MESSAGE_CHECKS`). A backend with `in_grid=False` (`vllm_messages`) is
-recorded and validated on its own until a provider can reach it.
+its checks to `checks.py` (`COMPLETION_CHECKS` and `MESSAGE_CHECKS`). A
+backend with `in_grid=False` is recorded and validated on its own until a
+provider can reach it.
 
 ## Fixtures and the recorder
 

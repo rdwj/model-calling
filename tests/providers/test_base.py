@@ -372,7 +372,7 @@ def test_provider_for_empty_api_key_sends_no_auth():
 
 
 def test_provider_for_unported_prefix_is_none():
-    assert provider_for("anthropic/claude", {"anthropic": {"base_url": "x"}}) is None
+    assert provider_for("cohere/command-a", {"cohere": {"base_url": "x"}}) is None
 
 
 def test_config_headers_go_on_every_request():

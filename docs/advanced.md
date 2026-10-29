@@ -435,7 +435,7 @@ The gateway reads `.env` (via python-dotenv) at startup. The library never does.
 
 - `OPENAI_API_KEY`, `OPENAI_ORG_ID`: OpenAI credentials
 - `OPENROUTER_API_KEY`: OpenRouter key
-- `ANTHROPIC_API_KEY`: Anthropic key (legacy adapters only)
+- `ANTHROPIC_API_KEY`: Anthropic key
 - `COHERE_API_KEY`: Cohere key (legacy adapters only)
 - `PORT`: server port (default 8000)
 - `MODEL_CALLING_STRICT_PARAMS`: strict mode (see below)

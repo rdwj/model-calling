@@ -13,9 +13,12 @@ from tests.harness.grid import Cell
 from tests.harness.replay import FIXTURES_DIR, Exchange, ReplayTransport
 from tests.harness.scenarios import (
     BACKENDS,
+    CHAT_COMPLETIONS,
     EMBEDDING_BACKENDS,
     EMBEDDING_SCENARIOS,
     GRID_BACKENDS,
+    MESSAGES,
+    SCENARIOS,
     SEED,
     recorded_scenarios,
 )
@@ -167,6 +170,7 @@ def test_refused_cells_have_no_fixture():
 
 
 OPENAI_COMPAT_BACKENDS = ("openai_compat", "vllm")
+CHAT_BACKENDS = tuple(n for n in GRID_BACKENDS if BACKENDS[n].speaks == CHAT_COMPLETIONS)
 # (scenario, backends, path into the recorded native body, expected value):
 # the Chat Completions-only fields reach each backend that can take them.
 NATIVE_FIELDS = [
@@ -183,12 +187,30 @@ NATIVE_FIELDS = [
     ("tool_strict", OPENAI_COMPAT_BACKENDS, ("tools", 0, "function", "strict"), True),
     (
         "tool_parameterless",
-        GRID_BACKENDS,
+        CHAT_BACKENDS,
         ("tools", 1, "function", "parameters"),
         {"type": "object", "properties": {}},
     ),
-    ("max_completion_tokens", GRID_BACKENDS, ("max_tokens",), 256),
-    ("max_completion_tokens", GRID_BACKENDS, ("seed",), SEED),
+    ("max_completion_tokens", CHAT_BACKENDS, ("max_tokens",), 256),
+    ("max_completion_tokens", CHAT_BACKENDS, ("seed",), SEED),
+    # The same requests reach a Messages backend in its own terms.
+    ("reasoning_effort", ("vllm_messages",), ("thinking",), {"type": "adaptive"}),
+    ("reasoning_effort", ("vllm_messages",), ("output_config", "effort"), "low"),
+    ("tool_required", ("vllm_messages",), ("tool_choice",), {"type": "any"}),
+    ("tool_named", ("vllm_messages",), ("tool_choice",), {"type": "tool", "name": "get_weather"}),
+    (
+        "parallel_tools_off",
+        ("vllm_messages",),
+        ("tool_choice", "disable_parallel_tool_use"),
+        True,
+    ),
+    ("tool_strict", ("vllm_messages",), ("tools", 0, "strict"), True),
+    (
+        "tool_parameterless",
+        ("vllm_messages",),
+        ("tools", 1, "input_schema"),
+        {"type": "object", "properties": {}},
+    ),
 ]
 # Ollama takes sampling settings under `options`.
 OLLAMA_OPTION_FIELDS = {"seed": "seed", "max_tokens": "num_predict"}
@@ -213,6 +235,18 @@ def test_native_body_carries_field(backend, scenario, path, expected):
     if backend == "ollama" and path[0] in OLLAMA_OPTION_FIELDS:
         path = ("options", OLLAMA_OPTION_FIELDS[path[0]])
     assert _dig(sent, path) == expected, sent
+
+
+@pytest.mark.parametrize(
+    "scenario", [s for s in SCENARIOS.values() if s.messages_form], ids=lambda s: s.name
+)
+def test_messages_reach_a_messages_backend_unchanged(scenario):
+    """Messages in, Anthropic out is a pass-through: the body a Messages
+    client sends is the body the backend gets, model name aside. Strict
+    replay proves the grid's Messages cells send this body."""
+    backend = BACKENDS["vllm_messages"]
+    model = backend.native_model_for(scenario)
+    assert backend.native_request(scenario, MESSAGES) == scenario.messages_body(model)
 
 
 @pytest.mark.parametrize("path", ALL_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.stem}")

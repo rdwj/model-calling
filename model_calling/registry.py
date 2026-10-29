@@ -34,7 +34,6 @@ from model_calling.hosted.cohere_embedding_adapter import CohereEmbeddingAdapter
 
 # Import hosted providers
 from model_calling.hosted.openai_adapter import OpenAIAdapter, OPENAI_MODELS
-from model_calling.hosted.anthropic_adapter import AnthropicAdapter, ANTHROPIC_MODELS
 from model_calling.hosted.cohere_adapter import CohereAdapter, COHERE_MODELS
 
 
@@ -93,7 +92,6 @@ class ModelRegistry:
         self.adapter_classes = {
             "ollama": OllamaAdapter,
             "openai": OpenAIAdapter,
-            "anthropic": AnthropicAdapter,
             "cohere": CohereAdapter,
         }
 
@@ -113,12 +111,6 @@ class ModelRegistry:
         # own config dicts, so an update here reaches the next request.
         self.default_configs = {
             **self.client.config,
-            "anthropic": {
-                "base_url": "https://api.anthropic.com/v1/messages",
-                "api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
-                "version": "2023-06-01",
-                "callbacks": [self.default_callback],
-            },
             "cohere": {
                 "base_url": "https://api.cohere.ai/v1/chat",
                 "api_key": os.environ.get("COHERE_API_KEY", ""),
@@ -345,17 +337,6 @@ class ModelRegistry:
                 capabilities.supports_reasoning = True
         elif prefix == "openai":
             for model_prefix, model_caps in OPENAI_MODELS.items():
-                if short_name.startswith(model_prefix):
-                    capabilities.supports_function_call = model_caps.get(
-                        "supports_function_call", False
-                    )
-                    capabilities.supports_streaming = True
-                    capabilities.supports_system_messages = True
-                    capabilities.supports_vision = model_caps.get("supports_vision", False)
-                    capabilities.verified = True
-                    break
-        elif prefix == "anthropic":
-            for model_prefix, model_caps in ANTHROPIC_MODELS.items():
                 if short_name.startswith(model_prefix):
                     capabilities.supports_function_call = model_caps.get(
                         "supports_function_call", False
@@ -655,15 +636,6 @@ class ModelRegistry:
                 {"id": "openai/gpt-4-turbo", "object": "model"},
                 {"id": "openai/gpt-4", "object": "model"},
                 {"id": "openai/gpt-3.5-turbo", "object": "model"},
-            ]
-        )
-
-        # Add Anthropic models
-        models.extend(
-            [
-                {"id": "anthropic/claude-3-opus", "object": "model"},
-                {"id": "anthropic/claude-3-sonnet", "object": "model"},
-                {"id": "anthropic/claude-3-haiku", "object": "model"},
             ]
         )
 

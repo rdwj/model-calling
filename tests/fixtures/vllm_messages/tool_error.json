@@ -1,0 +1,91 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "tool_error",
+    "recorded_at": "2026-10-29T02:44:09+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris."
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call_weather_1",
+              "name": "get_weather",
+              "input": {
+                "location": "Paris"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "call_weather_1",
+              "content": "Weather service unavailable: upstream timeout.",
+              "is_error": true
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
+        }
+      ],
+      "max_tokens": 256,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-bfa68bf39518c18e",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "The user asked to use the get_weather tool to look up the weather in Paris.\n\nWe called the function and got an error: \"Weather service unavailable: upstream timeout.\"\n\nWe likely need to handle this gracefully: inform user that the service is unavailable. Possibly attempt again? But maybe we shouldn't repeat. The user didn't specify if they want to try again. So explanation.\n\nWe should say \"Sorry, the weather service is currently unavailable. Please try again later.\" Also maybe offer an alternative: I can provide typical weather info? But we don't have real-time.\n\nThus respond politely.",
+          "signature": "498c70ebbaf14809b668ca587dbc4db2"
+        },
+        {
+          "type": "text",
+          "text": "I\u2019m sorry, but the weather service is currently unavailable (the request timed out).  \nLet me know if you\u2019d like me to try again later, or if there\u2019s anything else I can help with!"
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 175,
+        "output_tokens": 168
+      }
+    }
+  }
+}

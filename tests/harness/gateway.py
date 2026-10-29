@@ -5,7 +5,7 @@ Registered through `pytest_plugins` in tests/conftest.py.
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 import httpx
 import pytest
@@ -35,15 +35,18 @@ class Gateway:
     registry: object
     replays: List[ReplayTransport] = field(default_factory=list)
 
-    def use(self, backend_name: str, scenario_name: str) -> ReplayTransport:
-        """Point the gateway at `backend_name` and replay its `scenario_name` fixture.
+    def use(
+        self, backend_name: str, scenario_name: str, form: Optional[str] = None
+    ) -> ReplayTransport:
+        """Point the gateway at `backend_name` and replay its `scenario_name`
+        fixture, as an ingress sending `form` sees it.
 
         Returns the transport so tests can inspect what the gateway sent.
         """
         from model_calling.capability_cache import capability_cache
 
         backend = ALL_BACKENDS[backend_name]
-        replay = ReplayTransport(exchanges_for(backend_name, scenario_name))
+        replay = ReplayTransport(exchanges_for(backend_name, scenario_name, form))
 
         config = self.registry.default_configs[backend.config_prefix]
         config.update(backend.gateway_config, transport=replay)

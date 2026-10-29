@@ -237,6 +237,7 @@ Model names are `prefix/name`. Unprefixed names default to `ollama`.
 
 | Prefix | Default base_url | Credentials |
 |--------|------------------|-------------|
+| `anthropic` | `https://api.anthropic.com/v1` | `ANTHROPIC_API_KEY` (env) |
 | `ollama` | `http://localhost:11434` | none |
 | `vllm` | `http://localhost:8000/v1` | `api_key` in config if the server requires one |
 | `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` (env), optional `OPENAI_ORG_ID` (env) |
@@ -244,9 +245,11 @@ Model names are `prefix/name`. Unprefixed names default to `ollama`.
 
 The library reads only these environment variables. It never reads `.env` files. The gateway (with the `server` extra) does read `.env` at startup.
 
-Base URLs for vLLM, OpenAI, and OpenRouter include `/v1`, matching the openai SDK convention.
+Base URLs for Anthropic, vLLM, OpenAI, and OpenRouter include `/v1`, matching the openai SDK convention. (The `anthropic` SDK's base URL leaves it out.)
 
-Anthropic and Cohere backends are not available in the library yet (planned). Passing `anthropic/...` or `cohere/...` raises `BadRequestError` with message "no provider for ...". The gateway still reaches them through legacy adapters (non-streaming Chat Completions only, plus Cohere embeddings).
+The `anthropic` prefix sends Anthropic Messages to `{base_url}/messages`, so it also reaches OpenRouter's and vLLM's Messages endpoints when `base_url` points there. It authenticates with `Authorization: Bearer`, as the `anthropic` 2.x SDK does, and sends `anthropic-version: 2026-10-21`. Messages requests pass through unchanged. Chat Completions requests are translated: a missing `max_tokens` becomes 4096, `reasoning_effort` becomes adaptive thinking at that effort, and `seed`, `presence_penalty`, `frequency_penalty`, and a `json_object` response format are unsupported. Thinking blocks without a signature (from another backend) are dropped from assistant turns, since Anthropic rejects them.
+
+The Cohere backend is not available in the library yet (planned). Passing `cohere/...` raises `BadRequestError` with message "no provider for ...". The gateway still reaches it through a legacy adapter (non-streaming Chat Completions only, plus embeddings).
 
 ## Strictness and drop_params
 
@@ -430,7 +433,7 @@ The gateway listens on `0.0.0.0:8000`. Override the port with the `PORT` environ
 - `OPENAI_API_KEY`: OpenAI backend credential
 - `OPENAI_ORG_ID`: OpenAI organization ID (optional)
 - `OPENROUTER_API_KEY`: OpenRouter backend credential
-- `ANTHROPIC_API_KEY`: Anthropic backend credential (legacy adapters only, for now)
+- `ANTHROPIC_API_KEY`: Anthropic backend credential
 - `COHERE_API_KEY`: Cohere backend credential (legacy adapters only)
 - `PORT`: gateway listen port (default 8000)
 - `MODEL_CALLING_STRICT_PARAMS`: enable strict mode (`true`, `false`, `1`, `0`, `yes`, `no`; default `false`)

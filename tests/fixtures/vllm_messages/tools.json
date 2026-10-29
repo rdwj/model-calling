@@ -2,7 +2,7 @@
   "meta": {
     "backend": "vllm_messages",
     "scenario": "tools",
-    "recorded_at": "2026-10-28T18:49:31+00:00",
+    "recorded_at": "2026-10-29T02:44:12+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -13,12 +13,7 @@
       "messages": [
         {
           "role": "user",
-          "content": [
-            {
-              "type": "text",
-              "text": "Use the get_weather tool to look up the weather in Paris."
-            }
-          ]
+          "content": "Use the get_weather tool to look up the weather in Paris."
         }
       ],
       "tools": [
@@ -47,18 +42,18 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "chatcmpl-843c3a093b8820c7",
+      "id": "chatcmpl-a5dc215f138f3021",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "thinking",
-          "thinking": "The user says: \"Use the get_weather tool to look up the weather in Paris.\" We must call the function get_weather with location: \"Paris\". Then provide the result.",
-          "signature": "163c1d71fc2f4c82b86addc21726a744"
+          "thinking": "The user wants to use the get_weather function. We need to call the function with the argument.\n\nWe should reply that we are calling the function. Probably ask confirmation? The instruction says to use the function: \"Use the get_weather tool to look up weather in Paris.\" So we should call get_weather with location:\"Paris\".",
+          "signature": "e85ae63f1e4546b493a3a57e4f6dcce8"
         },
         {
           "type": "tool_use",
-          "id": "chatcmpl-tool-8c8315903144a66a",
+          "id": "chatcmpl-tool-949af81aa3b58b84",
           "name": "get_weather",
           "input": {
             "location": "Paris"
@@ -69,7 +64,7 @@
       "stop_reason": "tool_use",
       "usage": {
         "input_tokens": 137,
-        "output_tokens": 60
+        "output_tokens": 90
       }
     }
   }

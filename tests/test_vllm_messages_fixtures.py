@@ -1,9 +1,9 @@
 """
 The vllm_messages fixtures validate against the anthropic SDK types.
 
-They stay off the grid until an Anthropic provider exists (Phase 6); until
-then they are the reference for our Messages encoder. Each place vLLM
-departs from the SDK types is listed in tests/fixtures/README.md.
+The grid replays them through the Anthropic provider; these tests check
+the recordings themselves. Each place vLLM departs from the SDK types is
+listed in tests/fixtures/README.md.
 """
 
 import pytest

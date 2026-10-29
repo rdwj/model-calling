@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "tool_error",
+    "recorded_at": "2026-10-29T02:44:10+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris."
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call_weather_1",
+              "name": "get_weather",
+              "input": {
+                "location": "Paris"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "call_weather_1",
+              "content": "Weather service unavailable: upstream timeout."
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
+        }
+      ],
+      "max_tokens": 256,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-9e2691b13a039cdd",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "We got an upstream timeout. That means we need to handle it. The user asked for the weather. We can say cannot retrieve due to service unavailability. Possibly try again. The tool might fail. We can either say cannot fetch due to service timeout. We could also retry silently. But better to inform the user.",
+          "signature": "b970dfd452cc46bfa31a9b7c49cc53e6"
+        },
+        {
+          "type": "text",
+          "text": "I\u2019m sorry, but I\u2019m unable to retrieve the weather for Paris at the moment\u2014 the weather service timed out. If you\u2019d like to try again or need information on something else, just let me know!"
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 175,
+        "output_tokens": 118
+      }
+    }
+  }
+}

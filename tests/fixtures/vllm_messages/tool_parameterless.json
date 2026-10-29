@@ -1,0 +1,77 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "tool_parameterless",
+    "recorded_at": "2026-10-29T02:44:11+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_time tool to look up the current time."
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "name": "get_time",
+          "description": "Get the current UTC time",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      ],
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-b035e803e64a8fcc",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "The user wants to use the get_time tool. I should call the function.",
+          "signature": "3d6d0a83891e4e9c86d88146bfbd9d81"
+        },
+        {
+          "type": "tool_use",
+          "id": "chatcmpl-tool-a6ab56a958468eb0",
+          "name": "get_time",
+          "input": {}
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 153,
+        "output_tokens": 36
+      }
+    }
+  }
+}

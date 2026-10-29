@@ -1,13 +1,14 @@
 """
 Backends behind the provider interface in `providers.base`.
 
-Anthropic and Cohere still go through the legacy adapters in
-`model_calling.registry` until Phase 6 ports them.
+Cohere still goes through the legacy adapters in `model_calling.registry`
+until Phase 6 ports it.
 """
 
 import os
 from collections.abc import Mapping
 
+from model_calling.providers.anthropic import AnthropicProvider
 from model_calling.providers.base import HttpClients, Provider, StreamParser
 from model_calling.providers.ollama import OllamaProvider
 from model_calling.providers.openai_compat import (
@@ -19,6 +20,7 @@ from model_calling.providers.openai_compat import (
 
 # Model-name prefix -> provider. Unprefixed names default to Ollama.
 PROVIDERS: dict[str, type[Provider]] = {
+    "anthropic": AnthropicProvider,
     "ollama": OllamaProvider,
     "openai": OpenAIProvider,
     "openrouter": OpenRouterProvider,
@@ -35,6 +37,10 @@ def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
     """
     org = environ.get("OPENAI_ORG_ID")
     return {
+        "anthropic": {
+            "base_url": "https://api.anthropic.com/v1",
+            "api_key": environ.get("ANTHROPIC_API_KEY", ""),
+        },
         "ollama": {"base_url": "http://localhost:11434"},
         # OpenAI-compatible base URLs are the API root, /v1 included.
         "vllm": {"base_url": "http://localhost:8000/v1"},
@@ -87,6 +93,7 @@ def provider_for(
 
 
 __all__ = [
+    "AnthropicProvider",
     "HttpClients",
     "OllamaProvider",
     "OpenAICompatProvider",

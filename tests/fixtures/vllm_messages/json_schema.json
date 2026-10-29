@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "json_schema",
+    "recorded_at": "2026-10-29T02:44:04+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the capital of France? Answer as JSON."
+        }
+      ],
+      "max_tokens": 1024,
+      "output_config": {
+        "format": {
+          "type": "json_schema",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "country": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city",
+              "country"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-bb0712deff32a7d1",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "The user asks: \"What is the capital of France? Answer as JSON.\"\n\nWe need to output JSON with the answer. Likely format: {\"capital\":\"Paris\"} or some simple JSON. Should be valid JSON.\n\nWe must provide the answer. So output:\n\n{\n  \"capital\": \"Paris\"\n}\n\nMake sure to exact JSON. No extraneous. Probably best to just output: {\"capital\":\"Paris\"}\n\nYes. Let's do that.",
+          "signature": "ff0ec5313e6a4f1496d41eaf4fe0e46b"
+        },
+        {
+          "type": "text",
+          "text": "{\"city\":\"Paris\",\"country\":\"France\"}"
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 78,
+        "output_tokens": 108
+      }
+    }
+  }
+}

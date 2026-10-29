@@ -2,7 +2,7 @@
   "meta": {
     "backend": "vllm_messages",
     "scenario": "backend_error",
-    "recorded_at": "2026-10-28T18:49:30+00:00",
+    "recorded_at": "2026-10-29T02:44:04+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -13,12 +13,7 @@
       "messages": [
         {
           "role": "user",
-          "content": [
-            {
-              "type": "text",
-              "text": "Reply with exactly one word: pong"
-            }
-          ]
+          "content": "Reply with exactly one word: pong"
         }
       ],
       "max_tokens": 256,

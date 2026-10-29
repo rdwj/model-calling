@@ -102,7 +102,7 @@ async def test_endpoint_calls_no_backend(gateway):
 BAD_BODIES = {
     "not_an_object": ([BASE], "must be a JSON object"),
     "no_model": ({"messages": BASE["messages"]}, "model is required"),
-    "unported_prefix": ({**BASE, "model": "anthropic/claude-x"}, "no provider for"),
+    "unported_prefix": ({**BASE, "model": "cohere/command-a"}, "no provider for"),
     "no_messages": ({"model": MODEL}, "invalid Anthropic request"),
     "messages_not_a_list": ({**BASE, "messages": "hi"}, "invalid Anthropic request"),
     "system_image": ({**BASE, "system": [IMAGE_BLOCK]}, "only text blocks"),

@@ -103,6 +103,7 @@ Model routing uses `prefix/name`. Unprefixed names go to Ollama.
 
 | Prefix | Default base_url | Credentials |
 |--------|------------------|-------------|
+| `anthropic` | `https://api.anthropic.com/v1` | `ANTHROPIC_API_KEY` |
 | `ollama` | `http://localhost:11434` | none |
 | `vllm` | `http://localhost:8000/v1` | `api_key` in config if needed |
 | `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY`, optional `OPENAI_ORG_ID` |
@@ -110,9 +111,11 @@ Model routing uses `prefix/name`. Unprefixed names go to Ollama.
 
 The library reads only those environment variables. Override per call with `api_base=` / `api_key=`, or per client via `config`.
 
-Anthropic and Cohere backends are not in the library yet; they are planned. The gateway reaches them through legacy adapters: non-streaming Chat Completions only (streaming returns 501), plus Cohere embeddings.
+The `anthropic` prefix speaks Anthropic Messages to any server that serves it at `{base_url}/messages`: Anthropic, OpenRouter (`https://openrouter.ai/api/v1`), or vLLM (`http://localhost:8000/v1`). A `messages()` call reaches it unchanged. A `completion()` call is translated, and since Messages requires `max_tokens`, one sent without it gets 4096.
 
-Both formats work over every backend. You can call `client.messages()` against Ollama, vLLM, OpenAI, or OpenRouter; the library translates to their Chat Completions APIs. Likewise for `client.completion()`.
+The Cohere backend is not in the library yet; it is planned. The gateway reaches it through a legacy adapter: non-streaming Chat Completions only (streaming returns 501), plus embeddings.
+
+Both formats work over every backend. You can call `client.messages()` against Ollama, vLLM, OpenAI, or OpenRouter; the library translates to their Chat Completions APIs. Likewise for `client.completion()` against an Anthropic backend.
 
 ## Strictness
 

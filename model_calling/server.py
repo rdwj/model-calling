@@ -223,12 +223,12 @@ async def chat_completions(request: Request):
         logger.error(f"Invalid request format: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid request format: {e}")
 
-    # Only providers stream. The remaining legacy adapters (Anthropic,
-    # Cohere) answer non-streaming requests until Phase 6 ports them.
+    # Only providers stream. The remaining legacy adapter (Cohere) answers
+    # non-streaming requests until Phase 6 ports it.
     if validated_request.stream:
         message = (
             f"streaming is not supported for {validated_request.model!r} yet; "
-            "the Anthropic and Cohere backends gain it in Phase 6"
+            "the Cohere backend gains it in Phase 6"
         )
         return JSONResponse(chat.error_body(NOT_IMPLEMENTED, message), status_code=NOT_IMPLEMENTED)
 

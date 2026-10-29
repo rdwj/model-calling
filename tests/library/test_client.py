@@ -70,7 +70,7 @@ def mock(handler) -> httpx.MockTransport:
 
 @pytest.mark.parametrize(
     "model, match",
-    [("anthropic/claude-x", "no provider for 'anthropic/claude-x'"), ("cohere/x", "no provider")],
+    [("cohere/x", "no provider for 'cohere/x'"), ("bogus/x", "no provider")],
 )
 async def test_unported_prefix_is_bad_request(model, match):
     async with Client() as client:

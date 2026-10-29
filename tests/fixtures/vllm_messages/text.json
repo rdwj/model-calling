@@ -2,7 +2,7 @@
   "meta": {
     "backend": "vllm_messages",
     "scenario": "text",
-    "recorded_at": "2026-10-28T18:49:31+00:00",
+    "recorded_at": "2026-10-29T02:44:08+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -13,12 +13,7 @@
       "messages": [
         {
           "role": "user",
-          "content": [
-            {
-              "type": "text",
-              "text": "Reply with exactly one word: pong"
-            }
-          ]
+          "content": "Reply with exactly one word: pong"
         }
       ],
       "max_tokens": 256,
@@ -29,14 +24,14 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "chatcmpl-b2dbe5df708ea2de",
+      "id": "chatcmpl-83e77d68a01d286d",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "thinking",
-          "thinking": "The user says: \"Reply with exactly one word: pong\". The user is instructing: \"Reply with exactly one word: pong\". They likely want the assistant to reply with the word \"pong\" only. The reply must be exactly one word: pong. So the correct output is: pong.",
-          "signature": "612d929483144601a9a203d0871a1e27"
+          "thinking": "The user says: \"Reply with exactly one word: pong\". They presumably expect the assistant to reply with the word \"pong\". But they specifically say \"Reply with exactly one word: pong\". That means the reply should be just \"pong\". Confirm: yes. So answer: pong.",
+          "signature": "8e2c48cd160b4c21b55f9bf04baf5de5"
         },
         {
           "type": "text",
@@ -47,7 +42,7 @@
       "stop_reason": "end_turn",
       "usage": {
         "input_tokens": 74,
-        "output_tokens": 72
+        "output_tokens": 69
       }
     }
   }

@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "reasoning_effort",
+    "recorded_at": "2026-10-29T02:44:06+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 17 * 23? Reply with just the number."
+        }
+      ],
+      "max_tokens": 2048,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "output_config": {
+        "effort": "low"
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-a7d289d2591331f4",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "Compute 17*23=391.",
+          "signature": "ceb6617c5ab74120b1b74b0ba03945fb"
+        },
+        {
+          "type": "text",
+          "text": "391"
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 81,
+        "output_tokens": 19
+      }
+    }
+  }
+}

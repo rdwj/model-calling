@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "tool_named",
+    "recorded_at": "2026-10-29T02:44:10+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris."
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "name": "get_time",
+          "description": "Get the current UTC time",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      ],
+      "tool_choice": {
+        "type": "tool",
+        "name": "get_weather"
+      },
+      "max_tokens": 256,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-87011ab59e48b609",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "Need to call get_weather with location: \"Paris\".",
+          "signature": "f032c13400714a2aabf8f6b79c65124d"
+        },
+        {
+          "type": "tool_use",
+          "id": "chatcmpl-tool-8fd09c2aa16fc6b3",
+          "name": "get_weather",
+          "input": {
+            "location": "Paris"
+          }
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 154,
+        "output_tokens": 35
+      }
+    }
+  }
+}

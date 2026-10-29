@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "parallel_tools_off",
+    "recorded_at": "2026-10-29T02:44:05+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris and in Tokyo. Call it once for each city, in the same turn."
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
+        }
+      ],
+      "tool_choice": {
+        "type": "auto",
+        "disable_parallel_tool_use": true
+      },
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-a806feb50b750b62",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "We need to use function get_weather twice: for Paris and Tokyo. Then provide output.",
+          "signature": "65550c640fef49a0becf575f5e5fc0c3"
+        },
+        {
+          "type": "tool_use",
+          "id": "chatcmpl-tool-8e1ad5708ffccc9c",
+          "name": "get_weather",
+          "input": {
+            "location": "Paris"
+          }
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 152,
+        "output_tokens": 42
+      }
+    }
+  }
+}

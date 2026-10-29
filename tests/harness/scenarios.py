@@ -5,7 +5,10 @@ A scenario is one client request, written in Chat Completions form. A
 backend knows how to phrase that scenario as its native request (for the
 recorder) and how the gateway reaches it (for replay). Fixtures are stored
 per (backend, scenario), so every ingress format replays the same backend
-exchange.
+exchange. The exception is a backend that speaks Anthropic Messages: it sees
+more of a Messages request than of the same scenario in Chat Completions
+(shorthand content, cache_control, metadata), so where the two bodies differ
+the Chat Completions form has a fixture of its own (`Backend.fixture_name`).
 """
 
 import base64
@@ -16,7 +19,13 @@ from pathlib import Path
 from typing import Any, ClassVar, Mapping, Optional, Tuple
 
 from model_calling.formats import anthropic, chat_completions, embeddings
-from model_calling.providers import OllamaProvider, OpenRouterProvider, Provider, VLLMProvider
+from model_calling.providers import (
+    AnthropicProvider,
+    OllamaProvider,
+    OpenRouterProvider,
+    Provider,
+    VLLMProvider,
+)
 
 WEATHER_TOOL = {
     "type": "function",
@@ -170,9 +179,18 @@ class Scenario:
             body["tools"] = list(self.anthropic_tools)
         return body
 
-    def native_internal(self, model: str):
-        """The scenario as an internal request, from its native form."""
-        if self.native_form == MESSAGES:
+    @property
+    def forms(self) -> Tuple[str, ...]:
+        """The wire forms this scenario has."""
+        return tuple(
+            form
+            for form, has in ((MESSAGES, self.messages_form), (CHAT_COMPLETIONS, self.chat_form))
+            if has
+        )
+
+    def native_internal(self, model: str, form: Optional[str] = None):
+        """The scenario as an internal request, from `form` (default its native form)."""
+        if (form or self.native_form) == MESSAGES:
             return anthropic.request_to_internal(self.messages_body(model))
         return chat_completions.request_to_internal(self.chat_completions_body(model))
 
@@ -438,12 +456,14 @@ class Backend:
     endpoint: str
     # Registry prefix and the default_configs entries that point it here.
     config_prefix: str
-    # The provider that builds this backend's native body. None for an
-    # Anthropic Messages endpoint, whose body comes from formats.anthropic.
-    provider: type[Provider] | None
+    # The provider that builds this backend's native body.
+    provider: type[Provider]
     gateway_config: dict = field(default_factory=dict)
     # Fixture recording needs an OpenRouter key.
     needs_openrouter_key: bool = False
+    # The wire format the backend speaks. A Messages backend's native body
+    # depends on the ingress form; see the module docstring.
+    speaks: str = CHAT_COMPLETIONS
     # False for a backend recorded only as a reference, because no provider
     # can reach it yet. Its fixtures are validated but stay off the grid.
     in_grid: bool = True
@@ -482,21 +502,39 @@ class Backend:
         model = self.native_model_for(scenario)
         return self.provider(model=model, base_url=self.gateway_config["base_url"])
 
+    def native_form(self, scenario: Scenario, form: Optional[str] = None) -> str:
+        """The form the native body is built from, for an ingress sending
+        `form`. A Chat Completions backend always uses the scenario's native
+        form, and strict replay proves the other form sends the same body."""
+        if self.speaks != MESSAGES:
+            return scenario.native_form
+        if form in scenario.forms:
+            return form
+        return scenario.forms[0]
+
+    def fixture_name(self, scenario: Scenario, form: Optional[str] = None) -> str:
+        """The fixture an ingress sending `form` replays: the scenario's own,
+        or for a form whose native body differs from the default form's, one
+        named for that form."""
+        default = self.native_form(scenario)
+        chosen = self.native_form(scenario, form)
+        if chosen == default or self.native_request(scenario, chosen) == self.native_request(
+            scenario
+        ):
+            return scenario.fixture_name
+        return f"{scenario.fixture_name}.{chosen}"
+
     def model_info_fixture(self, scenario: Scenario) -> Optional[str]:
         """The fixture of the model lookup `scenario` needs first, if any."""
-        if self.provider is None:
-            return None
         model = self.native_model_for(scenario)
         if not self.native_provider(scenario).needs_model_info(scenario.native_internal(model)):
             return None
         return f"{MODEL_INFO_FIXTURE_PREFIX}{re.sub(r'[^0-9A-Za-z.]+', '_', model)}"
 
-    def native_request(self, scenario: Scenario) -> dict:
-        """The body the gateway sends this backend for `scenario`."""
+    def native_request(self, scenario: Scenario, form: Optional[str] = None) -> dict:
+        """The body the gateway sends this backend for `scenario`, arriving as `form`."""
         model = self.native_model_for(scenario)
-        request = scenario.native_internal(model)
-        if self.provider is None:
-            return anthropic.request_from_internal(request)
+        request = scenario.native_internal(model, self.native_form(scenario, form))
         provider = self.native_provider(scenario)
         info = self.model_info_fixture(scenario)
         if info is not None:
@@ -576,20 +614,21 @@ BACKENDS = {
             provider=VLLMProvider,
             lacks={VISION: VLLM_NO_VISION},
         ),
-        # vLLM's native Anthropic Messages endpoint, the reference for our
-        # Messages encoder until an Anthropic provider exists (Phase 6).
+        # vLLM's native Anthropic Messages endpoint, reached through the
+        # anthropic/ prefix pointed at vLLM.
         Backend(
             name="vllm_messages",
-            gateway_model=f"vllm/{VLLM_MODEL}",
+            gateway_model=f"anthropic/{VLLM_MODEL}",
             native_model=VLLM_MODEL,
             missing_native_model="model-calling-missing",
             endpoint=f"{VLLM_URL}/messages",
-            config_prefix="vllm",
+            config_prefix="anthropic",
             gateway_config={"base_url": VLLM_URL, "api_key": REPLAY_API_KEY},
-            provider=None,
-            in_grid=False,
+            provider=AnthropicProvider,
+            speaks=MESSAGES,
             lacks={VISION: VLLM_NO_VISION},
-            only_scenarios=("text", "tools", "stream", "backend_error"),
+            # Messages has no seed.
+            refuses={"max_completion_tokens": ("seed",)},
         ),
     )
 }
@@ -697,15 +736,15 @@ def refused_params(backend_name: str, scenario_name: str) -> Optional[Tuple[str,
     return refuses.get(scenario_name)
 
 
-def exchanges_for(backend_name: str, scenario_name: str) -> list:
-    """The recorded exchanges a cell replays: none for a refused one, which
-    must never reach the backend, and a model lookup before the call when
-    the provider needs one."""
+def exchanges_for(backend_name: str, scenario_name: str, form: Optional[str] = None) -> list:
+    """The recorded exchanges a cell whose ingress sends `form` replays:
+    none for a refused one, which must never reach the backend, and a model
+    lookup before the call when the provider needs one."""
     from tests.harness.replay import Exchange, fixture_path
 
     if refused_params(backend_name, scenario_name):
         return []
-    exchanges = [Exchange.load(fixture_for(backend_name, scenario_name))]
+    exchanges = [Exchange.load(fixture_for(backend_name, scenario_name, form))]
     backend, scenario = ALL_BACKENDS[backend_name], ALL_SCENARIOS[scenario_name]
     info = getattr(backend, "model_info_fixture", lambda s: None)(scenario)
     if info is not None:
@@ -713,9 +752,11 @@ def exchanges_for(backend_name: str, scenario_name: str) -> list:
     return exchanges
 
 
-def fixture_for(backend_name: str, scenario_name: str) -> Path:
-    """The fixture a (backend, scenario) cell replays."""
+def fixture_for(backend_name: str, scenario_name: str, form: Optional[str] = None) -> Path:
+    """The fixture a (backend, scenario) cell whose ingress sends `form` replays."""
     from tests.harness.replay import fixture_path
 
-    scenario = ALL_SCENARIOS[scenario_name]
-    return fixture_path(backend_name, getattr(scenario, "fixture_name", scenario_name))
+    backend, scenario = ALL_BACKENDS[backend_name], ALL_SCENARIOS[scenario_name]
+    if isinstance(backend, Backend):
+        return fixture_path(backend_name, backend.fixture_name(scenario, form))
+    return fixture_path(backend_name, scenario_name)

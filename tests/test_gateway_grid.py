@@ -19,8 +19,8 @@ from tests.harness.grid import (
     grid,
 )
 from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
-from tests.harness.replay import Exchange, ReplayTransport, fixture_path
-from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, refused_params
+from tests.harness.replay import Exchange, ReplayTransport
+from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, fixture_for, refused_params
 from tests.harness.sdk import (
     SSE_DONE,
     parse_sse,
@@ -130,7 +130,7 @@ async def check_messages(gateway, cell, replay):
 
 async def check_messages_backend_error(gateway, cell, replay):
     resp = await post(gateway, cell)
-    recorded = Exchange.load(fixture_path(cell.backend, cell.scenario))
+    recorded = Exchange.load(fixture_for(cell.backend, cell.scenario, cell.form))
     assert resp.status_code == recorded.status, resp.text
     expected = anthropic.error_body(recorded.status, "")["error"]["type"]
     assert validate_anthropic_error(resp.json()).error.type == expected
@@ -147,7 +147,7 @@ async def check_embeddings(gateway, cell, replay):
 
 async def check_embeddings_error(gateway, cell, replay):
     resp = await post(gateway, cell)
-    recorded = Exchange.load(fixture_path(cell.backend, cell.scenario))
+    recorded = Exchange.load(fixture_for(cell.backend, cell.scenario, cell.form))
     assert resp.status_code == recorded.status, resp.text
     assert resp.json()["error"]["type"] == chat.error_body(recorded.status, "")["error"]["type"]
 
@@ -176,13 +176,13 @@ async def check_refused(gateway, cell, replay, monkeypatch):
     error = resp.json()["error"]
     assert error["type"] == ERROR_TYPES[cell.ingress](BAD_REQUEST, "")["error"]["type"]
     params = ", ".join(refused_params(cell.backend, cell.scenario))
-    assert error["message"] == f"{cell.backend} cannot honor {params}"
+    assert error["message"] == f"{ALL_BACKENDS[cell.backend].provider.name} cannot honor {params}"
     assert not replay.requests, "a refused request reached the backend"
 
 
 @pytest.mark.parametrize("cell", GATEWAY_GRID)
 async def test_cell(gateway, cell: Cell, monkeypatch):
-    replay = gateway.use(cell.backend, cell.scenario)
+    replay = gateway.use(cell.backend, cell.scenario, cell.form)
     if refused_params(cell.backend, cell.scenario):
         await check_refused(gateway, cell, replay, monkeypatch)
         return
@@ -205,7 +205,7 @@ def stable(value):
 async def library_answer(library, cell: Cell):
     """What the library returns for the cell, as the gateway would send it:
     a body, a list of stream payloads, or (status, error) for a failure."""
-    library.use(cell.backend, cell.scenario)
+    library.use(cell.backend, cell.scenario, cell.form)
     method = getattr(library.client, INGRESS_CALLS[cell.ingress][2])
     try:
         result = await method(**request_body(cell))
@@ -236,6 +236,6 @@ def gateway_answer(resp, cell: Cell):
     + embedding_grid(GATEWAY_EMBEDDING_INGRESSES, known_failures=False),
 )
 async def test_gateway_body_matches_library(gateway, library, cell: Cell):
-    gateway.use(cell.backend, cell.scenario)
+    gateway.use(cell.backend, cell.scenario, cell.form)
     served = gateway_answer(await post(gateway, cell), cell)
     assert stable(served) == stable(await library_answer(library, cell))

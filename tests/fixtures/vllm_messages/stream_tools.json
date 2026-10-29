@@ -1,0 +1,113 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "stream_tools",
+    "recorded_at": "2026-10-29T02:44:07+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris."
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
+        }
+      ],
+      "max_tokens": 256,
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "text/event-stream",
+    "lines": [
+      "event: message_start",
+      "data: {\"type\": \"message_start\", \"message\": {\"id\": \"chatcmpl-a58e7ea047d14545\", \"type\": \"message\", \"role\": \"assistant\", \"content\": [], \"model\": \"gpt-oss-20b\", \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 137, \"output_tokens\": 0}}}",
+      "",
+      "event: content_block_start",
+      "data: {\"type\": \"content_block_start\", \"content_block\": {\"type\": \"thinking\", \"thinking\": \"\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \"We\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \" need\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \" to\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \" call\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \" the\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \" get\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \"_weather\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \" function\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \".\"}, \"index\": 0}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"signature_delta\", \"signature\": \"8cf6c2d08d7544379a6e821a0ba2c09d\"}, \"index\": 0}",
+      "",
+      "event: content_block_stop",
+      "data: {\"type\": \"content_block_stop\", \"index\": 0}",
+      "",
+      "event: content_block_start",
+      "data: {\"type\": \"content_block_start\", \"content_block\": {\"type\": \"tool_use\", \"id\": \"chatcmpl-tool-b84c0c36e82997e5\", \"name\": \"get_weather\", \"input\": {}}, \"index\": 1}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"\"}, \"index\": 1}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"location\"}, \"index\": 1}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"\\\":\\\"\"}, \"index\": 1}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"Paris\"}, \"index\": 1}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"\\\"}\"}, \"index\": 1}",
+      "",
+      "event: content_block_stop",
+      "data: {\"type\": \"content_block_stop\", \"index\": 1}",
+      "",
+      "event: message_delta",
+      "data: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"input_tokens\": 137, \"output_tokens\": 33}}",
+      "",
+      "event: message_stop",
+      "data: {\"type\": \"message_stop\"}",
+      ""
+    ]
+  }
+}

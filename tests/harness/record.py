@@ -50,6 +50,19 @@ def _scenarios_for(backend) -> dict:
     return {s.name: s for s in recorded_scenarios(backend)}
 
 
+def _fixture_names(backend, scenario) -> list:
+    """(form, fixture name) for each fixture `scenario` needs on `backend`:
+    one, plus one per ingress form whose native body differs (a Messages
+    backend's Chat Completions form; see scenarios.py)."""
+    if isinstance(backend, EmbeddingBackend):
+        return [(None, scenario.name)]
+    names = {backend.fixture_name(scenario, form): form for form in scenario.forms}
+    default = backend.fixture_name(scenario)
+    return [(names.get(default), default)] + [
+        (form, name) for name, form in names.items() if name != default
+    ]
+
+
 OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
 VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
 VLLM_MODEL_ENV = "VLLM_MODEL"
@@ -132,8 +145,9 @@ def record_one(
     backend: Backend | EmbeddingBackend,
     scenario: Scenario | EmbeddingScenario,
     target: Target,
+    form: Optional[str] = None,
 ) -> Exchange:
-    body = backend.native_request(scenario)
+    body = backend.native_request(scenario, form) if form else backend.native_request(scenario)
     sent = body
     if target.model is not None and not scenario.missing_model:
         sent = {**body, "model": target.model}
@@ -249,16 +263,17 @@ def main(argv=None) -> int:
         names = [n for n in (args.scenario or sorted(family)) if n in family]
         todo = []
         for scenario in (family[n] for n in names):
-            path = fixture_path(backend.name, scenario.name)
-            if path.exists() and not args.force:
-                print(f"skip   {path} (exists; --force to re-record)")
-            else:
-                todo.append((scenario, path))
+            for form, name in _fixture_names(backend, scenario):
+                path = fixture_path(backend.name, name)
+                if path.exists() and not args.force:
+                    print(f"skip   {path} (exists; --force to re-record)")
+                else:
+                    todo.append((scenario, form, path))
         if not todo:
             continue
         target = _target(backend)
         with httpx.Client(timeout=REQUEST_TIMEOUT, verify=target.verify_tls) as client:
-            for scenario, path in todo:
+            for scenario, form, path in todo:
                 info = getattr(backend, "model_info_fixture", lambda s: None)(scenario)
                 info_path = info and fixture_path(backend.name, info)
                 if info_path and (args.force or not info_path.exists()):
@@ -268,7 +283,7 @@ def main(argv=None) -> int:
                         )
                     record_model_info(client, backend, scenario).save(info_path)
                     print(f"saved  {info_path}")
-                exchange = record_one(client, backend, scenario, target)
+                exchange = record_one(client, backend, scenario, target, form)
                 exchange.save(path)
                 print(f"saved  {path} (HTTP {exchange.status})")
 

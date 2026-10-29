@@ -29,9 +29,12 @@ The `vllm` recordings go to `VLLM_BASE_URL` and `VLLM_MODEL` from the
 environment. The fixtures store the replay URL (`http://localhost:8000`) and
 the model name `gpt-oss-20b` in their place, so deployment details stay out
 of the repo. `vllm_messages` is recorded the same way. Its request bodies
-come from `formats.anthropic`, since no provider speaks Messages to a
-backend yet, and its fixtures stay off the grid until one does (Phase 6).
-They are validated on their own in `tests/test_vllm_messages_fixtures.py`.
+come from the Anthropic provider, which the grid reaches through the
+`anthropic/` prefix pointed at vLLM. Scenarios whose Chat Completions form
+gives a different Messages body (it can't carry `cache_control`,
+`metadata`, or `is_error`) have a second fixture,
+`<scenario>.chat_completions.json`. The fixtures are also validated against
+the SDK types in `tests/test_vllm_messages_fixtures.py`.
 The served model needs `--enable-auto-tool-choice
 --tool-call-parser openai` for the `tools` scenario; without the parser,
 gpt-oss leaves its call in the reasoning text.
@@ -101,3 +104,8 @@ departs from the `anthropic` 2.0.0 types or from Anthropic's own API:
   prefix.
 - **Omitted fields**: non-streaming bodies leave out `stop_sequence` and
   the cache fields of `usage`; the SDK defaults them to null.
+- **Forced tool calls** (`tool_choice` of type `tool`, `tool_named`) end
+  with `stop_reason: "end_turn"` although the turn is a `tool_use` block;
+  Anthropic reports `tool_use`. The Anthropic provider reports `tool_use`
+  for any turn with a tool call that ends in `end_turn`, as the
+  OpenAI-compatible provider does.

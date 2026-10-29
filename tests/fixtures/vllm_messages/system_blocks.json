@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "system_blocks",
+    "recorded_at": "2026-10-29T02:44:07+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "metadata": {
+        "user_id": "grid-test"
+      },
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with exactly one word: pong"
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "You are a terse assistant."
+        },
+        {
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "type": "text",
+          "text": "Always answer in lowercase."
+        }
+      ],
+      "max_tokens": 256,
+      "stop_sequences": [
+        "###"
+      ],
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-99355156e19ba365",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "The user wants a reply \"pong\" exactly one word. The developer instructions say: \"You are a terse assistant. Always answer in lowercase.\" So we should output \"pong\" in lowercase. That matches.",
+          "signature": "d0be5e969ffc49079aed9f30fa8298c6"
+        },
+        {
+          "type": "text",
+          "text": "pong"
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 92,
+        "output_tokens": 53
+      }
+    }
+  }
+}

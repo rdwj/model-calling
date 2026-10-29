@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "backend": "vllm_messages",
+    "scenario": "parallel_tools",
+    "recorded_at": "2026-10-29T02:44:05+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/messages",
+    "json": {
+      "model": "gpt-oss-20b",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris and in Tokyo. Call it once for each city, in the same turn."
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
+        }
+      ],
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "chatcmpl-9063b1fe3712a435",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "We must use get_weather function twice, one for Paris, one for Tokyo. Provide calls. Output should be a combined message? According to policy, must embed function calls. Provide as multiple calls in same turn. Use the function name get_weather with arguments location \"Paris\" and \"Tokyo\". Probably as two separate calls.",
+          "signature": "511a7a4982654e3a80e4e4746c685e2a"
+        },
+        {
+          "type": "tool_use",
+          "id": "chatcmpl-tool-8f4f08acafe7d89f",
+          "name": "get_weather",
+          "input": {
+            "location": "Paris"
+          }
+        }
+      ],
+      "model": "gpt-oss-20b",
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 152,
+        "output_tokens": 89
+      }
+    }
+  }
+}

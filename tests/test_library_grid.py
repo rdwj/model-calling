@@ -21,6 +21,7 @@ from tests.harness.scenarios import (
     EMBEDDING_INPUTS,
     EMBEDDING_SCENARIOS,
     SCENARIOS,
+    fixture_for,
     refused_params,
 )
 from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
@@ -42,7 +43,7 @@ async def messages(library, cell: Cell):
 
 
 async def check_backend_error(call, library, cell):
-    recorded = Exchange.load(fixture_path(cell.backend, cell.scenario))
+    recorded = Exchange.load(fixture_for(cell.backend, cell.scenario, cell.form))
     with pytest.raises(APIStatusError) as err:
         await call(library, cell)
     assert err.value.status == recorded.status
@@ -111,7 +112,7 @@ def assert_auth(cell: Cell, replay):
     "cell", grid(ingresses=LIBRARY_INGRESSES) + embedding_grid(LIBRARY_EMBEDDING_INGRESSES)
 )
 async def test_cell(library, cell: Cell):
-    replay = library.use(cell.backend, cell.scenario)
+    replay = library.use(cell.backend, cell.scenario, cell.form)
     if cell.ingress in LIBRARY_EMBEDDING_INGRESSES:
         await EMBEDDING_CHECKS[cell.scenario](library, cell)
     elif refused_params(cell.backend, cell.scenario):
