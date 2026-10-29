@@ -49,3 +49,8 @@ tracked in git.
   that assert a strict refusal through the gateway set `server.DROP_PARAMS = False`.
 - **OpenRouter's generation cost lookup can lag over 10s.** The ledger polls up to 30s;
   a `0.05` entry in `spend.jsonl` is the unknown-cost placeholder, not a real charge.
+- **OpenRouter's Messages endpoint returns `msg_` ids, which its generation lookup rejects.**
+  Take the cost from `usage.cost` (on the body, or the stream's `message_delta`) instead, as
+  `tests/live/test_anthropic_live.py` does through a callback.
+- **claude-haiku-5.5 on OpenRouter never thinks** (`thinking_tokens: 0` for enabled or adaptive,
+  checked 2026-10-28); use claude-haiku-4.5 for live thinking.
