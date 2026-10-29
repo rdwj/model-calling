@@ -153,6 +153,25 @@ def test_build_request_thinking_in_assistant_turns(provider, content, expected_c
     assert len(body["messages"][0]["content"]) == expected_content_len
 
 
+def test_build_request_drops_a_turn_left_empty(provider):
+    """An assistant turn that was only unsigned thinking (an Ollama model
+    that ran out of tokens while thinking) goes, rather than going empty."""
+    hi = user(Text(text="Hi"))
+    body = provider.build_request(req(hi, assistant(Thinking(thinking="hmm")), hi))
+    assert [m["role"] for m in body["messages"]] == ["user", "user"]
+
+
+def test_build_request_omits_tool_choice_without_tools(provider):
+    chat_req = chat_completions.request_to_internal(
+        {
+            "model": "m",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "parallel_tool_calls": False,
+        }
+    )
+    assert "tool_choice" not in provider.build_request(chat_req)
+
+
 def test_build_request_max_tokens_defaults(provider):
     internal_req = req(max_tokens=None)
     body = provider.build_request(internal_req)
@@ -195,10 +214,10 @@ def test_build_request_reasoning_effort_unsupported(provider):
     internal_req = req(
         thinking=ThinkingConfig(mode="enabled", effort="minimal", budget_tokens=None)
     )
-    assert "reasoning_effort" in provider.unsupported_params(internal_req)
+    assert "thinking.effort" in provider.unsupported_params(internal_req)
     body = provider.build_request(internal_req)
-    assert body["thinking"]["type"] == "adaptive"
-    assert "effort" not in body.get("output_config", {})
+    # Asked for minimal reasoning: no thinking, not the model's default.
+    assert "thinking" not in body and "output_config" not in body
 
 
 @pytest.mark.parametrize(

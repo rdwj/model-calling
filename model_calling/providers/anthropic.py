@@ -29,14 +29,24 @@ DEFAULT_MAX_TOKENS = 4096
 EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
-def _signed(msg: Message) -> Message:
-    """`msg` without thinking no Anthropic model signed (from Ollama, or a
-    Chat Completions backend), which Anthropic rejects when sent back."""
-    kept = [b for b in msg.content if not (isinstance(b, Thinking) and not b.signature)]
-    if len(kept) == len(msg.content):
-        return msg
-    logger.debug("dropping unsigned thinking from an assistant turn")
-    return msg.model_copy(update={"content": kept})
+def _signed(messages: list[Message]) -> list[Message]:
+    """`messages` without unsigned thinking on assistant turns (from Ollama,
+    or a Chat Completions backend), which Anthropic rejects when sent back.
+    A turn left empty is dropped: Anthropic rejects empty content, and
+    merges the consecutive user turns that dropping it can leave. Thinking
+    another server signed (vLLM signs its own) can't be told apart and is
+    kept."""
+    out = []
+    for msg in messages:
+        if msg.role == "assistant":
+            kept = [b for b in msg.content if not (isinstance(b, Thinking) and not b.signature)]
+            if len(kept) != len(msg.content):
+                logger.debug("dropping unsigned thinking from an assistant turn")
+                if not kept:
+                    continue
+                msg = msg.model_copy(update={"content": kept})
+        out.append(msg)
+    return out
 
 
 class AnthropicProvider(Provider):
@@ -62,15 +72,19 @@ class AnthropicProvider(Provider):
             names.append("response_format")
         thinking = request.thinking
         if thinking is not None and thinking.effort is not None and thinking.effort not in EFFORTS:
-            names.append("reasoning_effort")
+            names.append("thinking.effort")
         return names
 
     def build_request(self, request: Request) -> dict:
         update: dict[str, Any] = {
             "model": self.model,
-            "messages": [_signed(m) if m.role == "assistant" else m for m in request.messages],
+            "messages": _signed(request.messages),
             "thinking": self._thinking_out(request),
         }
+        choice = request.tool_choice
+        if choice is not None and choice.mode == "auto" and not request.tools:
+            # A Chat Completions parallel_tool_calls with no tools to call.
+            update["tool_choice"] = None
         if request.max_tokens is None:
             update["max_tokens"] = DEFAULT_MAX_TOKENS
         return anthropic.request_from_internal(request.model_copy(update=update))
@@ -79,16 +93,19 @@ class AnthropicProvider(Provider):
     def _thinking_out(request: Request):
         """The thinking config to send. An effort with no token budget (a
         Chat Completions `reasoning_effort`) is adaptive thinking at that
-        effort; an effort Messages doesn't know is dropped."""
+        effort. An effort Messages doesn't know (OpenAI's "minimal") is
+        dropped, and with no budget to fall back on, so is the thinking:
+        the client asked for little of it, not the model's default."""
         thinking = request.thinking
         if thinking is None or thinking.effort is None:
             return thinking
-        update: dict[str, Any] = {}
-        if thinking.mode == "enabled" and thinking.budget_tokens is None:
-            update["mode"] = "adaptive"
         if thinking.effort not in EFFORTS:
-            update["effort"] = None
-        return thinking.model_copy(update=update) if update else thinking
+            if thinking.mode == "enabled" and thinking.budget_tokens is None:
+                return None
+            return thinking.model_copy(update={"effort": None})
+        if thinking.mode == "enabled" and thinking.budget_tokens is None:
+            return thinking.model_copy(update={"mode": "adaptive"})
+        return thinking
 
     # --- response ---------------------------------------------------------
 

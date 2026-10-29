@@ -36,8 +36,8 @@ from model_calling.formats import anthropic
 from model_calling.providers.base import BAD_GATEWAY, StreamParser, new_id
 
 DATA_PREFIX = "data:"
-# Usage fields `message_start` reports that `message_delta` may omit.
-_INPUT_USAGE = ("input_tokens", "cache_read_tokens", "cache_write_tokens")
+# Wire usage fields `message_start` reports that `message_delta` may omit.
+_INPUT_USAGE = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 
 
 class AnthropicStreamParser(StreamParser):
@@ -46,7 +46,8 @@ class AnthropicStreamParser(StreamParser):
         self.model = model
         self.started = False
         self.done = False
-        self.start_usage: Usage | None = None
+        # message_start's usage as sent, to fill in what message_delta omits.
+        self.start_wire_usage: dict = {}
         self.called_tool = False
 
     def feed(self, line: str) -> list[StreamEvent]:
@@ -99,12 +100,12 @@ class AnthropicStreamParser(StreamParser):
             return [self._error(f"{self.provider} sent a second message_start")]
         self.started = True
         usage = message.get("usage")
-        self.start_usage = None if usage is None else anthropic.usage_to_internal(usage)
+        self.start_wire_usage = usage if isinstance(usage, dict) else {}
         return [
             MessageStart(
                 id=message.get("id") or new_id(),
                 model=message.get("model") or self.model,
-                usage=self.start_usage,
+                usage=None if usage is None else anthropic.usage_to_internal(usage),
             )
         ]
 
@@ -135,16 +136,13 @@ class AnthropicStreamParser(StreamParser):
         )
 
     def _cumulative(self, raw: dict) -> Usage:
-        usage = anthropic.usage_to_internal(raw)
-        if self.start_usage is None or raw.get("input_tokens") is not None:
-            # With input_tokens present, usage_to_internal has the whole input.
-            return usage
-        missing = {
-            name: getattr(self.start_usage, name)
-            for name in _INPUT_USAGE
-            if getattr(usage, name) is None
-        }
-        return usage.model_copy(update=missing)
+        """Delta usage with each input count it omits taken from message_start,
+        merged on the wire so the internal input total counts the cache."""
+        merged = dict(raw)
+        for name in _INPUT_USAGE:
+            if merged.get(name) is None and self.start_wire_usage.get(name) is not None:
+                merged[name] = self.start_wire_usage[name]
+        return anthropic.usage_to_internal(merged)
 
     @staticmethod
     def _error(message: str, error_type: str | None = None) -> StreamError:

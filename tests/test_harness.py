@@ -147,6 +147,21 @@ SECRET_PATTERNS = [
 ]
 
 
+def test_per_form_fixtures_are_exactly_the_needed_ones():
+    """A Chat Completions-form fixture exists only where its body differs
+    from the default form's, so one left behind after the two converge fails."""
+    from tests.harness.record import _fixture_names
+
+    expected = {
+        FIXTURES_DIR / name / f"{fixture}.json"
+        for name, b in BACKENDS.items()
+        for s in recorded_scenarios(b)
+        for _, fixture in _fixture_names(b, s)
+        if fixture != s.name
+    }
+    assert set(FIXTURES_DIR.glob(f"*/*.{CHAT_COMPLETIONS}.json")) == expected
+
+
 def test_every_grid_cell_has_a_fixture():
     expected = {
         FIXTURES_DIR / name / f"{s.name}.json"

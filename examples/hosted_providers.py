@@ -73,7 +73,7 @@ async def test_hosted_providers():
         if os.environ.get("ANTHROPIC_API_KEY"):
             print("\n=== Testing Anthropic (Claude) ===")
             response = await client.chat_completion(
-                model="anthropic/claude-3-sonnet-20240229",
+                model="anthropic/claude-haiku-5-5",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": "Explain the concept of reinforcement learning in simple terms."}
@@ -107,7 +107,7 @@ async def test_hosted_providers():
             ]
             
             response = await client.chat_completion(
-                model="anthropic/claude-3-sonnet-20240229",
+                model="anthropic/claude-haiku-5-5",
                 messages=[
                     {"role": "user", "content": "What's the weather like in Tokyo?"}
                 ],

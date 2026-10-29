@@ -186,6 +186,12 @@ def test_unknown_event_type_ignored():
             {"input_tokens": 150, "cache_read_input_tokens": 30, "output_tokens": 50},
             180,
         ),
+        # vLLM's delta shape: input_tokens but no cache fields.
+        (
+            {"input_tokens": 10, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 5},
+            {"input_tokens": 10, "output_tokens": 7},
+            115,
+        ),
     ],
 )
 def test_usage_accumulation(start_usage, delta_usage, expected_input):
