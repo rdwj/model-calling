@@ -54,3 +54,6 @@ tracked in git.
   `tests/live/test_anthropic_live.py` does through a callback.
 - **claude-haiku-5.5 on OpenRouter never thinks** (`thinking_tokens: 0` for enabled or adaptive,
   checked 2026-10-28); use claude-haiku-4.5 for live thinking.
+- **Mount the alias file's directory, never the file.** A single-file bind mount (compose) or a
+  `subPath` mount (Kubernetes) pins the original inode, so an editor's rename-on-save or a ConfigMap
+  update never reaches the container and hot reload silently stops working.
