@@ -56,10 +56,10 @@ jobs:
     - name: Install locked dependencies
       run: uv sync --frozen
     - name: Run offline tests
-      # Plain pytest deselects the integration and live markers.
+      # Plain pytest deselects the live marker.
       run: uv run --frozen pytest
     - name: Import check
-      run: uv run --frozen python -c "from model_calling.client import SyncModelCallingClient; print('Import successful!')"
+      run: uv run --frozen python -c "from model_calling import Client, completion, messages; print('Import successful!')"
 
   lint:
     needs: dependencies

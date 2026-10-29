@@ -64,6 +64,8 @@ response = client.chat.completions.create(
 
 The gateway does not check client keys. It uses backend keys from its own environment. Gateway clients name models by alias (see [below](#gateway-clients-name-models-by-alias)); the in-process `Client` still takes `prefix/model` names.
 
+The legacy `ModelCallingClient` and `SyncModelCallingClient` HTTP clients are removed in 0.2.x. Call the gateway with the official `openai` or `anthropic` SDK (as shown above), or use the in-process `Client`.
+
 ### Update vLLM base_url
 
 OpenAI-compatible base URLs (vLLM, OpenAI, OpenRouter) are the API root with `/v1` included, matching the `openai` SDK's conventions. The library appends `/chat/completions` or `/embeddings`.
@@ -139,6 +141,14 @@ The gateway's `POST /v1/messages` endpoint requires `max_tokens` in the request 
 ### Runtime configuration removed
 
 `POST /v1/config/update`, `MODEL_CALLING_ADMIN_TOKEN`, and the legacy client's `update_config` and `admin_token` are removed. Backends are configured in the alias file and environment (see [Model Aliases](advanced.md#model-aliases)).
+
+### Gateway request bodies reject reserved fields
+
+Request bodies sent to the gateway may not contain `api_base`, `api_key`, or `drop_params`. These are reserved for the gateway's internal use (to avoid sending the gateway's credentials elsewhere or overriding its parameter policy). Requests containing any of these fields return 400 with a message listing the rejected fields.
+
+### Gateway responses order JSON keys as the SDK types do
+
+Non-streaming gateway responses list their keys in the order the official `openai` and `anthropic` SDK types define them, which can differ from 0.1.x. Clients that parse JSON are unaffected; anything comparing raw response text may need updating.
 
 ### Gateway clients name models by alias
 
