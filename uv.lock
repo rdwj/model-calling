@@ -1234,6 +1234,7 @@ moderation = [
 server = [
     { name = "fastapi" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "uvicorn" },
 ]
 
@@ -1260,6 +1261,7 @@ requires-dist = [
     { name = "numpy", marker = "python_full_version < '3.12' and extra == 'examples'", specifier = "==2.4.6" },
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "python-dotenv", marker = "extra == 'server'", specifier = "==1.2.4" },
+    { name = "pyyaml", marker = "extra == 'server'", specifier = "==6.0.3" },
     { name = "requests", marker = "extra == 'examples'", specifier = "==2.34.2" },
     { name = "scikit-learn", marker = "extra == 'examples'", specifier = "==1.9.1" },
     { name = "torch", marker = "extra == 'moderation'", specifier = "==2.14.1" },
