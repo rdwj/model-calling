@@ -47,16 +47,18 @@ async def test_library_amessages(spend, scenario):
 
 
 @pytest.mark.parametrize("scenario", CHECKS)
-async def test_gateway_messages(spend, sdk, scenario):
-    msg = await sdk.messages.create(**SCENARIOS[scenario].messages_body(LIVE_MODEL))
+async def test_gateway_messages(spend, gateway, sdk, scenario):
+    alias = gateway.alias(LIVE_MODEL)
+    msg = await sdk.messages.create(**SCENARIOS[scenario].messages_body(alias))
     spend("gateway /v1/messages", msg.id)
-    CHECKS[scenario](msg, LIVE_MODEL)
+    CHECKS[scenario](msg, alias)
 
 
-async def test_gateway_messages_stream_tools(spend, sdk):
-    body = SCENARIOS["tools"].messages_body(LIVE_MODEL)
+async def test_gateway_messages_stream_tools(spend, gateway, sdk):
+    alias = gateway.alias(LIVE_MODEL)
+    body = SCENARIOS["tools"].messages_body(alias)
     body.pop("stream")
     async with sdk.messages.stream(**body) as stream:
         final = await stream.get_final_message()
     spend("gateway /v1/messages stream", final.id)
-    message_tools(final, LIVE_MODEL)
+    message_tools(final, alias)

@@ -37,8 +37,8 @@ async def openai_sdk(gateway):
     await http.aclose()
 
 
-def body(scenario: str) -> dict:
-    return SCENARIOS[scenario].chat_completions_body(LIVE_MODEL)
+def body(scenario: str, model: str = LIVE_MODEL) -> dict:
+    return SCENARIOS[scenario].chat_completions_body(model)
 
 
 @pytest.mark.parametrize("scenario", CHECKS)
@@ -57,14 +57,16 @@ async def test_library_acompletion_stream_usage(spend):
 
 
 @pytest.mark.parametrize("scenario", CHECKS)
-async def test_gateway_chat_completions(spend, openai_sdk, scenario):
-    resp = await openai_sdk.chat.completions.create(**body(scenario))
+async def test_gateway_chat_completions(spend, gateway, openai_sdk, scenario):
+    alias = gateway.alias(LIVE_MODEL)
+    resp = await openai_sdk.chat.completions.create(**body(scenario, alias))
     spend("gateway /v1/chat/completions", resp.id)
-    CHECKS[scenario](resp, LIVE_MODEL)
+    CHECKS[scenario](resp, alias)
 
 
-async def test_gateway_chat_completions_stream_usage(spend, openai_sdk):
-    stream = await openai_sdk.chat.completions.create(**body("stream_usage"))
+async def test_gateway_chat_completions_stream_usage(spend, gateway, openai_sdk):
+    alias = gateway.alias(LIVE_MODEL)
+    stream = await openai_sdk.chat.completions.create(**body("stream_usage", alias))
     chunks = [c async for c in stream]
     spend("gateway /v1/chat/completions stream", chunks[0].id)
-    completion_stream_usage(chunks, LIVE_MODEL)
+    completion_stream_usage(chunks, alias)

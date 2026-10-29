@@ -41,8 +41,8 @@ def config() -> dict:
     return {"base_url": OPENROUTER_URL, "api_key": os.environ.get(OPENROUTER_KEY_ENV, "")}
 
 
-def body(scenario: str) -> dict:
-    return SCENARIOS[scenario].messages_body(model(scenario))
+def body(scenario: str, name: str | None = None) -> dict:
+    return SCENARIOS[scenario].messages_body(name or model(scenario))
 
 
 @pytest.fixture
@@ -72,10 +72,11 @@ async def test_library_amessages(spend, cost, scenario):
 
 
 @pytest.mark.parametrize("scenario", SCENARIO_NAMES)
-async def test_gateway_messages(spend, cost, sdk, scenario):
-    result = await sdk.messages.create(**body(scenario))
+async def test_gateway_messages(spend, cost, gateway, sdk, scenario):
+    alias = gateway.alias(model(scenario))
+    result = await sdk.messages.create(**body(scenario, alias))
     if SCENARIOS[scenario].stream:
         result = [event async for event in result]
     response_id = result[0].message.id if isinstance(result, list) else result.id
     spend("gateway /v1/messages (anthropic)", response_id, model(scenario), cost.cost)
-    MESSAGE_CHECKS[scenario](result, model(scenario))
+    MESSAGE_CHECKS[scenario](result, alias)
