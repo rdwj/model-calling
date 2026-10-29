@@ -1,6 +1,14 @@
 # Next Session — api-shapes
 
-## Next: Phase 8, Claude Code acceptance
+> **2026-10-29: cut for release.** 0.2.0 ships from `main` (library and
+> gateway as they stand). The remaining work is tracked on GitHub:
+> epic issue #8, issues #1–#7, milestone 0.3.0, project
+> https://github.com/users/rdwj/projects/11. Phase-to-issue map: Phase 8 =
+> #1, Phase 12 = #2, Phase 7 = #3 and #4, Phase 6 slice 2 = #5, Phase 9
+> follow-ups = #6, pilot = #7. Update the issues as work lands; this file
+> keeps the detailed arc.
+
+## Next: Phase 8, Claude Code acceptance (#1)
 
 Prove the Messages path end to end: Claude Code, pointed at the gateway,
 completes a scripted tool-using task, with every model it asks for mapped
@@ -81,8 +89,9 @@ Anthropic, and Cohere v2. Gateway clients name models only by alias, from
 a hot-reloaded YAML file, so a backend swap is a file edit. An offline
 grid validates every ingress × backend cell against the official SDK
 types; live smoke tests run through OpenRouter; Claude Code completes a
-tool-using task through the gateway. The epic ends with 0.2.0 on PyPI and
-sanicode migrated off LiteLLM.
+tool-using task through the gateway. 0.2.0 shipped the library and gateway
+without Responses, Cohere, or the Claude Code proof; the epic ends with
+0.3.0 and sanicode migrated off LiteLLM.
 
 Done: Phases 1–5, 6 slice 1, 10, and 11 (see the "What landed" ledger and
 `session-summaries/`). Phase numbers stay stable because code comments,
@@ -143,7 +152,7 @@ Items deferred across sessions without an owner. All offline, each small.
    Anthropic and vLLM Messages; refuse with a named 400 elsewhere) and
    add the Refusal block type the SDK defines. Check the anthropic 2.0.0
    types first.
-5. Delete `tests/integration/` and the root scripts that drive a running
+5. (Done in 0.2.0.) Delete `tests/integration/` and the root scripts that drive a running
    gateway with prefixed names (`run_tests.sh`, `test_ollama.sh`,
    `diagnose_models.sh`, `tool_call_curl.sh`, `auto_config_tests.sh`,
    `setup_tests.sh`, `fix_test_imports.sh`, `make_tests_executable.sh`,
@@ -210,6 +219,10 @@ and serves in a gateway test.
 **Parallel-ok:** with Phases 12 and 7.
 
 ### Phase 9: Release and pilot migration
+
+Pulled forward into 0.2.0 on 2026-10-29: legacy client removed, PyPI page
+now `README.md`, trusted publishing, live suite run on aliases. The rest
+of slice 1 is #6; slice 2's pilot is #7, and its release becomes 0.3.0.
 
 **Slice 1: release prep.**
 1. Fold `docs/migration-guide.md` "Upgrading from 0.1.x" into a
