@@ -1,82 +1,60 @@
 # Next Session — api-shapes
 
-## Next: Phase 11 slice 1, model aliases from a hot-reloaded file
+## Next: Phase 11 slice 2, removals, library aliases, and the compose proof
 
-Gateway clients ask for an alias (`chat`, `embed`) and a YAML file decides
-which backend and model serve it, reloaded without a restart. This is the
-project's original purpose: the app never changes when Ollama in dev
-becomes vLLM in production. rdwj made the design calls on 2026-10-29; they
-are listed at the top of Phase 11 below and are not open.
+Slice 1 put the gateway on aliases (`model_calling/aliases.py`,
+`gateway._serve`). Slice 2 finishes Phase 11 per its definition of done
+below: the old configuration paths go, `Client` takes the alias file, and
+`podman-compose up` proves the swap end to end.
 
-1. **The file and its loader.** Backends (provider, `base_url`,
-   `api_key_env`) and models (backend, model, optional `dimensions` for
-   embeddings), validated with errors that name the offending key. Start
-   from the shape in Phase 11. Decide and record: the env variable for the
-   path (suggest `MODEL_CALLING_CONFIG`) and whether the entry point
-   defaults to `./model-calling.yaml`; what a gateway with no file does
-   (suggest: starts, lists no models, and every request gets a 404 whose
-   message names the variable). Pin PyYAML `==6.0.3` as a direct `[server]`
-   dependency (already in the lock; check `pip-audit`).
-2. **Hot reload.** `os.stat` per request (follows symlinks, so a ConfigMap
-   `..data` swap counts); compare mtime and size; parse and validate the
-   new file before swapping it in; an invalid edit keeps the last good
-   config and logs one error per change, not per request. Each request
-   resolves its alias once, at the start.
-3. **Alias routing for Chat Completions and Messages.** Resolve the alias to
-   a provider config and model, call `Client` with that, and put the alias
-   in the response `model` field (streaming too). `/v1/models` lists
-   aliases only. An unknown name, including any `prefix/model`, is a 404 in
-   the ingress's error format naming the alias. Phase 10's URL variables
-   remain defaults for a backend the file gives no URL.
-4. **Embeddings.** Same routing for `/v1/embeddings`; with `dimensions`
-   declared, a response of another size is a 502 naming the alias and both
-   sizes.
-5. **Move the grid to aliases.** The gateway fixture writes an alias file
-   per cell and gateway cells send the alias. The library cells keep
-   prefixed names (the library still takes them); where library and
-   gateway output are compared, `model` differs by design.
-6. **Prove the swap.** A test rewrites the file from an Ollama backend to a
-   vLLM backend between two requests for `chat` and sees the second go to
-   the vLLM fixture; a malformed rewrite leaves the old mapping serving.
+1. **Decide `/v1/models/refresh` and `/v1/moderations`** (stop-and-ask
+   first: public endpoints). Both still take `prefix/model` names and the
+   legacy `registry`. Recommendation to bring to rdwj: retire `refresh`
+   (it reports legacy capability probes nothing else uses) and keep
+   `moderations` on its fixed Granite Guardian model. Then delete what
+   becomes dead in `registry.py` and `server._ported`.
+2. **Remove `POST /v1/config/update`** (confirmed with rdwj 2026-10-29):
+   `require_admin`, `config.admin_token`, `MODEL_CALLING_ADMIN_TOKEN`, the
+   legacy client's `update_config`/`admin_token`, the Phase 10 tests for
+   them, and every doc mention; migration guide entry replaces the
+   admin-token one.
+3. **`Client(models="model-calling.yaml")`**: same `AliasStore`, resolved
+   per call; prefixed names still work in the library; an alias and a
+   prefixed name never collide silently (decide: alias wins, or refuse a
+   file alias that looks like a known prefix).
+4. **Compose and examples.** `podman-compose.yml` mounts a sample alias
+   file; docs show an OpenShift ConfigMap mount (not `subPath`); move the
+   `examples/*.py` that drive the gateway to aliases or to `Client`.
+5. **Prove it.** `podman-compose up`, `chat` served from the Ollama
+   container (pull a small model, e.g. `qwen3:0.6b`, into its volume), then
+   edit the mounted file on the host to point `chat` at another model and
+   see the next request switch with no container restart.
 
-**Sequencing.** 1 and 2 first with their own unit tests, then 3, then 5
-(the grid will show what 3 broke), then 4 and 6. If the session runs long,
-stop after 5 with the grid green; 4 and the dimensions check can move to
-slice 2. Leave the legacy registry, `/v1/config/update`,
-`/v1/models/refresh`, `/v1/moderations`, `Client(models=...)`, and the
-compose/docs rewrite to slice 2, but add a short "Model aliases" section to
-`docs/advanced.md` so the new behavior isn't undocumented.
+**Sequencing.** 1 (ask first), 2, 3, 4, 5. If the session runs long, stop
+after 3 with tests green; 4 and 5 are one sitting together.
 
 **Constraints for the session:**
-- Exit predicate: the swap test and malformed-rewrite test in item 6 pass;
-  `prefix/model` and unknown names get 404 in both Chat Completions and
-  Messages formats; `/v1/models` lists only aliases; the grid is green with
-  no new xfails; `HOME=$(mktemp -d) uv run pytest` green; each commit
-  passes on its own.
-- Breaking for gateway clients: prefixed names stop working, and Cohere
-  stops being reachable through the gateway until Phase 6 slice 2 ports it
-  (decided: aliases target ported providers only). Add both to the
-  migration guide's upgrading section in the same commit as the behavior.
-- No live spend; offline only.
+- Exit predicate: Phase 11's definition of done (below), including
+  `grep -rn "config/update\|ADMIN_TOKEN" model_calling docs README.md`
+  returning nothing and the compose edit-without-restart check.
+- No live spend needed. If rdwj wants the live suite run once (it was
+  moved to aliases in slice 1 but never run), it is about 22 cheap calls.
 
 **Session start protocol:**
-- Premise checks (before item 1, report before acting): `main` matches
-  `origin/main` at the plan commit after `1741f28`; "Test Package" green on
-  it; `HOME=$(mktemp -d) uv run pytest` shows 1355 passed, 35 xfailed;
-  `grep -rni "alias" model_calling` finds no alias feature (nobody started
-  this in parallel); PyYAML 6.0.3 still in `uv.lock`.
+- Premise checks (report before acting): `main` matches `origin/main` at
+  the plan commit after `ddbf44b`; "Test Package" green; `HOME=$(mktemp -d)
+  uv run pytest` shows 1426 passed, 35 xfailed; podman machine running.
 - Rules with history:
-  - Never loosen replay matching or a validator to get the grid green;
-    re-record or strict-xfail with the fixing phase named.
-  - Gateway behavior changes only where this plan says so. Slice 1 does not
-    remove endpoints; the legacy registry stays for the endpoints that
-    still use it.
-  - Check that every commit passes on its own.
-- Stop-and-ask before: removing or renaming any public endpoint (slice 2
-  owns those); any dependency beyond PyYAML or moving the cutoff; changing
-  stored fixture URLs; force-pushing.
-- Close ritual: `/session-close`, then `/plan-next-session` (next pick is
-  Phase 11 slice 2).
+  - Never loosen replay matching or a validator; strict-xfail with the
+    fixing phase named.
+  - Errors and responses never name a backend (the grid's
+    `assert_no_backend_details` guards error cells; keep it on any new
+    error path).
+  - Check every commit passes on its own.
+- Stop-and-ask before: retiring or renaming any endpoint other than
+  `/v1/config/update`; any new dependency; force-pushing.
+- Close ritual: `/session-close`, then `/plan-next-session`. Next pick is
+  among Phase 8 (now unblocked by aliases), Phase 6 slice 2, and Phase 7.
 
 ## Remaining epic phases
 
@@ -299,7 +277,11 @@ and the file wins where both set one.
 4. `podman-compose.yml` mounts a sample alias file; the docs show an
    OpenShift ConfigMap mount (not `subPath`, which never updates); the
    migration guide lists the removals and the prefix change; README leads
-   the gateway section with the dev-to-prod swap.
+   the gateway section with the dev-to-prod swap (slice 1 did the README,
+   `docs/advanced.md` "Model Aliases", and the prefix entry). The
+   `examples/*.py` scripts that drive the gateway through the legacy
+   `ModelCallingClient` still send `prefix/model` names and now get 404;
+   move them to aliases (with a sample alias file) or to `Client`.
 
 **Definition of done:** a gateway test sends `model: chat` to a running
 in-process gateway, rewrites the alias file from an Ollama backend to a vLLM
@@ -389,7 +371,17 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-29): Phase 10 complete
+## What landed last session (2026-10-29): Phase 11 slice 1
+
+The gateway serves models by alias from a hot-reloaded YAML file,
+`10df304..ddbf44b`: no backend name crosses the wire (responses, errors,
+and `/v1/models` show aliases; every other name is 404), embedding
+`dimensions` are enforced, and an edit switches backends with no restart.
+Review fixes: error-message scrubbing, reload robustness, live tests on
+aliases (not run). Record:
+`session-summaries/2026-10-29-api-shapes-phase11-slice1.md`.
+
+## What landed earlier (2026-10-29): Phase 10 complete
 
 All four items plus three review fixes, `47de0be..70e31fb`: backend URLs
 and the vLLM key from the environment (`MODEL_CALLING_ANTHROPIC_BASE_URL`,
@@ -550,12 +542,10 @@ of 23 files.
 
 ## If blocked
 
-- If hot reload fights the test harness (timestamps with coarse mtime
-  resolution), compare mtime, size, and inode, or let tests trigger a
-  reload check directly; don't sleep in tests.
-- If moving the grid to aliases balloons, give each cell a neutral alias
-  generated from its (backend, scenario) in the fixture rather than
-  hand-editing cells. Never alias a `prefix/model` name to itself: that
-  reopens the wire to backend names.
+- If podman can't run, prove the mounted-file swap with a gateway test that
+  rewrites the file through a symlink swap (as `tests/test_aliases.py`
+  does) and leave the compose check as a named gap in the summary.
+- If rdwj wants `/v1/models/refresh` kept, give it alias resolution
+  instead (resolve, then probe the target) rather than prefixed names.
 - Fallback work in this epic: the Phase 6 slice 1 review leftovers listed
   under "Still open" (each small, offline).
