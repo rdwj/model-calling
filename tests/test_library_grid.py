@@ -36,11 +36,17 @@ def model(cell: Cell) -> str:
 
 async def completion(library, cell: Cell):
     body = SCENARIOS[cell.scenario].chat_completions_body(model(cell))
+    # thinking_unsupported tests the drop path (Phase 12 item 3).
+    if "thinking_unsupported" in cell.scenario:
+        body["drop_params"] = True
     return await library.client.acompletion(**body)
 
 
 async def messages(library, cell: Cell):
     body = SCENARIOS[cell.scenario].messages_body(model(cell))
+    # thinking_unsupported tests the drop path (Phase 12 item 3).
+    if "thinking_unsupported" in cell.scenario:
+        body["drop_params"] = True
     return await library.client.amessages(**body)
 
 

@@ -299,8 +299,12 @@ async def library_answer(library, cell: Cell):
     its message in the form the gateway shows clients."""
     library.use(cell.backend, cell.scenario, cell.form)
     method = getattr(library.client, INGRESS_CALLS[cell.ingress][2])
+    body = request_body(cell)
+    # thinking_unsupported tests the drop path (Phase 12 item 3).
+    if "thinking_unsupported" in cell.scenario:
+        body["drop_params"] = True
     try:
-        result = await method(**request_body(cell))
+        result = await method(**body)
     except APIStatusError as e:
         target = Target(grid_alias(model(cell)), model(cell), None, None, None)
         return client_status(e), public_message(e.message, target)
