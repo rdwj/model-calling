@@ -145,9 +145,10 @@ def write(path, text: str) -> None:
             "line 3: duplicate key 'chat'",
         ),
         ("models: [unclosed\n", "is not valid YAML"),
+        ("? [a, b]\n: x\n", "line 1: a key must be a name"),
         ("models:\n  chat: {backend: nowhere, model: m}\n", "unknown backend 'nowhere'"),
     ],
-    ids=["duplicate", "syntax", "invalid"],
+    ids=["duplicate", "syntax", "unhashable_key", "invalid"],
 )
 def test_load_names_the_file(tmp_path, text, message):
     path = tmp_path / "models.yaml"
@@ -272,3 +273,22 @@ def test_check_loads_a_good_file(edits):
     store = AliasStore(str(edits.path))
     assert store.check().aliases == ["chat"]
     assert target_model(store) == "ollama/a"
+
+
+def test_load_refuses_a_file_that_is_not_utf8(tmp_path):
+    path = tmp_path / "models.yaml"
+    path.write_bytes(b"models: {chat: {backend: ollama, model: caf\xe9}}\n")
+    with pytest.raises(AliasConfigError, match="is not UTF-8 text"):
+        load(str(path))
+
+
+def test_store_keeps_the_config_through_an_unexpected_load_failure(edits, monkeypatch, caplog):
+    from model_calling import aliases
+
+    store = AliasStore(str(edits.path))
+    edits(models("a"))
+    store.current()
+    monkeypatch.setattr(aliases, "load", lambda path: 1 / 0)
+    edits(models("b"))
+    assert target_model(store) == "ollama/a"
+    assert "division by zero" in store.error

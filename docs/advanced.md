@@ -447,9 +447,9 @@ models:
 
 `backends` is optional. A backend has a `provider` (`ollama`, `vllm`, `openai`, `openrouter`, or `anthropic`), and optionally a `base_url` and an `api_key_env`. A model has a `backend`, a `model`, and for embeddings an optional `dimensions`. With `dimensions` set, the gateway answers 502 rather than pass on vectors of another size, so a backend swap can't silently corrupt a vector index. Alias names are free-form: an app written against vLLM can keep the name vLLM serves, such as `openai/gpt-oss-20b`.
 
-The gateway reads the file named by `MODEL_CALLING_CONFIG`, or `model-calling.yaml` in its working directory. It checks the file on every request and reloads it when it changes; no restart is needed. An edit that fails to load leaves the previous models serving and logs the error once. A file that is invalid at startup stops the gateway. Without a file, no models are served.
+The gateway reads the file named by `MODEL_CALLING_CONFIG`, or `model-calling.yaml` in its working directory. It checks the file's modification time, size, and inode on every request and reloads it when they change; no restart is needed. Replace the file atomically (write a new file and rename it over the old one, as editors and OpenShift ConfigMap mounts do): an in-place rewrite can be read half-written, and two in-place edits of the same size within the filesystem's timestamp resolution look like one. An edit that fails to load leaves the previous models serving and logs the error once. A file that is invalid at startup stops the gateway. Without a file, no models are served.
 
-Clients see only aliases. `GET /v1/models` lists them, responses carry the alias in `model`, and any other name, including a `prefix/model` name, gets 404. Cohere is not available through the gateway until it moves to the provider interface (it still works through the legacy adapters only).
+Clients see only aliases. `GET /v1/models` lists them, responses carry the alias in `model`, and any other name gets 404; a `prefix/model` string such as `ollama/qwen3:4b` is only served if the file defines it as an alias. Error messages name the alias, never the backend, its model name, or its address. Cohere is not available through the gateway until it moves to the provider interface (it still works through the legacy adapters only).
 
 ### Environment Variables
 

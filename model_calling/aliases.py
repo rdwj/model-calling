@@ -203,6 +203,12 @@ class _UniqueKeyLoader:
                     seen = set()
                     for key_node, _ in node.value:
                         key = self.construct_object(key_node, deep=deep)
+                        try:
+                            hash(key)
+                        except TypeError:
+                            raise AliasConfigError(
+                                f"line {key_node.start_mark.line + 1}: a key must be a name"
+                            ) from None
                         if key in seen:
                             raise AliasConfigError(
                                 f"line {key_node.start_mark.line + 1}: duplicate key {key!r}"
@@ -224,6 +230,8 @@ def load(path: str) -> AliasConfig:
         return parse(data)
     except OSError as e:
         raise AliasConfigError(f"cannot read {path}: {e.strerror}") from e
+    except UnicodeDecodeError as e:
+        raise AliasConfigError(f"{path} is not UTF-8 text") from e
     except yaml.YAMLError as e:
         raise AliasConfigError(f"{path} is not valid YAML: {e}") from e
     except AliasConfigError as e:
@@ -264,20 +272,25 @@ class AliasStore:
         with self._lock:
             if signature == self._signature:
                 return self._config
-            self._signature = signature
             if signature is None:
                 if self._config is not EMPTY:
                     self.error = f"{self.path} is missing; keeping the last loaded models"
                     logger.error(self.error)
+                self._signature = signature
                 return self._config
             try:
-                self._config = load(self.path)
-            except AliasConfigError as e:
+                config = load(self.path)
+            except Exception as e:  # any failure keeps serving the last good file
+                if not isinstance(e, AliasConfigError):
+                    logger.exception("unexpected error loading %s", self.path)
                 self.error = f"{e}; keeping the last loaded models"
                 logger.error(self.error)
             else:
-                self.error = None
-                logger.info("loaded %d models from %s", len(self._config.models), self.path)
+                self._config, self.error = config, None
+                logger.info("loaded %d models from %s", len(config.models), self.path)
+            # Set after the config, so a reader that sees the new signature
+            # without the lock also sees the config loaded for it.
+            self._signature = signature
             return self._config
 
     def check(self) -> AliasConfig:
