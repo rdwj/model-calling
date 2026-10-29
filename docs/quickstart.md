@@ -265,6 +265,15 @@ Install the server extra if you have not already:
 pip install 'model-calling[server]'
 ```
 
+Apps name gateway models by alias. Create `model-calling.yaml` in the directory you start the gateway from, mapping each alias to a backend and model:
+
+```yaml
+models:
+  chat: {backend: ollama, model: qwen3:4b}
+```
+
+When you move to production, point `chat` at another backend in this file; the app keeps asking for `chat`, and the gateway picks up the edit without a restart. See [Model Aliases](advanced.md#model-aliases).
+
 Start the gateway:
 
 ```bash
@@ -287,7 +296,7 @@ import openai
 client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 
 response = client.chat.completions.create(
-    model="qwen3:4b",
+    model="chat",
     messages=[{"role": "user", "content": "Hello"}],
 )
 
@@ -302,7 +311,7 @@ import anthropic
 client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
 
 response = client.messages.create(
-    model="qwen3:4b",
+    model="chat",
     messages=[{"role": "user", "content": "Hello"}],
     max_tokens=512,
 )
@@ -316,7 +325,7 @@ The gateway does not check client API keys. It uses its own backend credentials 
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen3:4b",
+    "model": "chat",
     "messages": [{"role": "user", "content": "Hello"}]
   }'
 ```

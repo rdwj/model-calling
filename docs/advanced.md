@@ -429,6 +429,28 @@ With `uvicorn` directly:
 uvicorn model_calling.server:app --host 0.0.0.0 --port 8000
 ```
 
+### Model Aliases
+
+Gateway clients name models by alias, never by backend. A YAML file maps each alias to a backend and that backend's model name, so moving an app from Ollama in development to vLLM in production is an edit to this file, with no change to the app:
+
+```yaml
+backends:
+  prod:
+    provider: vllm
+    base_url: https://vllm.apps.cluster.example.com/v1
+    api_key_env: VLLM_API_KEY   # the variable holding the key, never the key
+models:
+  chat: {backend: prod, model: gpt-oss-20b}
+  # A provider name works as a backend, using the defaults below.
+  embed: {backend: ollama, model: nomic-embed-text, dimensions: 768}
+```
+
+`backends` is optional. A backend has a `provider` (`ollama`, `vllm`, `openai`, `openrouter`, or `anthropic`), and optionally a `base_url` and an `api_key_env`. A model has a `backend`, a `model`, and for embeddings an optional `dimensions`. With `dimensions` set, the gateway answers 502 rather than pass on vectors of another size, so a backend swap can't silently corrupt a vector index. Alias names are free-form: an app written against vLLM can keep the name vLLM serves, such as `openai/gpt-oss-20b`.
+
+The gateway reads the file named by `MODEL_CALLING_CONFIG`, or `model-calling.yaml` in its working directory. It checks the file on every request and reloads it when it changes; no restart is needed. An edit that fails to load leaves the previous models serving and logs the error once. A file that is invalid at startup stops the gateway. Without a file, no models are served.
+
+Clients see only aliases. `GET /v1/models` lists them, responses carry the alias in `model`, and any other name, including a `prefix/model` name, gets 404. Cohere is not available through the gateway until it moves to the provider interface (it still works through the legacy adapters only).
+
 ### Environment Variables
 
 The `model-calling` command (and `python -m model_calling`) reads a `.env` file from the directory it starts in, via python-dotenv, before the gateway builds its backend settings. Importing `model_calling.server`, as `uvicorn model_calling.server:app` does, never reads `.env`, and neither does the library.
@@ -437,6 +459,7 @@ The `model-calling` command (and `python -m model_calling`) reads a `.env` file 
 - `OPENROUTER_API_KEY`: OpenRouter key
 - `ANTHROPIC_API_KEY`: Anthropic key
 - `COHERE_API_KEY`: Cohere key (legacy adapters only)
+- `MODEL_CALLING_CONFIG`: the alias file (default `model-calling.yaml`)
 - `OLLAMA_BASE_URL`: Ollama's native API root, without `/v1` (default `http://localhost:11434`)
 - `VLLM_BASE_URL`: vLLM's API root with `/v1` (default `http://localhost:8000/v1`)
 - `VLLM_API_KEY`: sent to vLLM as a bearer token, if set
@@ -445,7 +468,7 @@ The `model-calling` command (and `python -m model_calling`) reads a `.env` file 
 - `PORT`: server port (default 8000)
 - `MODEL_CALLING_STRICT_PARAMS`: strict mode (see below)
 
-The URL variables mean what `base_url` means in `Client(config=...)`. The gateway logs the Ollama, vLLM, and Anthropic URLs in effect at startup. The Anthropic variable is not `ANTHROPIC_BASE_URL` because the `anthropic` SDK and Claude Code read that name as the root without `/v1`, and a client pointed at this gateway sets it to the gateway's own address.
+The URL variables mean what `base_url` means in `Client(config=...)`. They are the defaults for a backend the alias file gives no `base_url`; the file wins where both set one. The gateway logs the models it serves and these URLs at startup. The Anthropic variable is not `ANTHROPIC_BASE_URL` because the `anthropic` SDK and Claude Code read that name as the root without `/v1`, and a client pointed at this gateway sets it to the gateway's own address.
 
 ### Strict Mode
 

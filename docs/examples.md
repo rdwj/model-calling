@@ -427,7 +427,7 @@ with Client() as client:
 
 ## Using the Gateway from Official SDKs
 
-Point the official `openai` or `anthropic` SDK at the gateway instead of using the library directly. Install the gateway with `pip install 'model-calling[server]'` and start it with `model-calling`.
+Point the official `openai` or `anthropic` SDK at the gateway instead of using the library directly. Install the gateway with `pip install 'model-calling[server]'`, define the `chat` alias in `model-calling.yaml` (`models: {chat: {backend: ollama, model: qwen3:4b}}`; see [Model Aliases](advanced.md#model-aliases)), and start it with `model-calling`.
 
 ```python
 import openai
@@ -435,14 +435,14 @@ import anthropic
 
 openai_client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 response = openai_client.chat.completions.create(
-    model="ollama/qwen3:4b",
+    model="chat",
     messages=[{"role": "user", "content": "Hello from the openai SDK"}]
 )
 print(response.choices[0].message.content)
 
 anthropic_client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
 message = anthropic_client.messages.create(
-    model="ollama/qwen3:4b",
+    model="chat",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello from the anthropic SDK"}]
 )
@@ -459,7 +459,7 @@ A minimal example calling the gateway directly. The response follows the Chat Co
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "ollama/qwen3:4b",
+    "model": "chat",
     "messages": [{"role": "user", "content": "Hello from curl"}]
   }'
 ```

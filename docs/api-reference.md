@@ -430,6 +430,7 @@ The gateway listens on `0.0.0.0:8000`. Override the port with the `PORT` environ
 
 ### Environment variables
 
+- `MODEL_CALLING_CONFIG`: the model alias file (default `model-calling.yaml`); see [Model Aliases](advanced.md#model-aliases)
 - `OPENAI_API_KEY`: OpenAI backend credential
 - `OPENAI_ORG_ID`: OpenAI organization ID (optional)
 - `OPENROUTER_API_KEY`: OpenRouter backend credential
@@ -441,6 +442,8 @@ The gateway listens on `0.0.0.0:8000`. Override the port with the `PORT` environ
 The gateway reads `.env` at startup with python-dotenv.
 
 ### Endpoints
+
+Every endpoint that takes a `model` takes an alias from the alias file. Any other name, including a backend-prefixed one such as `ollama/qwen3:4b`, gets 404 in the endpoint's error format, and responses carry the alias in `model`. The examples assume the file defines `chat` and `embed`.
 
 #### POST /v1/chat/completions
 
@@ -454,7 +457,7 @@ Example:
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen3:4b",
+    "model": "chat",
     "messages": [{"role": "user", "content": "Hello"}],
     "stream": false
   }'
@@ -474,7 +477,7 @@ Example:
 curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen3:4b",
+    "model": "chat",
     "messages": [{"role": "user", "content": "Hello"}],
     "max_tokens": 512
   }'
@@ -490,7 +493,7 @@ Example:
 curl -X POST http://localhost:8000/v1/messages/count_tokens \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "ollama/qwen3:4b",
+    "model": "chat",
     "messages": [{"role": "user", "content": "Hello"}],
     "system": "You are a helpful assistant.",
     "tools": [...]
@@ -515,14 +518,14 @@ Example:
 curl -X POST http://localhost:8000/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "ollama/nomic-embed-text",
+    "model": "embed",
     "input": ["hello", "world"]
   }'
 ```
 
 #### GET /v1/models
 
-List available models. Returns a list of model IDs the gateway knows about.
+The configured aliases, in file order, as the OpenAI models list. Backends are not queried.
 
 Response format:
 
@@ -530,8 +533,8 @@ Response format:
 {
   "object": "list",
   "data": [
-    {"id": "ollama/qwen3:4b", "object": "model"},
-    {"id": "openai/gpt-4", "object": "model"}
+    {"id": "chat", "object": "model", "created": 0, "owned_by": "model-calling"},
+    {"id": "embed", "object": "model", "created": 0, "owned_by": "model-calling"}
   ]
 }
 ```
@@ -659,7 +662,7 @@ import openai
 client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 
 response = client.chat.completions.create(
-    model="qwen3:4b",
+    model="chat",
     messages=[{"role": "user", "content": "Hello"}],
 )
 ```
@@ -672,13 +675,13 @@ import anthropic
 client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
 
 response = client.messages.create(
-    model="qwen3:4b",
+    model="chat",
     messages=[{"role": "user", "content": "Hello"}],
     max_tokens=1024,
 )
 
 with client.messages.stream(
-    model="qwen3:4b",
+    model="chat",
     messages=[{"role": "user", "content": "Hello"}],
     max_tokens=1024,
 ) as stream:

@@ -127,7 +127,17 @@ Some parameters are always dropped silently: `cache_control` (a caching hint tha
 
 ## Gateway
 
-The gateway is a FastAPI server running on the same library code.
+The gateway is a FastAPI server running on the same library code. Apps talk to it with the official `openai` or `anthropic` SDK and name models by alias; a YAML file decides which backend serves each alias. Moving from Ollama in development to vLLM in production is an edit to that file. The app doesn't change, and the gateway picks up the edit without a restart.
+
+```yaml
+# model-calling.yaml (or the file MODEL_CALLING_CONFIG names)
+backends:
+  prod: {provider: vllm, base_url: https://vllm.example.com/v1, api_key_env: VLLM_API_KEY}
+models:
+  chat: {backend: ollama, model: qwen3:4b}   # development
+  # chat: {backend: prod, model: gpt-oss-20b}   # production
+  embed: {backend: ollama, model: nomic-embed-text, dimensions: 768}
+```
 
 ```bash
 model-calling  # or: python -m model_calling
@@ -140,7 +150,7 @@ Binds `0.0.0.0`, port from `PORT` (default 8000). The gateway reads `.env` (pyth
 - `POST /v1/chat/completions` (OpenAI Chat Completions; streaming SSE ending `data: [DONE]`)
 - `POST /v1/messages` (Anthropic Messages; streaming SSE with `event:` lines; errors as Anthropic error bodies)
 - `POST /v1/embeddings` (OpenAI Embeddings)
-- `GET /v1/models`, `POST /v1/models/refresh`, `POST /v1/config/update`, `POST /v1/moderations`, `GET /` health
+- `GET /v1/models` (the configured aliases), `POST /v1/models/refresh`, `POST /v1/config/update`, `POST /v1/moderations`, `GET /` health
 
 Point the official SDKs at it:
 
@@ -150,9 +160,13 @@ import anthropic
 
 openai_client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 anthropic_client = anthropic.Anthropic(base_url="http://localhost:8000", api_key="unused")
+
+reply = openai_client.chat.completions.create(
+    model="chat", messages=[{"role": "user", "content": "Hello"}]
+)
 ```
 
-The gateway does not check client keys; it uses its own backend keys from its environment.
+The gateway does not check client keys; it uses its own backend keys from its environment. Any name that isn't an alias, including a backend-prefixed one such as `ollama/qwen3:4b`, gets 404. See [Model Aliases](https://github.com/rdwj/model-calling/blob/main/docs/advanced.md#model-aliases) for the file format and reload behavior.
 
 ### Strict mode
 
@@ -160,9 +174,9 @@ The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_P
 
 ### Backend URLs
 
-The gateway takes backend URLs from its environment: `OLLAMA_BASE_URL` is Ollama's native root (`http://ollama:11434`), while `VLLM_BASE_URL` and `MODEL_CALLING_ANTHROPIC_BASE_URL` are API roots with `/v1`. `VLLM_API_KEY` is sent to vLLM if set. `POST /v1/config/update` changes a backend's settings at runtime. It is off (404) unless `MODEL_CALLING_ADMIN_TOKEN` is set, and then a request needs `Authorization: Bearer <token>`.
+For backends the alias file names without a `base_url`, the gateway takes URLs from its environment: `OLLAMA_BASE_URL` is Ollama's native root (`http://ollama:11434`), while `VLLM_BASE_URL` and `MODEL_CALLING_ANTHROPIC_BASE_URL` are API roots with `/v1`. `VLLM_API_KEY` is sent to vLLM if set. `POST /v1/config/update` changes a backend's settings at runtime. It is off (404) unless `MODEL_CALLING_ADMIN_TOKEN` is set, and then a request needs `Authorization: Bearer <token>`.
 
-Environment: `OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, `VLLM_API_KEY`, `MODEL_CALLING_ANTHROPIC_BASE_URL`, `MODEL_CALLING_ADMIN_TOKEN`, `PORT`, `MODEL_CALLING_STRICT_PARAMS`. The `model-calling` command also reads a `.env` file from the directory it starts in.
+Environment: `MODEL_CALLING_CONFIG`, `OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, `VLLM_API_KEY`, `MODEL_CALLING_ANTHROPIC_BASE_URL`, `MODEL_CALLING_ADMIN_TOKEN`, `PORT`, `MODEL_CALLING_STRICT_PARAMS`. The `model-calling` command also reads a `.env` file from the directory it starts in.
 
 ## Documentation
 
