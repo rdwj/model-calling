@@ -109,11 +109,17 @@ class SyncModelCallingClient:
     def __init__(self, base_url: str = "http://localhost:8000"):
         """Initialize with the service base URL"""
         self.async_client = ModelCallingClient(base_url)
-        self.loop = asyncio.get_event_loop()
+        # A loop of its own: asyncio.get_event_loop() raises when no loop is
+        # set, as in any thread but the main one, and in the main thread
+        # too on Python 3.14.
+        self.loop = asyncio.new_event_loop()
 
     def close(self):
-        """Close the HTTP client"""
-        self.loop.run_until_complete(self.async_client.close())
+        """Close the HTTP client and the client's event loop"""
+        try:
+            self.loop.run_until_complete(self.async_client.close())
+        finally:
+            self.loop.close()
 
     def chat_completion(
         self,
