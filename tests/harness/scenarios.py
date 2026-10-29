@@ -9,6 +9,8 @@ exchange. The exception is a backend that speaks Anthropic Messages: it sees
 more of a Messages request than of the same scenario in Chat Completions
 (shorthand content, cache_control, metadata), so where the two bodies differ
 the Chat Completions form has a fixture of its own (`Backend.fixture_name`).
+A third form, OpenAI Responses, is written in `responses_scenarios.py`; it
+replays whichever form's fixture has its native body.
 """
 
 import base64
@@ -18,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Mapping, Optional, Tuple
 
-from model_calling.formats import anthropic, chat_completions, embeddings
+from model_calling.formats import anthropic, chat_completions, embeddings, responses
 from model_calling.providers import (
     AnthropicProvider,
     OllamaProvider,
@@ -107,6 +109,11 @@ REASONING = "reasoning"
 NO_THINKING = "no_thinking"
 CHAT_COMPLETIONS = "chat_completions"
 MESSAGES = "messages"
+RESPONSES = "responses"
+
+
+# A scenario only OpenAI Responses can express.
+RESPONSES_ONLY = {"chat_form": False, "messages_form": False, "native_form": RESPONSES}
 
 
 @dataclass(frozen=True)
@@ -149,6 +156,9 @@ class Scenario:
     # Replay another scenario's fixture: the native exchange is identical,
     # and strict body matching proves it.
     fixture: Optional[str] = None
+    # The Responses ingress refuses the request, naming a field, before any
+    # backend call; so it has no fixture.
+    rejected: bool = False
 
     def messages(self) -> list:
         return [{"role": "user", "content": self.prompt}]
@@ -185,18 +195,37 @@ class Scenario:
         return body
 
     @property
+    def responses_form(self) -> bool:
+        """Whether OpenAI Responses can express the request."""
+        from tests.harness.responses_scenarios import RESPONSES_FORMS
+
+        return self.name in RESPONSES_FORMS
+
+    def responses_body(self, model: str) -> dict:
+        from tests.harness.responses_scenarios import responses_body
+
+        return responses_body(self, model)
+
+    @property
     def forms(self) -> Tuple[str, ...]:
         """The wire forms this scenario has."""
         return tuple(
             form
-            for form, has in ((MESSAGES, self.messages_form), (CHAT_COMPLETIONS, self.chat_form))
+            for form, has in (
+                (MESSAGES, self.messages_form),
+                (CHAT_COMPLETIONS, self.chat_form),
+                (RESPONSES, self.responses_form),
+            )
             if has
         )
 
     def native_internal(self, model: str, form: Optional[str] = None):
         """The scenario as an internal request, from `form` (default its native form)."""
-        if (form or self.native_form) == MESSAGES:
+        form = form or self.native_form
+        if form == MESSAGES:
             return anthropic.request_to_internal(self.messages_body(model))
+        if form == RESPONSES:
+            return responses.request_to_internal(self.responses_body(model))
         return chat_completions.request_to_internal(self.chat_completions_body(model))
 
     @property
@@ -456,6 +485,24 @@ SCENARIOS = {
             chat_extra={"max_completion_tokens": 256, "seed": SEED},
             messages_form=False,
         ),
+        # Responses only (Phase 7). `store` is accepted, though nothing is
+        # stored; the native exchange is text's.
+        Scenario("store", TEXT_PROMPT, fixture="text", **RESPONSES_ONLY),
+        # Requests the stateless Responses ingress refuses: stored state,
+        # built-in tools, and encrypted reasoning.
+        *(
+            Scenario(name, TEXT_PROMPT, rejected=True, **RESPONSES_ONLY)
+            for name in (
+                "previous_response_id",
+                "conversation",
+                "background",
+                "web_search",
+                "file_search",
+                "code_interpreter",
+                "computer_use",
+                "encrypted_reasoning",
+            )
+        ),
     )
 }
 
@@ -497,6 +544,7 @@ class Backend:
     def runs(self, scenario: Scenario) -> bool:
         return (
             self.unsupported(scenario) is None
+            and not scenario.rejected
             and scenario.name not in self.refuses
             and (self.only_scenarios is None or scenario.name in self.only_scenarios)
             and (scenario.only_backends is None or self.name in scenario.only_backends)
@@ -531,15 +579,18 @@ class Backend:
 
     def fixture_name(self, scenario: Scenario, form: Optional[str] = None) -> str:
         """The fixture an ingress sending `form` replays: the scenario's own,
-        or for a form whose native body differs from the default form's, one
-        named for that form."""
+        or for a form whose native body differs from the default form's, the
+        first other form's with the same body, or one named for this form."""
         default = self.native_form(scenario)
         chosen = self.native_form(scenario, form)
-        if chosen == default or self.native_request(scenario, chosen) == self.native_request(
-            scenario
-        ):
-            return scenario.fixture_name
-        return f"{scenario.fixture_name}.{chosen}"
+        body = None
+        for other in dict.fromkeys((default, *scenario.forms)):
+            if other != chosen:
+                body = body or self.native_request(scenario, chosen)
+                if self.native_request(scenario, other) != body:
+                    continue
+            return scenario.fixture_name if other == default else f"{scenario.fixture_name}.{other}"
+        raise ValueError(f"{chosen!r} is not a form of scenario {scenario.name!r}")
 
     def model_info_fixture(self, scenario: Scenario) -> Optional[str]:
         """The fixture of the model lookup `scenario` needs first, if any."""
@@ -769,6 +820,8 @@ def exchanges_for(backend_name: str, scenario_name: str, form: Optional[str] = N
     from tests.harness.replay import Exchange, fixture_path
 
     backend, scenario = ALL_BACKENDS[backend_name], ALL_SCENARIOS[scenario_name]
+    if getattr(scenario, "rejected", False):
+        return []
     info = getattr(backend, "model_info_fixture", lambda s: None)(scenario)
     exchanges = [] if info is None else [Exchange.load(fixture_path(backend_name, info))]
     if not refused_params(backend_name, scenario_name):

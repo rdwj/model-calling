@@ -5,7 +5,7 @@ calls against replayed backend fixtures. See tests/harness/grid.py.
 
 import pytest
 
-from model_calling.errors import APIStatusError, UnsupportedParamsError
+from model_calling.errors import APIStatusError, BadRequestError, UnsupportedParamsError
 from tests.harness.grid import (
     LIBRARY_EMBEDDING_INGRESSES,
     LIBRARY_INGRESSES,
@@ -25,6 +25,8 @@ from tests.harness.scenarios import (
     refused_params,
 )
 from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
+from tests.harness.responses_checks import RESPONSE_CHECKS
+from tests.harness.responses_scenarios import rejected_name
 from tests.harness.sdk import validate_embedding_response
 
 
@@ -42,6 +44,11 @@ async def messages(library, cell: Cell):
     return await library.client.amessages(**body)
 
 
+async def responses(library, cell: Cell):
+    body = SCENARIOS[cell.scenario].responses_body(model(cell))
+    return await library.client.aresponses(**body)
+
+
 async def check_backend_error(call, library, cell):
     recorded = Exchange.load(fixture_for(cell.backend, cell.scenario, cell.form))
     with pytest.raises(APIStatusError) as err:
@@ -55,6 +62,14 @@ async def check_refused(call, library, cell):
     with pytest.raises(UnsupportedParamsError) as err:
         await call(library, cell)
     assert tuple(err.value.params) == refused_params(cell.backend, cell.scenario)
+
+
+async def check_rejected(call, library, cell):
+    """The stateless Responses ingress refuses what needs state or is out of
+    scope, naming it, before calling the backend."""
+    with pytest.raises(BadRequestError) as err:
+        await call(library, cell)
+    assert rejected_name(cell.scenario) in err.value.message
 
 
 async def result(call, library, cell):
@@ -98,6 +113,7 @@ EMBEDDING_CHECKS = {"embedding": check_embedding, "embedding_error": check_embed
 CALLS = {
     "library_completion": (completion, COMPLETION_CHECKS),
     "library_messages": (messages, MESSAGE_CHECKS),
+    "library_responses": (responses, RESPONSE_CHECKS),
 }
 
 
@@ -118,6 +134,10 @@ async def test_cell(library, cell: Cell):
     elif refused_params(cell.backend, cell.scenario):
         await check_refused(CALLS[cell.ingress][0], library, cell)
         # Only the model lookups strict mode needed reached the backend.
+        replay.check()
+        return
+    elif SCENARIOS[cell.scenario].rejected:
+        await check_rejected(CALLS[cell.ingress][0], library, cell)
         replay.check()
         return
     elif cell.scenario == "backend_error":

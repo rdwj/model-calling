@@ -174,6 +174,7 @@ Binds `0.0.0.0`, port from `PORT` (default 8000). The gateway reads `.env` (pyth
 - `POST /v1/chat/completions` (OpenAI Chat Completions; streaming SSE ending `data: [DONE]`)
 - `POST /v1/messages` (Anthropic Messages; streaming SSE with `event:` lines; errors as Anthropic error bodies)
 - `POST /v1/messages/count_tokens` (Anthropic token counting, answered with a local estimate since no backend here has a counter)
+- `POST /v1/responses` (OpenAI Responses, stateless: nothing is stored, and requests that need stored state or built-in tools get a 400 naming the field)
 - `POST /v1/embeddings` (OpenAI Embeddings)
 - `GET /v1/models` (the configured aliases), `POST /v1/moderations`, `GET /` health
 

@@ -19,40 +19,48 @@ from tests.harness.scenarios import (
     GRID_BACKENDS,
     CHAT_COMPLETIONS,
     MESSAGES,
+    RESPONSES,
     SCENARIOS,
 )
 
-# The gateway's HTTP ingresses, and the library API's two call families.
-GATEWAY_INGRESSES = ("chat_completions", "gateway_messages")
-LIBRARY_INGRESSES = ("library_completion", "library_messages")
+# The gateway's HTTP ingresses, and the library API's call families.
+GATEWAY_INGRESSES = ("chat_completions", "gateway_messages", "gateway_responses")
+LIBRARY_INGRESSES = ("library_completion", "library_messages", "library_responses")
 # The gateway driven by the official `anthropic` and `openai` clients.
-SDK_INGRESSES = ("sdk_messages", "sdk_completion")
+SDK_INGRESSES = ("sdk_messages", "sdk_completion", "sdk_responses")
 INGRESSES = GATEWAY_INGRESSES + LIBRARY_INGRESSES + SDK_INGRESSES
 # Ingresses that send Chat Completions; they skip scenarios with no such form.
 CHAT_COMPLETIONS_INGRESSES = ("chat_completions", "library_completion", "sdk_completion")
-# Likewise for Anthropic Messages.
+# Likewise for Anthropic Messages and OpenAI Responses.
 MESSAGES_INGRESSES = ("gateway_messages", "library_messages", "sdk_messages")
+RESPONSES_INGRESSES = ("gateway_responses", "library_responses", "sdk_responses")
 # Embeddings run over their own backends and scenarios (`embedding_grid`).
 GATEWAY_EMBEDDING_INGRESSES = ("gateway_embeddings",)
 LIBRARY_EMBEDDING_INGRESSES = ("library_embedding",)
 
-# (ingress, backend, scenario) -> reason, naming the phase that fixes it.
-KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
+# (backend, scenario) -> the backend limitation that fails the cell. The
+# Chat Completions and Messages ingresses carry these as strict xfails; the
+# Responses ingresses, added since, get no cell for them, as for a backend
+# that `lacks` a capability.
+BACKEND_LIMITATIONS: Dict[Tuple[str, str], str] = {
     **{
-        (ingress, backend, "parallel_tools"): (
+        (backend, "parallel_tools"): (
             "gpt-oss-20b on vLLM 0.24 makes one tool call per turn even when asked for "
             "two (backend limitation, found in Phase 5)"
         )
-        for ingress in INGRESSES
         for backend in ("vllm", "vllm_messages")
     },
-    **{
-        (ingress, "openai_compat", "parallel_tools_off"): (
-            "mistral-nemo on OpenRouter makes both calls although the request carries "
-            "parallel_tool_calls: false (backend limitation, found in Phase 4)"
-        )
-        for ingress in INGRESSES
-    },
+    ("openai_compat", "parallel_tools_off"): (
+        "mistral-nemo on OpenRouter makes both calls although the request carries "
+        "parallel_tool_calls: false (backend limitation, found in Phase 4)"
+    ),
+}
+# (ingress, backend, scenario) -> reason, naming the phase that fixes it.
+KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
+    (ingress, backend, scenario): reason
+    for (backend, scenario), reason in BACKEND_LIMITATIONS.items()
+    for ingress in INGRESSES
+    if ingress not in RESPONSES_INGRESSES
 }
 # Known failures in what we send: replay rejects the request, so these fail
 # every test of the cell, and stay marked when `known_failures=False`.
@@ -73,6 +81,8 @@ class Cell:
             return MESSAGES
         if self.ingress in CHAT_COMPLETIONS_INGRESSES:
             return CHAT_COMPLETIONS
+        if self.ingress in RESPONSES_INGRESSES:
+            return RESPONSES
         return None
 
     @property
@@ -99,12 +109,17 @@ def grid(
                     continue
                 if ingress in MESSAGES_INGRESSES and not spec.messages_form:
                     continue
+                if ingress in RESPONSES_INGRESSES and not spec.responses_form:
+                    continue
                 if getattr(spec, "only_backends", None) and backend not in spec.only_backends:
                     continue
                 cell = Cell(ingress, backend, scenario)
                 known = (KNOWN_FAILURES if known_failures else KNOWN_REQUEST_FAILURES).get(
                     (ingress, backend, scenario)
                 )
+                limited = known_failures and (backend, scenario) in BACKEND_LIMITATIONS
+                if ingress in RESPONSES_INGRESSES and (limited or _unsupported(backend, spec)):
+                    continue
                 reason = known or _unsupported(backend, spec)
                 marks = [pytest.mark.xfail(reason=reason, strict=True)] if reason else []
                 params.append(pytest.param(cell, id=cell.id, marks=marks))

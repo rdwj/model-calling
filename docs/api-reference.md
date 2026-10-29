@@ -58,7 +58,7 @@ Sync calls run on a private event-loop thread with a pool of their own. After sy
 
 ### Sync vs async
 
-Every call method has an async form (`acompletion`, `amessages`, `aembedding`) and a sync form (`completion`, `messages`, `embedding`). Async methods return coroutines or async iterators. Sync methods return values or sync iterators, and run the call on a background thread.
+Every call method has an async form (`acompletion`, `amessages`, `aresponses`, `aembedding`) and a sync form (`completion`, `messages`, `responses`, `embedding`). Async methods return coroutines or async iterators. Sync methods return values or sync iterators, and run the call on a background thread.
 
 One `Client` can serve both; async and sync calls keep separate pools.
 
@@ -161,6 +161,57 @@ def messages(
 
 Sync form of `amessages`. Streams are sync iterators.
 
+### aresponses
+
+```python
+async def aresponses(
+    model: str,
+    input: str | list,
+    *,
+    stream: bool = False,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> Response | AsyncIterator[ResponseStreamEvent]
+```
+
+Make an OpenAI Responses call over any backend. `model` is `prefix/name`. Nothing is stored: every response reports `store: false`.
+
+`input` is a string or a list of input items: messages (text and `input_image` parts), `function_call` and `function_call_output` items, and reasoning items. The `output` of a previous call can go straight back into `input`, so a conversation carries its own history. `instructions` becomes the system prompt, ahead of any leading `system` or `developer` messages.
+
+With `stream=True`, returns an async iterator of stream events (`response.created`, `response.in_progress`, then each output item's events, then `response.completed` or `response.incomplete`). The iterator returns once the backend has accepted the request.
+
+Other keyword arguments are Responses request fields: `tools` (function tools), `tool_choice`, `parallel_tool_calls`, `max_output_tokens`, `temperature`, `top_p`, `reasoning` (its `effort` works as `reasoning_effort` does in `completion()`), and `text` (a `json_schema` or `json_object` format constrains the output).
+
+The response's output items follow what the model returned: text as a `message` item, each tool call as a `function_call` item, and thinking as a `reasoning` item carrying the thinking as summary text.
+
+These raise `BadRequestError` naming what they can't serve:
+
+- Requests that need stored state: `previous_response_id`, `conversation`, `background`, and a stored `prompt`
+- Built-in tools (`web_search`, `file_search`, `code_interpreter`, computer use) and any tool type other than `function`
+- `include: ["reasoning.encrypted_content"]`, and input reasoning items carrying `encrypted_content`
+- Input item and content types outside the list above, such as `input_file`
+
+Returns a `Response` for non-streaming calls, shaped like `openai.types.responses.Response`.
+
+### responses
+
+```python
+def responses(
+    model: str,
+    input: str | list,
+    *,
+    stream: bool = False,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    drop_params: bool | None = None,
+    **params,
+) -> Response | Iterator[ResponseStreamEvent]
+```
+
+Sync form of `aresponses`. Streams are sync iterators.
+
 ### aembedding
 
 ```python
@@ -211,15 +262,17 @@ These take precedence over the client's config.
 
 ## Module-level functions
 
-The library exports six functions at module level:
+The library exports eight functions at module level:
 
 ```python
 from model_calling import (
     acompletion,
     amessages,
+    aresponses,
     aembedding,
     completion,
     messages,
+    responses,
     embedding,
 )
 ```
@@ -285,6 +338,7 @@ All responses are pydantic models shaped like the official SDK types:
 
 - `ChatCompletion` and `ChatCompletionChunk` validate against `openai.types.chat.ChatCompletion` and `ChatCompletionChunk`
 - `Message` and `MessageStreamEvent` (and its subtypes) validate against `anthropic.types.Message` and the stream events
+- `Response` and `ResponseStreamEvent` (and its subtypes) validate against `openai.types.responses.Response` and `ResponseStreamEvent`
 - `CreateEmbeddingResponse` validates against `openai.types.CreateEmbeddingResponse`
 
 Access fields as attributes:
@@ -509,6 +563,24 @@ Response:
 ```
 
 The estimate is about one token per four characters of text and JSON (system, messages, tool calls and results, thinking, and tool definitions), 1000 tokens per image, and a few tokens of overhead per message, block, and tool. Real counts depend on the model's tokenizer, so treat it as a rough size for budgeting context, not an exact figure.
+
+#### POST /v1/responses
+
+OpenAI Responses, stateless. Requests and responses match the OpenAI API within the scope `aresponses` describes, and the same requests get a 400 naming what the gateway can't serve, such as `previous_response_id` or a `web_search` tool. `store` is accepted, and every response reports `store: false`.
+
+Streaming: SSE with `event:` and `data:` lines, each event named by its `type` and numbered by `sequence_number`. A backend failure partway through ends the stream with an `error` event.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "chat",
+    "instructions": "You are a helpful assistant.",
+    "input": "Hello"
+  }'
+```
 
 #### POST /v1/embeddings
 

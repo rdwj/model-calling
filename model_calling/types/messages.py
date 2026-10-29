@@ -4,19 +4,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Discriminator, Tag, TypeAdapter
 
-from model_calling.types.base import WireModel
-
-# Tag for content blocks and deltas this module doesn't model. They parse
-# into a fallback model that keeps every field instead of failing.
-UNKNOWN = "unknown"
-
-
-def _type_of(value: Any) -> Any:
-    return value.get("type") if isinstance(value, dict) else getattr(value, "type", None)
-
-
-def _known_or_unknown(*known: str) -> Discriminator:
-    return Discriminator(lambda value: _type_of(value) if _type_of(value) in known else UNKNOWN)
+from model_calling.types.base import UNKNOWN, WireModel, known_or_unknown, type_of
 
 
 class Usage(WireModel):
@@ -73,7 +61,7 @@ ContentBlock = Annotated[
     | Annotated[RedactedThinkingBlock, Tag("redacted_thinking")]
     | Annotated[ToolUseBlock, Tag("tool_use")]
     | Annotated[UnknownContentBlock, Tag(UNKNOWN)],
-    _known_or_unknown("text", "thinking", "redacted_thinking", "tool_use"),
+    known_or_unknown("text", "thinking", "redacted_thinking", "tool_use"),
 ]
 
 
@@ -130,7 +118,7 @@ Delta = Annotated[
     | Annotated[SignatureDelta, Tag("signature_delta")]
     | Annotated[InputJSONDelta, Tag("input_json_delta")]
     | Annotated[UnknownDelta, Tag(UNKNOWN)],
-    _known_or_unknown("text_delta", "thinking_delta", "signature_delta", "input_json_delta"),
+    known_or_unknown("text_delta", "thinking_delta", "signature_delta", "input_json_delta"),
 ]
 
 
@@ -201,7 +189,7 @@ MessageStreamEvent = Annotated[
     | Annotated[ContentBlockStopEvent, Tag("content_block_stop")]
     | Annotated[MessageDeltaEvent, Tag("message_delta")]
     | Annotated[MessageStopEvent, Tag("message_stop")],
-    Discriminator(_type_of),
+    Discriminator(type_of),
 ]
 
 _event_adapter = TypeAdapter(MessageStreamEvent)

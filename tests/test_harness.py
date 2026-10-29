@@ -19,6 +19,7 @@ from tests.harness.scenarios import (
     EMBEDDING_SCENARIOS,
     GRID_BACKENDS,
     MESSAGES,
+    RESPONSES,
     SCENARIOS,
     SEED,
     recorded_scenarios,
@@ -149,8 +150,9 @@ SECRET_PATTERNS = [
 
 
 def test_per_form_fixtures_are_exactly_the_needed_ones():
-    """A Chat Completions-form fixture exists only where its body differs
-    from the default form's, so one left behind after the two converge fails."""
+    """A per-form fixture exists only where its body differs from every
+    earlier form's, so one left behind after the forms converge fails, as
+    does a Responses form whose body no recorded form sends."""
     from tests.harness.record import _fixture_names
 
     expected = {
@@ -160,7 +162,10 @@ def test_per_form_fixtures_are_exactly_the_needed_ones():
         for _, fixture in _fixture_names(b, s)
         if fixture != s.name
     }
-    assert set(FIXTURES_DIR.glob(f"*/*.{CHAT_COMPLETIONS}.json")) == expected
+    per_form = {
+        p for form in (CHAT_COMPLETIONS, RESPONSES) for p in FIXTURES_DIR.glob(f"*/*.{form}.json")
+    }
+    assert per_form == expected
 
 
 def test_every_grid_cell_has_a_fixture():
