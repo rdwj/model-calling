@@ -6,6 +6,7 @@ import pytest
 
 from model_calling.core import (
     Base64Source,
+    Document,
     FileSource,
     Image,
     Message,
@@ -154,6 +155,13 @@ def test_build_request_file_source_image_raises(provider):
     img = Image(source=FileSource(file_id="file-123"))
     with pytest.raises(TranslationError, match="cannot accept an image by file id"):
         provider.build_request(req(user(img)))
+
+
+def test_build_request_document_block_raises(provider):
+    """OpenAI-compatible providers cannot accept document blocks (Phase 12 item 4)."""
+    doc = Document(data={"source": {"type": "text", "text": "content"}})
+    with pytest.raises(TranslationError, match="cannot accept document blocks"):
+        provider.build_request(req(user(doc)))
 
 
 # --- build_request: tool results ---

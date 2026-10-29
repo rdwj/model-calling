@@ -240,6 +240,24 @@ def test_unsupported_params(provider, param, value, in_unsupported):
     assert (param in unsupported) == in_unsupported
 
 
+def test_unsupported_chat_completions_extras(provider):
+    """Chat Completions extras that Anthropic doesn't support: logprobs,
+    logit_bias, and user (Phase 12 item 1)."""
+    chat_req = chat_completions.request_to_internal(
+        {
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "logprobs": True,
+            "logit_bias": {"123": 10},
+            "user": "user123",
+        }
+    )
+    unsupported = provider.unsupported_params(chat_req)
+    assert "logprobs" in unsupported
+    assert "logit_bias" in unsupported
+    assert "user" in unsupported
+
+
 def test_build_request_opaque_tool_raises(provider):
     opaque = Opaque(format="openai_chat", data={"type": "code_interpreter"})
     with pytest.raises(TranslationError, match="cannot send a 'openai_chat' block"):
