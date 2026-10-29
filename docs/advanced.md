@@ -440,7 +440,7 @@ The `model-calling` command (and `python -m model_calling`) reads a `.env` file 
 - `OLLAMA_BASE_URL`: Ollama's native API root, without `/v1` (default `http://localhost:11434`)
 - `VLLM_BASE_URL`: vLLM's API root with `/v1` (default `http://localhost:8000/v1`)
 - `VLLM_API_KEY`: sent to vLLM as a bearer token, if set
-- `MODEL_CALLING_ANTHROPIC_BASE_URL`: the Anthropic backend's API root with `/v1` (default `https://api.anthropic.com/v1`)
+- `MODEL_CALLING_ANTHROPIC_BASE_URL`: the Anthropic backend's API root with `/v1` (default `https://api.anthropic.com/v1`). `ANTHROPIC_API_KEY`, if set, goes to this host.
 - `MODEL_CALLING_ADMIN_TOKEN`: enables `/v1/config/update` (see [Runtime Configuration](#runtime-configuration))
 - `PORT`: server port (default 8000)
 - `MODEL_CALLING_STRICT_PARAMS`: strict mode (see below)

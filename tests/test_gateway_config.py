@@ -180,3 +180,23 @@ async def test_legacy_client_sends_its_admin_token(gateway, monkeypatch, token, 
             assert raised.value.response.status_code == status
     finally:
         await client.close()
+
+
+async def test_vllm_model_listing_sends_the_vllm_key(env_gateway, monkeypatch):
+    from model_calling import registry as registry_module
+
+    seen = {}
+
+    def answer(request):
+        seen[request.url.host] = request.headers.get("authorization")
+        return httpx.Response(200, json={"data": [], "models": []})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        registry_module.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(answer), **kwargs),
+    )
+    response = await env_gateway.client.get("/v1/models")
+    assert response.status_code == 200, response.text
+    assert seen == {"vllm.test": f"Bearer {VLLM_ENV_KEY}", "ollama.test": None}

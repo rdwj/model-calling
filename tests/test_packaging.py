@@ -97,3 +97,11 @@ def test_backend_urls_in_dotenv_reach_the_server(dotenv_dir):
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "http://ollama.from-dotenv:11434"
     assert "ollama base URL: http://ollama.from-dotenv:11434" in result.stderr
+
+
+def test_the_entry_point_ignores_dotenv_in_parent_directories(dotenv_dir):
+    start = dotenv_dir / "child"
+    start.mkdir()
+    result = run_in(start, _RUN_MAIN.format(expr=f"os.environ.get({DOTENV_VAR!r})"))
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "None", result.stdout

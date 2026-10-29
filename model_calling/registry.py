@@ -625,9 +625,12 @@ class ModelRegistry:
 
         try:
             # List vLLM models
-            vllm_url = self.default_configs["vllm"]["base_url"]
+            vllm_config = self.default_configs["vllm"]
+            vllm_url = vllm_config["base_url"]
+            api_key = vllm_config.get("api_key")
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{vllm_url}/models", timeout=10.0)
+                response = await client.get(f"{vllm_url}/models", headers=headers, timeout=10.0)
                 if response.status_code == 200:
                     for model in response.json().get("data", []):
                         model_id = model.get("id")
