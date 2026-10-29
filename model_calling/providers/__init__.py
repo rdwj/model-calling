@@ -70,7 +70,7 @@ def provider_for(
 
     `configs` maps each prefix to its settings (`base_url`, `api_key`,
     `callbacks`, and optionally `headers` and `transport`), as in
-    `ModelRegistry.default_configs`. With `clients`, the provider shares its
+    `Client.config`. With `clients`, the provider shares its
     prefix's pooled HTTP client instead of opening one per call.
     """
     prefix, short_name = split_model(model_name)

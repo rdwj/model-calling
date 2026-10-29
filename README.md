@@ -132,6 +132,23 @@ Example: Ollama cannot force a tool call (`tool_choice` "required" or `{"type": 
 
 Some parameters are always dropped silently: `cache_control` (a caching hint that changes no output) and `user` for Ollama embeddings.
 
+## Errors and timeouts
+
+Every exception the library raises subclasses `model_calling.APIError` and carries `.provider`, `.status` (the backend's HTTP status, or `None` when no response arrived), and `.body`. The subclasses mirror the `openai` SDK's: `BadRequestError` (including `UnsupportedParamsError`), `AuthenticationError`, `PermissionDeniedError`, `NotFoundError`, `RateLimitError`, `InternalServerError`, `APIConnectionError`, `APITimeoutError`, and `APIResponseValidationError`.
+
+```python
+import model_calling
+
+try:
+    response = model_calling.completion("openrouter/openai/gpt-4o-mini", messages)
+except model_calling.RateLimitError:
+    ...  # back off and retry; the library does not retry for you
+except model_calling.APIError as e:
+    print(e.provider, e.status, e.message)
+```
+
+Requests time out after 300 seconds, including a stalled stream; 0.2.0 has no setting to change that.
+
 ## Gateway
 
 The gateway is a FastAPI server running on the same library code. Apps talk to it with the official `openai` or `anthropic` SDK and name models by alias; a YAML file decides which backend serves each alias. Moving from Ollama in development to vLLM in production is an edit to that file. The app doesn't change, and the gateway picks up the edit without a restart.
