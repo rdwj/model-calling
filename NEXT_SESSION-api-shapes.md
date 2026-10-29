@@ -6,123 +6,20 @@
 > https://github.com/users/rdwj/projects/11. Phase-to-issue map: Phase 8 =
 > #1, Phase 12 = #2, Phase 7 = #3 and #4, Phase 6 slice 2 = #5, Phase 9
 > follow-ups = #6, pilot = #7. Update the issues as work lands; this file
-> keeps the detailed arc.
+> keeps the detailed arc. #1 (Phase 8) closed 2026-10-29.
 
-## Next: Phase 8, Claude Code acceptance (#1)
+## Next: Session B, the overnight workflow (#2, #3, #4, #5)
 
-Prove the Messages path end to end: Claude Code, pointed at the gateway,
-completes a scripted tool-using task, with every model it asks for mapped
-by alias. Phase 8's work list and definition of done are below; this
-session does all of it.
-
-1. **Map Claude Code's models through aliases** (research first). Find
-   which env vars Claude Code 2.1.x reads for its base URL, auth, main
-   model, and background (Haiku-class) model, and what model ids it sends
-   by default; check `claude --help` and the installed docs, don't work
-   from memory. Write one alias file per run in a temp directory (e.g.
-   `main` and `small`), and set the model vars to the aliases so no
-   Claude id has to be an alias name. If Claude Code insists on sending
-   its own ids, alias those names instead (alias-wins makes that legal).
-2. **Acceptance script** under `tests/acceptance/`: start the gateway
-   (`python -m model_calling` with `MODEL_CALLING_CONFIG` and a free
-   port), point Claude Code at it, run `claude -p` in a temp directory on
-   a fixed task (create a file, edit it, run a command), then check the
-   resulting files deterministically. Capture the gateway log for
-   failures. Marked so plain `pytest` never runs it.
-3. **Run it on three backends:** (a) a Claude model via the `anthropic`
-   provider on OpenRouter (claude-haiku-4.5 or 5.5; see CLAUDE.md on
-   which one thinks), (b) a non-Claude model via OpenRouter Chat
-   Completions, (c) host Ollama `qwen3-coder:30b` (fallback
-   `gpt-oss:20b`; both already pulled). Record spend in
-   `tests/live/spend.jsonl` via `usage.cost`, as
-   `tests/live/test_anthropic_live.py` does.
-4. **Fix what it finds.** Expect gaps Claude Code exposes on the Messages
-   ingress (beta headers or query params, `cache_control`, tool shapes,
-   `count_tokens`, streaming edge cases). Each fix gets an offline grid
-   cell or a strict xfail naming its phase; never loosen a validator.
-5. **README** in `tests/acceptance/`: prerequisites (Claude Code,
-   `OPENROUTER_API_KEY` in the environment, the Ollama model pulled).
-
-**Sequencing.** 1, 2, then 3 in the order (c), (a), (b): Ollama is free,
-so the script gets debugged there before any spend. 4 interleaves with 3.
-If the session runs long, stop after (c) and (a) pass, with (b) named as
-the gap.
-
-**Constraints for the session:**
-- Exit predicate: Phase 8's definition of done (all three backends pass
-  and the run's spend is committed), with offline `pytest` still green
-  and no new xfails except ones naming a later phase.
-- Live budget: $0.053 of $5 spent. Cap this session at $1; a `claude -p`
-  run can make many calls, so check `spend.jsonl` after each backend.
-
-**Session start protocol:**
-- Premise checks (report before acting): `main` matches `origin/main` (at or after `883a470`); "Test Package" green;
-  `HOME=$(mktemp -d) uv run pytest` shows 1423 passed, 35 xfailed;
-  `podman-compose down` has been run (compose's Ollama publishes 11434
-  and shadows host Ollama, which has `qwen3-coder:30b`); `curl
-  localhost:11434/api/tags` lists `qwen3-coder:30b`; `claude --version`
-  (2.1.308 at planning); `OPENROUTER_API_KEY` is set.
-- Rules with history:
-  - Never loosen replay matching or a validator; strict-xfail with the
-    fixing phase named.
-  - Errors and responses never name a backend (keep
-    `assert_no_backend_details` on any new error path).
-  - Diff-review every subagent's output; two this epic edited files
-    outside their brief.
-- Stop-and-ask before: any spend past $1; retiring or renaming an
-  endpoint; any new dependency; running Claude Code anywhere but a temp
-  directory.
-- Close ritual: `/session-close`, then `/plan-next-session`. Next is Session B,
-  the workflow (see "Session B: the workflow design" below).
-
-## Remaining epic phases
-
-End-state: model-calling replaces LiteLLM in rdwj's projects and treats the
-OpenAI and Anthropic wire formats as equals. The library API offers
-`completion()` (OpenAI types) and `messages()` (Anthropic types) side by
-side, familiar to LiteLLM users but not bound to its design; breaking
-changes are documented in the migration guide. The optional gateway speaks
-OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses
-(stateless) over Ollama, vLLM, OpenAI-compatible (including OpenRouter),
-Anthropic, and Cohere v2. Gateway clients name models only by alias, from
-a hot-reloaded YAML file, so a backend swap is a file edit. An offline
-grid validates every ingress × backend cell against the official SDK
-types; live smoke tests run through OpenRouter; Claude Code completes a
-tool-using task through the gateway. 0.2.0 shipped the library and gateway
-without Responses, Cohere, or the Claude Code proof; the epic ends with
-0.3.0 and sanicode migrated off LiteLLM.
-
-Done: Phases 1–5, 6 slice 1, 10, and 11 (see the "What landed" ledger and
-`session-summaries/`). Phase numbers stay stable because code comments,
-xfail reasons, and summaries cite them, so the order below is not numeric.
-Re-planned 2026-10-29 after the first reconciliation
-(`reconciliations/2026-10-29-api-shapes.md`): Phase 9 split into two
-slices, pass-through narrowed into Phase 7 slice 2, and the carried
-offline leftovers given an owner as Phase 12.
-
-**Session plan (decided 2026-10-29, after 0.2.0 shipped):**
-
-| Session | Phases (issues) | Mode |
-|---|---|---|
-| A, evening of 2026-10-29 | 8 (#1) | Interactive: the "Next" slice above |
-| B, overnight after A | 12 (#2), 7 slices 1–2 (#3, #4), 6 slice 2 (#5) | Workflow, unattended; design below |
-| Later | 9 follow-ups (#6), pilot (#7), then 0.3.0 | Needs rdwj or outside infrastructure |
-
-B starts only if A finishes, but doesn't depend on A's code: it picks up
-whatever A left for Phase 12 from A's session summary. If A doesn't
-finish, B waits.
-
-### Session B: the workflow design
+One unattended Workflow run that lands Phase 12, Phase 7 slices 1 and 2,
+and Phase 6 slice 2 on branch `batch/0.3.0` and opens a draft PR for rdwj
+to review in the morning. All judgment was settled with rdwj on
+2026-10-29 (the design below, plus the four calls after it); an agent that
+meets a question not answered here stops its stream and records the
+question instead of deciding it.
 
 Run with the Workflow tool; rdwj opts in by starting the session ("run
-the workflow"). All judgment below was settled with rdwj on 2026-10-29;
-an agent that hits a question not answered here stops its stream and
-records the question instead of deciding it.
-
-**Session start (before launching, report the results):** the A premise
-checks plus: A's summary exists and its Phase 12 leftovers are copied
-into the Phase 12 brief; offline suite green on `main`; live spend so far
-read from `tests/live/spend.jsonl`.
+the workflow"). Report the premise checks in "Session start protocol"
+below before launching.
 
 **Streams** (each in its own git worktree off `main`, one implementer,
 then an independent reviewer that sees the code and the brief, not the
@@ -167,37 +64,91 @@ draft PR exists; a session summary records which.
 **Morning:** rdwj reviews the draft PR. Issues close when the PR merges
 to `main`, not before.
 
-### Phase 8: Claude Code acceptance
+**Calls made with rdwj after Session A (2026-10-29):**
+- **Phase 12 item 7, strict drops: keep silent.** Chat Completions
+  backends drop Messages-only `context_management`, `metadata`, and
+  `cache_control` without naming them in `unsupported_params`; they're
+  hints with no Chat Completions meaning. Stream 2 adds a test pinning
+  that, for the OpenAI-compatible provider, from a request shaped like
+  Claude Code's (see `tests/acceptance/README.md`; never a captured body).
+- **Recording against host Ollama is allowed** for stream 2's drop-path
+  cells (Phase 12 item 3), via `uv run python -m tests.harness.record`
+  on `localhost:11434`. The first cell is `thinking_unsupported`
+  (qwen3-coder:30b, `tests/harness/scenarios.py`): the gateway's default
+  path must send the request without `think`. If Ollama is down, that
+  cell becomes a strict xfail naming Phase 12, and the stream says so.
+- **Budget = ledger delta.** Read the ledger total
+  (`tests.harness.ledger.total_spend()`) at the start; the cap is that
+  plus $0.50, `$0.05` placeholders counted. At 2026-10-29 close the total
+  was $0.357.
+- #1 is closed; Phase 8 needs nothing more from B.
 
-The headline end-to-end test of the Messages path.
+**Session start protocol:**
+- Premise checks (report before launching):
+  `main` matches `origin/main` at or after `4415535`; "Test Package"
+  green on it; `HOME=$(mktemp -d) uv run pytest` shows 1440 passed,
+  35 xfailed; `curl localhost:11434/api/tags` lists `qwen3-coder:30b`
+  (only stream 2 needs it); `OPENROUTER_API_KEY` set (only stream 4);
+  no `batch/0.3.0` branch exists yet locally or on origin (if one does,
+  stop and ask); record the starting ledger total.
+- Phase 12's brief carries Session A's leftovers from
+  `session-summaries/2026-10-29-api-shapes-phase8.md` ("Drift &
+  forward-collisions") and the calls above.
+- Rules with history:
+  - Never push to `main`; never loosen replay matching or a validator.
+    Known-wrong behavior is a strict xfail naming the fixing phase.
+  - The verifier's "exactly 35 xfails" means backend limitations get no
+    cell (`Scenario.only_backends`, as `thinking_unsupported` does), not
+    a new xfail. Only a real bug owned by a later phase may add one.
+  - Diff-review every agent's output against its brief: agents this epic
+    have edited files outside their scope.
+- Stop-and-ask (here: stop the stream and record why) before: any new
+  dependency; live spend past the cap; retiring or renaming an endpoint;
+  touching another stream's files after its merge.
+- Close ritual: the draft PR body lists each stream's outcome; a session
+  summary records the same; then `/plan-next-session` (next is the
+  Later row: #6 and #7, which need rdwj).
 
-**Work:**
-1. Acceptance script under `tests/acceptance/`: start the gateway with an
-   alias file, point Claude Code at it, and run `claude -p` on a scripted
-   tool-using task in a temp directory (create a file, edit it, run a
-   command). Check the resulting files deterministically.
-2. Map Claude Code's main and background (Haiku-class) models through
-   aliases. Claude Code's `ANTHROPIC_BASE_URL` points it at the gateway;
-   the gateway itself ignores that variable (its Anthropic backend URL is
-   `MODEL_CALLING_ANTHROPIC_BASE_URL` or the alias file's `base_url`).
-3. Run it against (a) a Claude model via the `anthropic` provider on
-   OpenRouter, as `tests/live/test_anthropic_live.py` configures it,
-   (b) a non-Claude model via OpenRouter Chat Completions, and (c) host
-   Ollama `qwen3-coder:30b` (fallback `gpt-oss:20b`).
-4. Fix the Messages-ingress gaps it exposes, each with a grid cell or a
-   strict xfail naming its phase. Expect budget-only thinking (dropped by
-   the non-strict gateway; confirm that's acceptable) and `cache_control`.
-5. `tests/acceptance/README.md`: prerequisites (Claude Code,
-   `OPENROUTER_API_KEY` in the environment, the Ollama model pulled).
+## Remaining epic phases
 
-**Definition of done:** the script passes for all three backends, the
-run's spend is committed to `tests/live/spend.jsonl`, and offline `pytest`
-stays green with no new xfails except ones naming a later phase.
+End-state: model-calling replaces LiteLLM in rdwj's projects and treats the
+OpenAI and Anthropic wire formats as equals. The library API offers
+`completion()` (OpenAI types) and `messages()` (Anthropic types) side by
+side, familiar to LiteLLM users but not bound to its design; breaking
+changes are documented in the migration guide. The optional gateway speaks
+OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses
+(stateless) over Ollama, vLLM, OpenAI-compatible (including OpenRouter),
+Anthropic, and Cohere v2. Gateway clients name models only by alias, from
+a hot-reloaded YAML file, so a backend swap is a file edit. An offline
+grid validates every ingress × backend cell against the official SDK
+types; live smoke tests run through OpenRouter; Claude Code completes a
+tool-using task through the gateway. 0.2.0 shipped the library and gateway
+without Responses, Cohere, or the Claude Code proof; the epic ends with
+0.3.0 and sanicode migrated off LiteLLM.
 
-**Dependencies:** Phases 5, 6 slice 1, and 11 (done).
+Done: Phases 1–5, 6 slice 1, 8, 10, and 11 (see the "What landed" ledger and
+`session-summaries/`). Phase numbers stay stable because code comments,
+xfail reasons, and summaries cite them, so the order below is not numeric.
+Re-planned 2026-10-29 after the first reconciliation
+(`reconciliations/2026-10-29-api-shapes.md`): Phase 9 split into two
+slices, pass-through narrowed into Phase 7 slice 2, and the carried
+offline leftovers given an owner as Phase 12.
 
-**Parallel-ok:** with Phases 12 and 7 slice 1 only if run in separate
-worktrees (all three touch the Messages and gateway code).
+**Session plan (decided 2026-10-29, after 0.2.0 shipped):**
+
+| Session | Phases (issues) | Mode |
+|---|---|---|
+| A, evening of 2026-10-29 | 8 (#1) | Interactive; done |
+| B, overnight after A | 12 (#2), 7 slices 1–2 (#3, #4), 6 slice 2 (#5) | Workflow, unattended; the "Next" slice above |
+| Later | 9 follow-ups (#6), pilot (#7), then 0.3.0 | Needs rdwj or outside infrastructure |
+
+A finished, so B is unblocked.
+
+### Phase 8: Claude Code acceptance (done 2026-10-29)
+
+`uv run pytest -m acceptance` passes on all three backends; see
+`tests/acceptance/README.md` and
+`session-summaries/2026-10-29-api-shapes-phase8.md`.
 
 ### Phase 12: Offline cleanup of carried leftovers
 
@@ -223,7 +174,10 @@ Items deferred across sessions without an owner. All offline, each small.
    the `integration` marker; update CONTRIBUTING (decided 2026-10-29).
 6. A configurable request timeout (per prefix in `config` and per
    call); 0.2.0 fixes it at 300 s (`DEFAULT_TIMEOUT`).
-7. Add whatever Phase 8 surfaced but didn't fix.
+7. What Phase 8 surfaced but didn't fix: the gateway drop-path cell for
+   `thinking_unsupported` (with item 3), and a test pinning that strict
+   mode stays silent on `context_management`, `metadata`, and
+   `cache_control` for Chat Completions backends (decided 2026-10-29).
 
 **Definition of done:** each item is a passing grid cell or test, or a
 deletion; nothing is left in "Still open" or carried forward to a later
@@ -231,7 +185,7 @@ phase without a named owner;
 `grep -rn "integration" pyproject.toml CONTRIBUTING.md` finds no test
 marker or script; offline `pytest` green with no new xfails.
 
-**Dependencies:** none for items 1–6; item 7 needs Phase 8's summary.
+**Dependencies:** none.
 
 **Parallel-ok:** with Phase 6 slice 2.
 
@@ -357,7 +311,15 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-29): Phase 11 slice 2, reconcile, 0.2.0 released
+## What landed last session (2026-10-29): Phase 8, Claude Code acceptance
+
+Phase 8 done, `95e1f34..4415535`: Claude Code completes a tool-using task
+through the gateway on Ollama, Claude via the anthropic provider, and
+OpenRouter Chat Completions, for $0.0035. One gateway fix (Ollama thinking
+on models that can't think). Closed #1. Record:
+`session-summaries/2026-10-29-api-shapes-phase8.md`.
+
+## What landed earlier (2026-10-29): Phase 11 slice 2, reconcile, 0.2.0 released
 
 `model-calling==0.2.0` is on PyPI (tag `v0.2.0` at `f88dcc8`); the rest of
 the epic is GitHub issues #1–#8 (milestone 0.3.0). Record:
@@ -533,10 +495,10 @@ of 23 files.
 
 ## If blocked
 
-- If Claude Code can't be pointed at the gateway (auth or model-id
-  handling it won't let go of), record exactly what it sends (gateway log)
-  and stop-and-ask; don't build workarounds into the gateway.
-- If OpenRouter is down or the key is missing, finish (c) on Ollama and
-  name (a) and (b) as gaps.
-- Fallback work in this epic: Phase 12 items 1–5 (offline, independent
-  of Phase 8) or Phase 6 slice 2 (Cohere, offline).
+- The Workflow tool unavailable, or rdwj not opting in: run the streams
+  by hand in the same order, one per session, starting with stream 1
+  (Cohere, offline) or stream 2 (Phase 12, offline).
+- OpenRouter down or the key missing: stream 4 lands offline-only and
+  says so; streams 1–3 need no network.
+- Host Ollama down: stream 2's recorded cell becomes a strict xfail
+  naming Phase 12; everything else in B is unaffected.
