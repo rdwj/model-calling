@@ -16,6 +16,7 @@ from model_calling.core import (
     BlockDelta,
     BlockStart,
     BlockStop,
+    Document,
     Image,
     Message,
     MessageDelta,
@@ -238,6 +239,8 @@ class OllamaProvider(Provider):
         """One internal turn as Ollama messages: a `tool` message per tool result,
         then the turn itself."""
         for block in msg.content:
+            if isinstance(block, Document):
+                raise TranslationError("Ollama cannot accept document blocks")
             if isinstance(block, Opaque):
                 raise TranslationError(
                     f"Ollama cannot accept a {block.format} {block.data.get('type')!r} block"
