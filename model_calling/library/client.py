@@ -1,6 +1,6 @@
 """
-The in-process library API: `Client`, with Chat Completions and Anthropic
-Messages calls side by side, plus OpenAI Embeddings.
+The in-process library API: `Client`, with Chat Completions, Anthropic
+Messages, and OpenAI Responses calls side by side, plus OpenAI Embeddings.
 
 A client owns its per-prefix config, its callbacks, and pooled HTTP
 clients. Async calls pool on the caller's event loop; sync calls run on a
@@ -33,10 +33,11 @@ from model_calling.errors import (
     UnsupportedParamsError,
 )
 from model_calling.formats import TranslationError
-from model_calling.formats import anthropic, embeddings
+from model_calling.formats import anthropic, embeddings, responses
 from model_calling.formats import chat_completions as chat
 from model_calling.formats.anthropic_stream import AnthropicStreamEncoder
 from model_calling.formats.chat_completions_stream import ChatCompletionsStreamEncoder
+from model_calling.formats.responses_stream import ResponsesStreamEncoder
 from model_calling.library._calls import (
     complete,
     encoded,
@@ -56,6 +57,8 @@ from model_calling.providers import (
 from model_calling.types.chat import ChatCompletion, ChatCompletionChunk
 from model_calling.types.embeddings import CreateEmbeddingResponse
 from model_calling.types.messages import Message, MessageStreamEvent, parse_stream_event
+from model_calling.types.responses import Response, ResponseStreamEvent
+from model_calling.types.responses import parse_stream_event as parse_response_event
 
 logger = logging.getLogger(__name__)
 
@@ -288,6 +291,73 @@ class Client:
         encoder = AnthropicStreamEncoder(model)
         events = await open_stream(provider, request)
         return encoded(provider, events, encoder.encode, parse_stream_event)
+
+    # --- OpenAI Responses -----------------------------------------------------
+
+    async def aresponses(
+        self,
+        /,
+        model: str,
+        input: str | list,
+        *,
+        stream: bool = False,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        drop_params: bool | None = None,
+        **params: Any,
+    ) -> Response | AsyncIterator[ResponseStreamEvent]:
+        """A stateless OpenAI Responses call over any backend. `model` is
+        `prefix/name`; `input` is a string or a list of input items, which
+        may include a previous response's `output`.
+
+        With `stream=True` this returns an async iterator of stream events
+        (`response.created` through `response.completed`), once the backend
+        has accepted the request. Other keyword arguments are Responses
+        request fields, such as `instructions`, `tools`, and `reasoning`.
+        Nothing is stored: a request needing stored state, such as one with
+        `previous_response_id`, raises `BadRequestError` naming the field.
+        """
+        return await self._responses(
+            self._http, model, input, stream, api_base, api_key, drop_params, params
+        )
+
+    def responses(
+        self,
+        /,
+        model: str,
+        input: str | list,
+        *,
+        stream: bool = False,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        drop_params: bool | None = None,
+        **params: Any,
+    ) -> Response | Iterator[ResponseStreamEvent]:
+        """The sync form of `aresponses`; streams are sync iterators."""
+        return self._run_sync(
+            self._responses(
+                self._sync_http, model, input, stream, api_base, api_key, drop_params, params
+            ),
+            stream,
+        )
+
+    async def _responses(self, http, model, input, stream, api_base, api_key, drop_params, params):
+        model, api_base, api_key, _ = self._resolve(model, api_base, api_key)
+        body = {**params, "model": model, "input": _wire(input), "stream": stream}
+        provider = self._provider(http, model, api_base, api_key)
+        request = translate(provider, lambda: responses.request_to_internal(body))
+        await self._check_params(provider, request, drop_params)
+        if not stream:
+            response = await complete(provider, request)
+            return typed(
+                provider,
+                lambda: Response.model_validate(
+                    responses.response_from_internal(response, model, request)
+                ),
+            )
+        encoder = ResponsesStreamEncoder(model, request)
+        events = await open_stream(provider, request)
+        return encoded(provider, events, encoder.encode, parse_response_event)
 
     # --- Embeddings -----------------------------------------------------------
 
