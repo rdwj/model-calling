@@ -463,7 +463,6 @@ The `model-calling` command (and `python -m model_calling`) reads a `.env` file 
 - `VLLM_BASE_URL`: vLLM's API root with `/v1` (default `http://localhost:8000/v1`)
 - `VLLM_API_KEY`: sent to vLLM as a bearer token, if set
 - `MODEL_CALLING_ANTHROPIC_BASE_URL`: the Anthropic backend's API root with `/v1` (default `https://api.anthropic.com/v1`). `ANTHROPIC_API_KEY`, if set, goes to this host.
-- `MODEL_CALLING_ADMIN_TOKEN`: enables `/v1/config/update` (see [Runtime Configuration](#runtime-configuration))
 - `PORT`: server port (default 8000)
 - `MODEL_CALLING_STRICT_PARAMS`: strict mode (see below)
 
@@ -493,24 +492,6 @@ Backend errors map to HTTP status codes the gateway client sees:
 - Requests the library refuses before sending become 400
 
 An error the backend reports inside a stream maps by its kind: rate limit becomes 429, not found becomes 404, invalid request becomes 400, anything else becomes 502.
-
-### Runtime Configuration
-
-`POST /v1/config/update` changes a prefix's settings without restarting the gateway. A changed `base_url` receives the key the gateway holds for that backend, so the endpoint is off by default: it returns 404 unless the gateway starts with `MODEL_CALLING_ADMIN_TOKEN` set. With the token set, send it as a bearer token; a request without it gets 403.
-
-```bash
-curl -X POST http://localhost:8000/v1/config/update \
-  -H "Authorization: Bearer $MODEL_CALLING_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prefix": "ollama",
-    "config": {
-      "base_url": "http://different-host:11434"
-    }
-  }'
-```
-
-The change applies to the next request and lasts until the gateway restarts. For settings that should survive a restart, use the environment variables above.
 
 ### Building Containers
 

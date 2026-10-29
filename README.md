@@ -151,7 +151,7 @@ Binds `0.0.0.0`, port from `PORT` (default 8000). The gateway reads `.env` (pyth
 - `POST /v1/messages` (Anthropic Messages; streaming SSE with `event:` lines; errors as Anthropic error bodies)
 - `POST /v1/messages/count_tokens` (Anthropic token counting, answered with a local estimate since no backend here has a counter)
 - `POST /v1/embeddings` (OpenAI Embeddings)
-- `GET /v1/models` (the configured aliases), `POST /v1/config/update`, `POST /v1/moderations`, `GET /` health
+- `GET /v1/models` (the configured aliases), `POST /v1/moderations`, `GET /` health
 
 Point the official SDKs at it:
 
@@ -175,9 +175,9 @@ The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_P
 
 ### Backend URLs
 
-For backends the alias file names without a `base_url`, the gateway takes URLs from its environment: `OLLAMA_BASE_URL` is Ollama's native root (`http://ollama:11434`), while `VLLM_BASE_URL` and `MODEL_CALLING_ANTHROPIC_BASE_URL` are API roots with `/v1`. `VLLM_API_KEY` is sent to vLLM if set. `POST /v1/config/update` changes a backend's settings at runtime. It is off (404) unless `MODEL_CALLING_ADMIN_TOKEN` is set, and then a request needs `Authorization: Bearer <token>`.
+For backends the alias file names without a `base_url`, the gateway takes URLs from its environment: `OLLAMA_BASE_URL` is Ollama's native root (`http://ollama:11434`), while `VLLM_BASE_URL` and `MODEL_CALLING_ANTHROPIC_BASE_URL` are API roots with `/v1`. `VLLM_API_KEY` is sent to vLLM if set.
 
-Environment: `MODEL_CALLING_CONFIG`, `OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, `VLLM_API_KEY`, `MODEL_CALLING_ANTHROPIC_BASE_URL`, `MODEL_CALLING_ADMIN_TOKEN`, `PORT`, `MODEL_CALLING_STRICT_PARAMS`. The `model-calling` command also reads a `.env` file from the directory it starts in.
+Environment: `MODEL_CALLING_CONFIG`, `OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, `VLLM_API_KEY`, `MODEL_CALLING_ANTHROPIC_BASE_URL`, `PORT`, `MODEL_CALLING_STRICT_PARAMS`. The `model-calling` command also reads a `.env` file from the directory it starts in.
 
 ## Containers
 

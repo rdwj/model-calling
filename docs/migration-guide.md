@@ -136,9 +136,9 @@ Errors a backend reports inside a stream now map by kind: rate limit errors beco
 
 The gateway's `POST /v1/messages` endpoint requires `max_tokens` in the request body. Requests without it return 400.
 
-### The config endpoint needs an admin token
+### Runtime configuration removed
 
-`POST /v1/config/update` can point a backend, and the key the gateway holds for it, at another host. In 0.1.x anyone who could reach the gateway could call it. Now it returns 404 unless the gateway starts with `MODEL_CALLING_ADMIN_TOKEN` set, and with the token set, a request without `Authorization: Bearer <token>` gets 403. The legacy `ModelCallingClient` and `SyncModelCallingClient` take the token as `admin_token`. Most deployments no longer need the endpoint, since the gateway now reads backend URLs from its environment (see [Environment Variables](advanced.md#environment-variables)).
+`POST /v1/config/update`, `MODEL_CALLING_ADMIN_TOKEN`, and the legacy client's `update_config` and `admin_token` are removed. Backends are configured in the alias file and environment (see [Model Aliases](advanced.md#model-aliases)).
 
 ### Gateway clients name models by alias
 

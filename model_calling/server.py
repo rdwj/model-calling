@@ -3,7 +3,6 @@ FastAPI server for the model-calling service.
 """
 
 import contextlib
-import hmac
 import logging
 import os
 from typing import List, Optional, Union
@@ -14,7 +13,7 @@ from model_calling import __version__
 from model_calling import gateway
 from model_calling.aliases import AliasStore
 from model_calling.callbacks import DefaultCallback
-from model_calling.config import admin_token, backend_overrides
+from model_calling.config import backend_overrides
 from model_calling.library import Client
 
 
@@ -162,40 +161,6 @@ async def create_embeddings(request: Request):
     """OpenAI Embeddings, for any configured model."""
     body = await request.json()
     return await gateway.embeddings(CLIENT, body, MODELS.current(), drop_params=DROP_PARAMS)
-
-
-def require_admin(request: Request) -> None:
-    """Gate an admin endpoint: absent (404) unless the admin token is set,
-    then forbidden (403) without it as a bearer token."""
-    token = admin_token()
-    if token is None:
-        raise HTTPException(status_code=404, detail="Not Found")
-    scheme, _, credential = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not hmac.compare_digest(
-        credential.strip().encode(), token.encode()
-    ):
-        raise HTTPException(status_code=403, detail="Admin token required")
-
-
-@app.post("/v1/config/update")
-async def update_config(request: Request):
-    """Update configuration for a model type. Can redirect a backend, and
-    the hosted key that goes with it, so it needs the admin token."""
-    require_admin(request)
-    body = await request.json()
-    prefix = body.get("prefix")
-    config = body.get("config", {})
-
-    if not prefix:
-        raise HTTPException(status_code=400, detail="Missing prefix parameter")
-
-    # Update the client configuration directly
-    if prefix in CLIENT.config:
-        CLIENT.config[prefix].update(config)
-    else:
-        CLIENT.config[prefix] = config
-
-    return {"status": "ok", "message": f"Updated configuration for {prefix}"}
 
 
 if __name__ == "__main__":

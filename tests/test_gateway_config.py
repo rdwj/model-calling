@@ -1,6 +1,5 @@
 """
-Gateway settings from the environment: backend URLs and keys, and the admin
-token that guards /v1/config/update.
+Gateway settings from the environment: backend URLs and keys.
 """
 
 import dataclasses
@@ -101,80 +100,7 @@ async def test_backend_variables_route_gateway_requests(
         assert replay.requests[-1].headers["authorization"] == f"Bearer {VLLM_ENV_KEY}"
 
 
-ADMIN_TOKEN = "admin-test-token"
-CONFIG_UPDATE_PATH = "/v1/config/update"
-REDIRECT = {"prefix": "openrouter", "config": {"base_url": "http://attacker.test/v1"}}
-
-
-def auth(value):
-    return {"Authorization": value} if value is not None else {}
-
-
-def openrouter_url(gateway) -> str:
-    return gateway.backends.config["openrouter"]["base_url"]
-
-
-@pytest.mark.parametrize("authorization", [None, f"Bearer {ADMIN_TOKEN}"])
-async def test_config_update_is_absent_without_an_admin_token(gateway, authorization):
-    before = openrouter_url(gateway)
-    response = await gateway.client.post(
-        CONFIG_UPDATE_PATH, json=REDIRECT, headers=auth(authorization)
-    )
-    # The same answer as a route that doesn't exist.
-    unknown = await gateway.client.post("/v1/no-such-endpoint", json=REDIRECT)
-    assert (response.status_code, response.json()) == (404, unknown.json())
-    assert openrouter_url(gateway) == before
-
-
-@pytest.mark.parametrize(
-    "authorization",
-    [
-        None,
-        "Bearer",
-        "Bearer wrong-token",
-        f"Bearer {ADMIN_TOKEN}x",
-        f"Basic {ADMIN_TOKEN}",
-        ADMIN_TOKEN,
-        "Bearer ünïcode".encode(),
-    ],
-)
-async def test_config_update_refuses_a_request_without_the_token(
-    gateway, monkeypatch, authorization
-):
-    monkeypatch.setenv("MODEL_CALLING_ADMIN_TOKEN", ADMIN_TOKEN)
-    before = openrouter_url(gateway)
-    response = await gateway.client.post(
-        CONFIG_UPDATE_PATH, json=REDIRECT, headers=auth(authorization)
-    )
-    assert response.status_code == 403, response.text
-    assert openrouter_url(gateway) == before
-
-
-@pytest.mark.parametrize("scheme", ["Bearer", "bearer"])
-async def test_config_update_applies_with_the_token(gateway, monkeypatch, scheme):
-    monkeypatch.setenv("MODEL_CALLING_ADMIN_TOKEN", ADMIN_TOKEN)
-    response = await gateway.client.post(
-        CONFIG_UPDATE_PATH, json=REDIRECT, headers=auth(f"{scheme} {ADMIN_TOKEN}")
-    )
-    assert response.status_code == 200, response.text
-    assert openrouter_url(gateway) == REDIRECT["config"]["base_url"]
-
-
-@pytest.mark.parametrize("token, status", [(ADMIN_TOKEN, 200), (None, 403)])
-async def test_legacy_client_sends_its_admin_token(gateway, monkeypatch, token, status):
-    from model_calling import server
-    from model_calling.client import ModelCallingClient
-
-    monkeypatch.setenv("MODEL_CALLING_ADMIN_TOKEN", ADMIN_TOKEN)
-    client = ModelCallingClient(GATEWAY_BASE_URL, admin_token=token)
-    await client.client.aclose()
-    client.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=server.app))
-    try:
-        if status == 200:
-            await client.update_config(REDIRECT["prefix"], REDIRECT["config"])
-        else:
-            with pytest.raises(httpx.HTTPStatusError) as raised:
-                await client.update_config(REDIRECT["prefix"], REDIRECT["config"])
-            assert raised.value.response.status_code == status
-    finally:
-        await client.close()
+async def test_config_update_endpoint_is_removed(gateway):
+    """POST /v1/config/update has been removed."""
+    response = await gateway.client.post("/v1/config/update", json={"prefix": "test", "config": {}})
+    assert response.status_code == 404

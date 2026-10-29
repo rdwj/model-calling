@@ -44,17 +44,7 @@ vllm/model-name
 
 ## Function Calling
 
-Not all models support function calling. The model-calling service tries to detect function-calling capable models based on their names, but you may need to manually configure this for some models.
-
-You can update the configuration for a specific model type using the client. The gateway must be started with `MODEL_CALLING_ADMIN_TOKEN` set, and the client given the same token:
-
-```python
-client = ModelCallingClient(admin_token=os.environ["MODEL_CALLING_ADMIN_TOKEN"])
-await client.update_config(
-    prefix="ollama",
-    config={"supports_function_call": True}
-)
-```
+Not all models support function calling. Requests with `tools` go to the backend as is; a model that can't use tools answers with the backend's error or ignores them.
 
 ## Using Hosted Providers
 

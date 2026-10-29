@@ -172,36 +172,3 @@ def test_malformed_request():
         422,
     ], f"Expected 400 or 422 status code, got {response.status_code}"
     print("\nCorrectly handled malformed request")
-
-
-@pytest.mark.parametrize("model_name", TEST_CONFIG["ollama_models"]["basic"][:1])
-def test_config_update(model_name):
-    """Test config update endpoint, which needs the admin token the service
-    was started with"""
-    token = os.environ.get("MODEL_CALLING_ADMIN_TOKEN")
-    if not token:
-        pytest.skip("MODEL_CALLING_ADMIN_TOKEN is not set; the endpoint is disabled")
-    # Prepare the config update
-    config_payload = {
-        "prefix": "ollama",
-        "config": {
-            "base_url": "http://localhost:11434",  # Should be the default anyway
-            "supports_function_call": True,
-        },
-    }
-
-    # Make the request
-    config_response = requests.post(
-        f"{BASE_URL}/v1/config/update",
-        json=config_payload,
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert config_response.status_code == 200, "Failed to update config"
-
-    # Now make a normal request to verify config works
-    completion_payload = {"model": f"ollama/{model_name}", "messages": TEST_MESSAGES}
-
-    completion_response = requests.post(f"{BASE_URL}/v1/chat/completions", json=completion_payload)
-    assert completion_response.status_code == 200, "Failed to use model after config update"
-
-    print("\nSuccessfully updated config and made a request")
