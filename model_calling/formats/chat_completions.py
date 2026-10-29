@@ -123,7 +123,9 @@ def _assistant_in(raw: dict) -> Message:
         blocks.append(Thinking(thinking=reasoning))
     blocks.extend(_parts_in(raw.get("content")))
     blocks.extend(tool_call_in(tc) for tc in raw.get("tool_calls") or [])
-    return Message(role="assistant", content=blocks)
+    return Message(
+        role="assistant", content=blocks, content_shorthand=isinstance(raw.get("content"), str)
+    )
 
 
 def _messages_in(raw_messages: list) -> tuple[list[Text] | None, list[Message]]:
@@ -138,13 +140,21 @@ def _messages_in(raw_messages: list) -> tuple[list[Text] | None, list[Message]]:
             else:
                 system.extend(blocks)
         elif role == "user":
-            messages.append(Message(role="user", content=_parts_in(raw.get("content"))))
+            content = raw.get("content")
+            messages.append(
+                Message(
+                    role="user",
+                    content=_parts_in(content),
+                    content_shorthand=isinstance(content, str),
+                )
+            )
         elif role == "assistant":
             messages.append(_assistant_in(raw))
         elif role == "tool":
             result = ToolResult(
                 tool_call_id=raw["tool_call_id"],
                 content=_text_only(raw.get("content"), role),
+                content_shorthand=isinstance(raw.get("content"), str),
             )
             # Consecutive tool messages answer one assistant turn: one user turn.
             prev = messages[-1] if messages else None

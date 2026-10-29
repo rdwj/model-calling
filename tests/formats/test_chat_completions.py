@@ -91,6 +91,26 @@ def test_user_content(content, expected):
     assert req.messages[0].content == expected
 
 
+@pytest.mark.parametrize(
+    "content, shorthand", [("hi", True), ([{"type": "text", "text": "hi"}], False)]
+)
+def test_string_content_is_marked_shorthand(content, shorthand):
+    """A bare string stays one when re-encoded as Anthropic Messages."""
+    req = chat.request_to_internal(
+        {
+            "model": "m",
+            "messages": [
+                {"role": "user", "content": content},
+                {"role": "assistant", "content": content},
+                {"role": "tool", "tool_call_id": "call_1", "content": content},
+            ],
+        }
+    )
+    user, assistant, tool_turn = req.messages
+    flags = [user.content_shorthand, assistant.content_shorthand]
+    assert flags + [tool_turn.content[0].content_shorthand] == [shorthand] * 3
+
+
 def test_image_url_data_url():
     req = chat.request_to_internal(
         {

@@ -210,6 +210,11 @@ def block_from_internal(block: Any) -> dict:
     return _translating("content block", lambda: _block_out(block))
 
 
+def block_to_internal(raw: dict) -> Any:
+    """One Anthropic content block as an internal block."""
+    return _translating("content block", lambda: _block_in(raw))
+
+
 def _is_plain_text(blocks: list) -> bool:
     """True if `blocks` can be written as the bare-string content shorthand."""
     return (
@@ -465,10 +470,9 @@ def _response_in(body: dict) -> Response:
     rest = dict(body)
     rest.pop("type", None)
     rest.pop("role", None)
-    stop_reason = None
-    if rest.get("stop_reason") in _KNOWN_STOP_REASONS:
-        wire = rest.pop("stop_reason")
-        stop_reason = _STOP_REASON_IN.get(wire, wire)
+    stop_reason = stop_reason_to_internal(rest.get("stop_reason"))
+    if stop_reason is not None:
+        del rest["stop_reason"]
     usage = _take(rest, "usage")
     return Response(
         id=rest.pop("id"),
@@ -483,6 +487,13 @@ def _response_in(body: dict) -> Response:
 
 def response_to_internal(body: dict) -> Response:
     return _translating("response", lambda: _response_in(body))
+
+
+def stop_reason_to_internal(wire: Any) -> str | None:
+    """An Anthropic stop reason as the internal one; None for one newer than this module."""
+    if wire not in _KNOWN_STOP_REASONS:
+        return None
+    return _STOP_REASON_IN.get(wire, wire)
 
 
 def stop_reason_from_internal(stop_reason: str | None) -> str | None:
