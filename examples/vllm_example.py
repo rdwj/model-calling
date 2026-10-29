@@ -8,17 +8,11 @@ from model_calling.client import ModelCallingClient
 
 async def vllm_example():
     """Example with vLLM-deployed model"""
+    # The gateway reaches vLLM at localhost:8000/v1 unless it was started with
+    # VLLM_BASE_URL (and VLLM_API_KEY if the endpoint wants one) set.
     client = ModelCallingClient()
     
     try:
-        # First, update config if your vLLM instance is not on localhost:8000/v1
-        await client.update_config(
-            prefix="vllm",
-            config={
-                "base_url": "http://your-vllm-server:8000/v1",
-            }
-        )
-        
         # Basic completion with vLLM-deployed model
         response = await client.chat_completion(
             model="vllm/mistral-7b",

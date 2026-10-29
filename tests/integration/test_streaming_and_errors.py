@@ -2,6 +2,8 @@
 Tests for streaming and error handling with Ollama models.
 """
 
+import os
+
 import pytest
 import requests
 import json
@@ -174,7 +176,11 @@ def test_malformed_request():
 
 @pytest.mark.parametrize("model_name", TEST_CONFIG["ollama_models"]["basic"][:1])
 def test_config_update(model_name):
-    """Test config update endpoint"""
+    """Test config update endpoint, which needs the admin token the service
+    was started with"""
+    token = os.environ.get("MODEL_CALLING_ADMIN_TOKEN")
+    if not token:
+        pytest.skip("MODEL_CALLING_ADMIN_TOKEN is not set; the endpoint is disabled")
     # Prepare the config update
     config_payload = {
         "prefix": "ollama",
@@ -185,7 +191,11 @@ def test_config_update(model_name):
     }
 
     # Make the request
-    config_response = requests.post(f"{BASE_URL}/v1/config/update", json=config_payload)
+    config_response = requests.post(
+        f"{BASE_URL}/v1/config/update",
+        json=config_payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert config_response.status_code == 200, "Failed to update config"
 
     # Now make a normal request to verify config works

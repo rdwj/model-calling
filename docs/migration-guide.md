@@ -134,6 +134,10 @@ Errors a backend reports inside a stream now map by kind: rate limit errors beco
 
 The gateway's `POST /v1/messages` endpoint requires `max_tokens` in the request body. Requests without it return 400.
 
+### The config endpoint needs an admin token
+
+`POST /v1/config/update` can point a backend, and the key the gateway holds for it, at another host. In 0.1.x anyone who could reach the gateway could call it. Now it returns 404 unless the gateway starts with `MODEL_CALLING_ADMIN_TOKEN` set, and with the token set, a request without `Authorization: Bearer <token>` gets 403. The legacy `ModelCallingClient` and `SyncModelCallingClient` take the token as `admin_token`. Most deployments no longer need the endpoint, since the gateway now reads backend URLs from its environment (see [Environment Variables](advanced.md#environment-variables)).
+
 ## From Local Development to Production
 
 A typical workflow starts with Ollama for local iteration, moves to a hosted service (OpenAI, OpenRouter) or vLLM on OpenShift for shared testing, and deploys to production with environment-specific model names and authentication.

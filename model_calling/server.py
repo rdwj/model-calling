@@ -3,6 +3,7 @@ FastAPI server for the model-calling service.
 """
 
 import contextlib
+import hmac
 import json
 import logging
 import asyncio
@@ -18,6 +19,7 @@ from model_calling.formats import chat_completions as chat
 from model_calling.providers import PROVIDERS, split_model
 from model_calling.registry import registry
 from model_calling.cache import embedding_cache
+from model_calling.config import admin_token
 from model_calling.embedding_adapter import create_openai_embedding_response
 
 
@@ -385,9 +387,24 @@ async def create_embeddings(request: Request):
         raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
 
 
+def require_admin(request: Request) -> None:
+    """Gate an admin endpoint: absent (404) unless the admin token is set,
+    then forbidden (403) without it as a bearer token."""
+    token = admin_token()
+    if token is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+    scheme, _, credential = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "bearer" or not hmac.compare_digest(
+        credential.strip().encode(), token.encode()
+    ):
+        raise HTTPException(status_code=403, detail="Admin token required")
+
+
 @app.post("/v1/config/update")
 async def update_config(request: Request):
-    """Update configuration for a model type"""
+    """Update configuration for a model type. Can redirect a backend, and
+    the hosted key that goes with it, so it needs the admin token."""
+    require_admin(request)
     body = await request.json()
     prefix = body.get("prefix")
     config = body.get("config", {})

@@ -7,7 +7,10 @@ so a container can point it at its backends.
 """
 
 import os
-from typing import Dict, Mapping, Tuple
+from typing import Dict, Mapping, Optional, Tuple
+
+# Enables POST /v1/config/update, which then wants it as a bearer token.
+ADMIN_TOKEN_ENV = "MODEL_CALLING_ADMIN_TOKEN"
 
 # Variable -> (model prefix, provider setting). URLs mean what `base_url`
 # means everywhere: the API root with /v1 included, except Ollama's native
@@ -34,3 +37,8 @@ def backend_overrides(environ: Mapping[str, str] = os.environ) -> Dict[str, Dict
             value = value.rstrip("/")
         overrides.setdefault(prefix, {})[setting] = value
     return overrides
+
+
+def admin_token(environ: Mapping[str, str] = os.environ) -> Optional[str]:
+    """The token `/v1/config/update` requires, or None when it is disabled."""
+    return environ.get(ADMIN_TOKEN_ENV, "").strip() or None

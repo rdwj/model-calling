@@ -11,9 +11,11 @@ from typing import Dict, List, Any, Optional, Union, Generator
 class ModelCallingClient:
     """Client for the model-calling service"""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
-        """Initialize with the service base URL"""
+    def __init__(self, base_url: str = "http://localhost:8000", admin_token: Optional[str] = None):
+        """Initialize with the service base URL. `update_config` needs
+        `admin_token`, the gateway's MODEL_CALLING_ADMIN_TOKEN."""
         self.base_url = base_url
+        self.admin_token = admin_token
         self.client = httpx.AsyncClient(timeout=60.0)  # Increase timeout for capability testing
 
     async def close(self):
@@ -97,7 +99,10 @@ class ModelCallingClient:
     async def update_config(self, prefix: str, config: Dict[str, Any]) -> Dict[str, Any]:
         """Update configuration for a model type"""
         payload = {"prefix": prefix, "config": config}
-        response = await self.client.post(f"{self.base_url}/v1/config/update", json=payload)
+        headers = {"Authorization": f"Bearer {self.admin_token}"} if self.admin_token else {}
+        response = await self.client.post(
+            f"{self.base_url}/v1/config/update", json=payload, headers=headers
+        )
         response.raise_for_status()
         return response.json()
 
@@ -106,9 +111,10 @@ class ModelCallingClient:
 class SyncModelCallingClient:
     """Synchronous client for the model-calling service"""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
-        """Initialize with the service base URL"""
-        self.async_client = ModelCallingClient(base_url)
+    def __init__(self, base_url: str = "http://localhost:8000", admin_token: Optional[str] = None):
+        """Initialize with the service base URL, and the admin token for
+        `update_config`"""
+        self.async_client = ModelCallingClient(base_url, admin_token)
         # A loop of its own: asyncio.get_event_loop() raises when no loop is
         # set, as in any thread but the main one, and in the main thread
         # too on Python 3.14.
