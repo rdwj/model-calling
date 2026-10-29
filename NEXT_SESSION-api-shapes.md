@@ -66,296 +66,181 @@ the gap.
   endpoint; any new dependency; running Claude Code anywhere but a temp
   directory.
 - Close ritual: `/session-close`, then `/plan-next-session`. Next pick is
-  between Phase 7 and Phase 6 slice 2.
+  Phase 12 (offline cleanup), per the 2026-10-29 re-plan.
 
 ## Remaining epic phases
 
 End-state: model-calling replaces LiteLLM in rdwj's projects and treats the
-OpenAI and Anthropic wire formats as equals. Apps are about as likely to
-speak one as the other. The library API offers `completion()` (OpenAI types)
-and `messages()` (Anthropic types) side by side. It is familiar to LiteLLM
-users but not bound to LiteLLM's design; breaking changes are acceptable
-where they are an improvement, and the migration guide documents them. The
-optional server speaks OpenAI Chat Completions, Anthropic Messages, and
-OpenAI Responses (stateless). Every ingress works against every backend:
-Ollama, vLLM, OpenAI-compatible (including OpenRouter), Anthropic, and
-Cohere v2. An offline test suite enumerates that ingress × backend grid and
-validates output against the official `openai` and `anthropic` SDK types.
-Live smoke tests run through OpenRouter, and Claude Code completes a
-tool-using task through the gateway. Gateway clients name models only by
-alias (`chat`, `embed`), never by backend: a hot-reloaded YAML file maps
-each alias to a backend and model, so swapping Ollama for vLLM in
-production is a file edit with no app change and no redeploy. This was the
-project's original purpose (rdwj, 2026-10-29). The epic ends with 0.2.0 on
-PyPI and a pilot project migrated.
+OpenAI and Anthropic wire formats as equals. The library API offers
+`completion()` (OpenAI types) and `messages()` (Anthropic types) side by
+side, familiar to LiteLLM users but not bound to its design; breaking
+changes are documented in the migration guide. The optional gateway speaks
+OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses
+(stateless) over Ollama, vLLM, OpenAI-compatible (including OpenRouter),
+Anthropic, and Cohere v2. Gateway clients name models only by alias, from
+a hot-reloaded YAML file, so a backend swap is a file edit. An offline
+grid validates every ingress × backend cell against the official SDK
+types; live smoke tests run through OpenRouter; Claude Code completes a
+tool-using task through the gateway. The epic ends with 0.2.0 on PyPI and
+sanicode migrated off LiteLLM.
 
-Phases 1–5 are done (harness, internal format and adapter port,
-library API with the server on `Client`, Chat Completions and Messages
-conformance); see the "What landed" ledger and
-`session-summaries/`. Phase numbers are kept stable because code comments,
-xfail reasons, and summaries cite them, so the gateway-configuration phase
-added on 2026-10-28 is Phase 10 and sits before Phase 9, which it gates,
-and the model-alias phase added on 2026-10-29 is Phase 11. Phase 6 slice 1
-(Anthropic), Phase 10, and Phase 11 are done. Order: Phase 8 next
-(decided 2026-10-29); then 7 and 6 slice 2 (Cohere, hand-built fixtures:
-no key); 9 last.
+Done: Phases 1–5, 6 slice 1, 10, and 11 (see the "What landed" ledger and
+`session-summaries/`). Phase numbers stay stable because code comments,
+xfail reasons, and summaries cite them, so the order below is not numeric.
+Re-planned 2026-10-29 after the first reconciliation
+(`reconciliations/2026-10-29-api-shapes.md`): Phase 9 split into two
+slices, pass-through narrowed into Phase 7 slice 2, and the carried
+offline leftovers given an owner as Phase 12.
 
-### Phase 4: Chat Completions conformance
-
-**Work:**
-1. Request model accepts current fields: content-part arrays (text, image),
-   `tool_choice`, `parallel_tool_calls`, `max_completion_tokens`,
-   `response_format` with `json_schema`, `stream_options.include_usage`,
-   `reasoning_effort`, `seed`, parameterless tools, `strict`.
-2. Responses emit `tool_calls` (all of them), never legacy `function_call`.
-3. Fill the Chat Completions row of the grid: text, parallel tools, image
-   input, `json_schema`, and streaming with usage, through the library and
-   through `openai.OpenAI(base_url=...)` against the server.
-
-**Definition of done:** the Chat Completions row passes offline for every
-ported backend and live via OpenRouter.
-
-**Dependencies:** Phase 3.
-
-**Parallel-ok:** with Phases 5 and 6.
-
-### Phase 5: Anthropic Messages conformance
-
-The Messages ingress against non-Anthropic backends (Ollama, vLLM,
-OpenAI-compatible). It does not need the Anthropic backend. Phase 3 already
-built `POST /v1/messages`, the SSE encoder, and a `gateway_messages` grid
-row (text, tools, stream, backend_error) that is compared cell by cell with
-the library, so this phase adds fields, scenarios, and SDK-client cells.
-
-**Work:**
-1. Request model accepts current Messages fields: system as string or
-   blocks, image blocks, `tools` and `tool_choice`, `tool_result` with
-   `is_error`, `thinking` config, `stop_sequences`, `metadata`, and
-   `cache_control` (pass through where the backend supports it, otherwise
-   ignore without error).
-2. `POST /v1/messages/count_tokens` (estimate for backends without a
-   native counter, documented as such).
-3. SSE output emits the full event sequence (`message_start`,
-   `content_block_start`, `content_block_delta` including
-   `input_json_delta`, `content_block_stop`, `message_delta`,
-   `message_stop`).
-4. Fill the Messages row of the grid with the same scenarios as Phase 4,
-   through the library and through `anthropic.Anthropic(base_url=...)`
-   against the server.
-5. `messages()` accepts the typed response blocks it returns as the next
-   assistant turn (today they must go through `.to_dict()`; the
-   `anthropic` SDK accepts its own blocks there). Found 2026-10-28.
-
-**Definition of done:** the Messages row passes offline for every ported
-backend and live via OpenRouter's Chat Completions backend, which exercises
-Messages → Chat Completions translation. A grid cell drives the server with
-`anthropic.Anthropic(base_url=...)` for every Messages scenario, and a
-library test feeds a typed `Message.content` straight back into
-`messages()`.
-
-**Dependencies:** Phase 3.
-
-**Parallel-ok:** with Phases 4 and 6.
-
-### Phase 6: Anthropic and Cohere v2 backends
-
-**Work:**
-1. Rewrite the Anthropic adapter from the current Messages API spec:
-   `tool_use`/`tool_result` blocks, multiple system blocks, stop reason and
-   usage mapping, SSE event parsing, images, extended thinking,
-   `cache_control` pass-through. Drop the hardcoded Claude 3 model tables.
-2. Rewrite the Cohere chat and embedding adapters against the v2 API.
-3. Point the Anthropic backend at OpenRouter `/api/v1/messages` for live
-   tests (confirm the auth header it expects). vLLM also serves
-   `/v1/messages` natively (checked 2026-10-28), so the same provider
-   should run against vLLM; its `vllm_messages` fixtures (Phase 3 slice 1)
-   give the column a free, offline second backend.
-4. Add the Anthropic and Cohere columns to the grid for every ingress that
-   exists so far.
-
-**Definition of done:** the Anthropic column passes offline and live via
-OpenRouter for text, tools, streaming, and thinking. Messages in →
-Anthropic out is a lossless pass-through in tests. Cohere v2 passes fixture
-checks. There is no Cohere key, so Cohere has no live coverage; the README
-says so.
-
-**Dependencies:** Phase 2.
-
-**Parallel-ok:** with Phases 3, 4, and 5.
-
-### Phase 7: OpenAI Responses ingress and backend (stateless)
-
-**Work:**
-1. `POST /v1/responses`, streaming and non-streaming, plus `responses` /
-   `aresponses` in the library.
-2. A Responses backend adapter (OpenRouter `/api/v1/responses` for live
-   tests).
-3. `previous_response_id`, `store: true`, and other state-dependent features
-   return a clear 400 that names the unsupported field.
-4. Fill the Responses row of the grid.
-
-**Definition of done:** `client.responses.create(...)`, with and without
-streaming, passes the Responses row offline and live via OpenRouter.
-Stateful requests get the documented 400.
-
-**Dependencies:** Phase 4.
-
-**Parallel-ok:** with Phases 5, 6, and 8.
+**Order:** 8 → 12 → 7 slice 1 → 7 slice 2 → 6 slice 2 → 9 slice 1 →
+9 slice 2. About seven sessions.
 
 ### Phase 8: Claude Code acceptance
 
 The headline end-to-end test of the Messages path.
 
 **Work:**
-1. Acceptance script: start the server, set `ANTHROPIC_BASE_URL` to it, and
-   run `claude -p` on a scripted tool-using task in a temp directory (create
-   a file, edit it, run a command). Check the resulting files
-   deterministically.
-2. Run it against (a) a Claude model via the Anthropic backend on
-   OpenRouter, (b) a non-Claude model via OpenRouter Chat Completions, and
-   (c) Ollama running `qwen3-coder:30b` (`ollama pull qwen3-coder:30b`;
-   fallback `gpt-oss:20b`).
-3. Commit the acceptance script under `tests/acceptance/` with a README
-   covering prerequisites: Claude Code installed, `OPENROUTER_API_KEY` in the
-   environment, and the Ollama model pulled.
+1. Acceptance script under `tests/acceptance/`: start the gateway with an
+   alias file, point Claude Code at it, and run `claude -p` on a scripted
+   tool-using task in a temp directory (create a file, edit it, run a
+   command). Check the resulting files deterministically.
+2. Map Claude Code's main and background (Haiku-class) models through
+   aliases. Claude Code's `ANTHROPIC_BASE_URL` points it at the gateway;
+   the gateway itself ignores that variable (its Anthropic backend URL is
+   `MODEL_CALLING_ANTHROPIC_BASE_URL` or the alias file's `base_url`).
+3. Run it against (a) a Claude model via the `anthropic` provider on
+   OpenRouter, as `tests/live/test_anthropic_live.py` configures it,
+   (b) a non-Claude model via OpenRouter Chat Completions, and (c) host
+   Ollama `qwen3-coder:30b` (fallback `gpt-oss:20b`).
+4. Fix the Messages-ingress gaps it exposes, each with a grid cell or a
+   strict xfail naming its phase. Expect budget-only thinking (dropped by
+   the non-strict gateway; confirm that's acceptable) and `cache_control`.
+5. `tests/acceptance/README.md`: prerequisites (Claude Code,
+   `OPENROUTER_API_KEY` in the environment, the Ollama model pulled).
 
-**Definition of done:** the script passes for all three backends, and the
-run's spend is committed to `tests/live/spend.jsonl`.
+**Definition of done:** the script passes for all three backends, the
+run's spend is committed to `tests/live/spend.jsonl`, and offline `pytest`
+stays green with no new xfails except ones naming a later phase.
 
-**Dependencies:** Phases 5, 6, and 11 (the run maps Claude Code's model
-ids, including its background Haiku model, through aliases).
+**Dependencies:** Phases 5, 6 slice 1, and 11 (done).
 
-**Parallel-ok:** with Phase 7.
+**Parallel-ok:** with Phases 12 and 7 slice 1 only if run in separate
+worktrees (all three touch the Messages and gateway code).
 
-### Phase 11: Model aliases from a hot-reloaded config file
+### Phase 12: Offline cleanup of carried leftovers
 
-Gateway clients stop naming backends. Today the model string carries the
-backend (`ollama/qwen3:4b` in dev, `vllm/gpt-oss-20b` in prod), so the app
-changes when the backend does. After this phase the app asks for an alias
-and a YAML file decides what serves it. Calls made with rdwj on
-2026-10-29, not open: the file holds backends (URL and the *name* of the
-env var with the key, never a key) as well as models; it reloads without a
-restart; `ollama/`-style names leave the gateway wire entirely; embeddings
-get aliases; `POST /v1/config/update` is removed; `Client` accepts the file
-opt-in and keeps accepting prefixed names (the library is the layer allowed
-to know backends); aliases target ported providers only, so Cohere aliases
-come with Phase 6 slice 2.
-
-A starting shape for the file, to settle in slice 1:
-
-```yaml
-backends:
-  local: {provider: ollama, base_url: http://ollama:11434}
-  prod: {provider: vllm, base_url: https://vllm.example/v1, api_key_env: VLLM_API_KEY}
-models:
-  chat: {backend: local, model: qwen3:4b}
-  embed: {backend: local, model: nomic-embed-text, dimensions: 768}
-```
-
-Named backends allow two instances of one provider. The Phase 10 URL
-variables stay as defaults for a provider the file names without a URL,
-and the file wins where both set one.
-
-**Slice 1: the file and alias routing.**
-1. Loader with a schema (unknown keys, unknown backends, a key literal
-   instead of `api_key_env`, and duplicate aliases are errors naming the
-   line or key). Path from an env variable; decide the name and whether
-   `./` gets a default.
-2. Hot reload: check the file's mtime (following symlinks, so an OpenShift
-   ConfigMap's `..data` swap counts) per request or on a short interval; an
-   invalid edit keeps the last good config and logs the error; a request
-   in flight finishes on the config it started with.
-3. Chat Completions, Messages, and embeddings resolve the alias to a
-   provider and model; the response `model` field and `/v1/models` show
-   aliases only; an unknown name, including any `prefix/model` name, is a
-   404 in the ingress's error format naming the alias.
-4. An embedding alias with `dimensions` fails loudly (a 502 naming the
-   alias and both sizes) when the backend returns another size, so a swap
-   that would corrupt a vector index can't pass silently.
-5. The grid moves to aliases: the harness writes an alias file per cell,
-   gateway cells send aliases, and the library-vs-gateway comparisons
-   account for the alias in `model`.
-
-**Slice 2: removals, library, docs.**
-1. Remove the gateway's legacy wire routing: the unprefixed-name default to
-   Ollama and the fallthrough to `registry` adapters for chat and
-   embeddings. Decide what `/v1/models/refresh` and `/v1/moderations` take
-   as a model name, or retire them (stop-and-ask: public endpoints).
-2. Remove `POST /v1/config/update`, `require_admin`, and
-   `MODEL_CALLING_ADMIN_TOKEN` (stop-and-ask confirmed 2026-10-29), and the
-   legacy client's `update_config`.
-3. `Client(models="models.yaml")` with the same loader and reload; prefixed
-   names still work in the library.
-4. `podman-compose.yml` mounts a sample alias file; the docs show an
-   OpenShift ConfigMap mount (not `subPath`, which never updates); the
-   migration guide lists the removals and the prefix change; README leads
-   the gateway section with the dev-to-prod swap (slice 1 did the README,
-   `docs/advanced.md` "Model Aliases", and the prefix entry). The
-   `examples/*.py` scripts that drive the gateway through the legacy
-   `ModelCallingClient` still send `prefix/model` names and now get 404;
-   move them to aliases (with a sample alias file) or to `Client`.
-
-**Definition of done:** a gateway test sends `model: chat` to a running
-in-process gateway, rewrites the alias file from an Ollama backend to a vLLM
-backend, and the next request goes to the vLLM fixture with no restart and
-the response still says `chat`; a malformed rewrite leaves the old mapping
-serving and logs the error; `prefix/model` and unknown names get 404 in both
-Chat Completions and Messages formats; an embedding alias whose backend
-returns the wrong size gets the documented 502; `POST /v1/config/update`
-returns 404 and `grep -rn "config/update\|ADMIN_TOKEN" model_calling docs
-README.md` finds nothing; `podman-compose up` serves `chat` from the Ollama
-container using the mounted file, and editing the file on the host switches
-the target without restarting the container; the grid stays green with no
-new xfails.
-
-**Dependencies:** Phase 10 (done).
-
-**Parallel-ok:** with Phase 6 slice 2 (Cohere joins as an alias target when
-it lands). Phases 7 and 8 should follow it: Responses would otherwise build
-prefix routing that slice 2 removes, and Claude Code sends Claude model ids
-that only aliases can map.
-
-### Phase 9: Pass-through, release, and pilot migration
+Items deferred across sessions without an owner. All offline, each small.
 
 **Work:**
-1. Pass-through mode: when the backend natively speaks the ingress format
-   (for example vLLM or OpenRouter Messages/Responses), forward without
-   round-tripping through the internal format. vLLM's native Messages
-   endpoint is confirmed (2026-10-28); verify Ollama's before relying on it.
-2. Switch PyPI publishing to trusted publishing (OIDC) and drop the token
-   secret.
-3. Write a "Migrating from LiteLLM" doc in `docs/` (nominative mention
-   only) that lists every intentional difference.
-   Breaking changes collected so far (Phase 2): vLLM's legacy `/generate`
-   prompt mode and the `openai_compatible` switch are gone; `base_url` for
-   `vllm`, `openai`, and `openrouter` is the API root with `/v1` included,
-   as in the `openai` SDK (was the server root for vLLM and the full
-   `/chat/completions` URL for OpenAI); a backend's 401/403 reaches the
-   client as 502. Phase 3: the gateway needs `model-calling[server]`;
-   the library is strict by default (`drop_params=True` opts out); an
-   early-stopped stream ends with `on_request_end(cancelled=True)`, not
-   `on_error`; `on_stream_chunk` receives internal events, not raw lines;
-   `/v1/embeddings` returns the client's model id and the backend's token
-   count, and its cache covers only Cohere; gateway bodies may not carry
-   `api_base`, `api_key`, or `drop_params`; errors a backend reports inside
-   a stream map by kind (429, 404, 400) instead of always 502; gateway JSON
-   key order follows the SDK types. `docs/migration-guide.md` has an
-   "Upgrading from 0.1.x" section to fold into the LiteLLM doc's sibling.
-4. Tag and release 0.2.0.
-5. Pilot migration: move `src/sanicode/llm/client.py` in
-   [rdwj/sanicode](https://github.com/rdwj/sanicode) (private) off LiteLLM,
-   and run sanicode's tests. If memory-hub's LiteLLM question (an MCP tool
-   idea from one of its maintainers) has surfaced by then, consider the
-   hand-rolled `/v1/chat/completions` calls in
-   [redhat-ai-americas/memory-hub](https://github.com/redhat-ai-americas/memory-hub)
-   (`src/memoryhub_core/services/extraction.py` and
-   `src/memoryhub_core/services/dreaming.py`) as a second pilot.
+1. The Anthropic provider refuses `logprobs`, `logit_bias`, and `user` in
+   strict mode, as it does `seed` and the penalties (decided 2026-10-29);
+   the gateway still drops them by default.
+2. Streams from the Anthropic provider carry `stop_details` and
+   `container` through to Messages egress.
+3. Grid cells for `Provider.prepare` on the streaming path and for the
+   gateway's default drop path on a refused Ollama cell.
+4. Messages `document` blocks: decide per backend (pass through to
+   Anthropic and vLLM Messages; refuse with a named 400 elsewhere) and
+   add the Refusal block type the SDK defines. Check the anthropic 2.0.0
+   types first.
+5. Delete `tests/integration/` and the root scripts that drive a running
+   gateway with prefixed names (`run_tests.sh`, `test_ollama.sh`,
+   `diagnose_models.sh`, `tool_call_curl.sh`, `auto_config_tests.sh`,
+   `setup_tests.sh`, `fix_test_imports.sh`, `make_tests_executable.sh`,
+   and any other that only serves them; check each before deleting) and
+   the `integration` marker; update CONTRIBUTING (decided 2026-10-29).
+6. Add whatever Phase 8 surfaced but didn't fix.
+
+**Definition of done:** each item is a passing grid cell or test, or a
+deletion; nothing is left in "Still open" or carried forward to a later
+phase without a named owner;
+`grep -rn "integration" pyproject.toml CONTRIBUTING.md` finds no test
+marker or script; offline `pytest` green with no new xfails.
+
+**Dependencies:** Phase 8 (so its leftovers land here).
+
+**Parallel-ok:** with Phase 6 slice 2.
+
+### Phase 7: OpenAI Responses ingress and backend (stateless)
+
+**Slice 1: ingress.**
+1. `POST /v1/responses`, streaming and non-streaming, through
+   `gateway._serve` with aliases from the start; `responses` /
+   `aresponses` in the library.
+2. `previous_response_id`, `store: true`, and other state-dependent
+   fields return a 400 naming the field.
+3. A Responses grid row over the existing backends, including an
+   `sdk_responses` ingress modeled on `sdk_completion`
+   (`client.responses.create(...)` against the in-process gateway).
+
+**Slice 2: backend.**
+1. A Responses provider (OpenRouter `/api/v1/responses`) with recorded
+   fixtures and a grid column.
+2. Responses in → Responses backend is lossless in tests (this absorbs
+   the old Phase 9 pass-through item; requests still go through the
+   internal format, as Messages does).
+3. Live smoke via OpenRouter.
+
+**Definition of done:** `client.responses.create(...)`, with and without
+streaming, passes the Responses row offline for every backend and live
+via OpenRouter; stateful requests get the documented 400.
+
+**Dependencies:** Phase 4 (done); slice 2 needs slice 1.
+
+**Parallel-ok:** slice 1 with Phase 6 slice 2.
+
+### Phase 6 slice 2: Cohere v2 backend
+
+The 0.1.x Cohere adapters were deleted in Phase 11 slice 2, so this is a
+new provider.
+
+**Work:**
+1. Cohere chat and embedding providers against the v2 API spec, on the
+   provider interface.
+2. Hand-built fixtures (no key) and a Cohere column in the grid for every
+   ingress, including embeddings; Cohere usable as an alias target.
+3. README and docs say Cohere has no live coverage.
+
+**Definition of done:** the Cohere column passes fixture checks for text,
+tools, streaming, and embeddings; an alias with `provider: cohere` loads
+and serves in a gateway test.
+
+**Dependencies:** Phase 2 (done).
+
+**Parallel-ok:** with Phases 12 and 7.
+
+### Phase 9: Release and pilot migration
+
+**Slice 1: release prep.**
+1. Fold `docs/migration-guide.md` "Upgrading from 0.1.x" into a
+   "Migrating from LiteLLM" doc (nominative mention only) listing every
+   intentional difference. Two collected breaks aren't in the guide yet:
+   gateway bodies may not carry `api_base`, `api_key`, or `drop_params`,
+   and gateway JSON key order follows the SDK types.
+2. Remove the legacy `ModelCallingClient` / `SyncModelCallingClient`
+   (`model_calling/client.py`) with a migration-guide entry; CI's import
+   check moves to `Client` (decided 2026-10-29).
+3. Sync `PYPI_README.md` with `README.md`.
+4. Switch PyPI publishing to trusted publishing (OIDC); drop the token.
+5. Confirm vLLM's native `/v1/messages` against the `anthropic` provider.
+6. Run the compose swap check on the amd64 image (remote build, ask
+   first) and the live suite on aliases.
+
+**Slice 2: release and pilot.**
+1. Tag and release 0.2.0.
+2. Move `src/sanicode/llm/client.py` in
+   [rdwj/sanicode](https://github.com/rdwj/sanicode) (private) off
+   LiteLLM and run its tests. If memory-hub's LiteLLM question has
+   surfaced, consider its hand-rolled `/v1/chat/completions` calls
+   (`src/memoryhub_core/services/extraction.py`, `dreaming.py` in
+   [redhat-ai-americas/memory-hub](https://github.com/redhat-ai-americas/memory-hub))
+   as a second pilot.
 
 **Definition of done:** `pip install model-calling==0.2.0` in a fresh 3.11
-venv runs an `acompletion` and an `amessages` smoke call. sanicode's test
+venv runs an `acompletion` and an `amessages` smoke call; sanicode's test
 suite passes with LiteLLM removed from its dependencies.
 
-**Dependencies:** Phases 7, 8, 10, and 11.
+**Dependencies:** Phases 7, 8, 12, and 6 slice 2.
 
 **Parallel-ok:** no.
 
@@ -370,8 +255,9 @@ suite passes with LiteLLM removed from its dependencies.
 - OpenRouter as a first-class provider
 - Library API familiar to LiteLLM users, with documented breaking changes
 - Bugs surfaced during the public-release cleanup
-- Gateway configuration from the environment and a protected config endpoint
+- Gateway configuration from the environment
 - Model aliases from a hot-reloaded YAML file; no backend names on the gateway wire
+- Removal of the legacy gateway client and the `prefix/model` gateway wire
 - 0.2.0 release and a pilot migration
 
 **Out of scope (future epics):**
@@ -379,7 +265,8 @@ suite passes with LiteLLM removed from its dependencies.
 - Token counting and cost accounting (`token_counter`, `cost_per_token`,
   pricing data)
 - Router features (fallbacks, load balancing, retries across deployments).
-  Phase 11's aliases map one name to one target; they don't route.
+  Aliases map one name to one target; they don't route.
+- A raw pass-through mode that skips the internal format
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
@@ -454,19 +341,8 @@ with streaming, the Anthropic stream encoder, and strict-by-default with
 $0.000002 (re-recording). Full record:
 `session-summaries/2026-10-28-api-shapes-phase3-slice1.md`.
 
-Still open from earlier slices:
-- Document and Refusal block types. Phase 5 did not do Document blocks
-  (Messages `document` input arrives as an opaque block that every
-  backend refuses); take it up with Phase 6 or as a small slice.
-- No grid cell covers `Provider.prepare` on the streaming path, or the
-  gateway's default drop path for refused Ollama cells (Phase 4 summary).
-- Responses stream structure (Phase 7).
-- From the Phase 6 slice 1 review (low): the Anthropic provider drops
-  Chat Completions extras (`logprobs`, `logit_bias`, `user`) silently
-  instead of refusing them in strict mode; streams lose `stop_details` and
-  `container`; Chat-form `reasoning_effort` (adaptive thinking) is untested
-  live against older Claude models; no cell pins `max_completion_tokens`
-  to Messages `max_tokens`; `/v1/models` lists no `anthropic/` models.
+Still open from earlier slices: owned by Phase 12 since the 2026-10-29
+reconciliation.
 
 ## What landed earlier (2026-10-28): Phase 2 slice 2
 
@@ -569,6 +445,5 @@ of 23 files.
   and stop-and-ask; don't build workarounds into the gateway.
 - If OpenRouter is down or the key is missing, finish (c) on Ollama and
   name (a) and (b) as gaps.
-- Fallback work in this epic: the Phase 6 slice 1 review leftovers listed
-  under "Still open" (each small, offline), or Phase 7 slice 1 (Responses
-  ingress, stateless).
+- Fallback work in this epic: Phase 12 items 1–5 (offline, independent
+  of Phase 8) or Phase 6 slice 2 (Cohere, offline).
