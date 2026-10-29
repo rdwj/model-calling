@@ -170,7 +170,7 @@ The gateway does not check client keys; it uses its own backend keys from its en
 
 ### Strict mode
 
-The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_PARAMS=true` (accepts true/false/1/0/yes/no) to turn on strict mode: 400 with message "\<provider\> cannot honor \<param\>".
+The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_PARAMS=true` (accepts true/false/1/0/yes/no) to turn on strict mode: 400 with message "model '\<alias\>' cannot honor \<param\>".
 
 ### Backend URLs
 

@@ -584,7 +584,7 @@ Request bodies must not contain `api_base`, `api_key`, or `drop_params`. These a
 
 ### Strictness
 
-The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_PARAMS=true` to turn on strict mode. In strict mode, a parameter the backend cannot honor returns 400 with message "`<provider>` cannot honor `<param>`".
+The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_PARAMS=true` to turn on strict mode. In strict mode, a parameter the backend cannot honor returns 400 with message "model '`<alias>`' cannot honor `<param>`".
 
 ### Error bodies
 

@@ -10,7 +10,7 @@ import struct
 import pytest
 from openai.types import Model
 
-from model_calling.gateway import _check_dimensions
+from model_calling.gateway import _check_dimensions, public_message
 from model_calling.aliases import Target
 from tests.harness.gateway import REPLAY_CAPABILITIES
 from tests.harness.replay import ReplayTransport
@@ -167,3 +167,25 @@ def test_dimension_check_reads_both_encodings(embedding, declared, refused):
     target = Target("e", "ollama/m", None, None, declared)
     response = {"data": [{"embedding": embedding}]}
     assert (_check_dimensions(response, target) is not None) is refused
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        (
+            "vllm returned HTTP 404: The model `gpt-oss-20b` does not exist.",
+            "the backend returned HTTP 404: The model `chat` does not exist.",
+        ),
+        (
+            "cannot reach vllm at http://vllm.internal:8000/v1/chat/completions: refused",
+            "cannot reach the backend at the backend: refused",
+        ),
+        ("model 'vllm/gpt-oss-20b' not found", "model 'chat' not found"),
+        # A model name inside a longer word or name is left alone.
+        ("gpt-oss-20b-instruct is loading", "gpt-oss-20b-instruct is loading"),
+        ("VLLM error: overloaded", "the backend error: overloaded"),
+    ],
+)
+def test_public_message_hides_the_backend(message, expected):
+    target = Target("chat", "vllm/gpt-oss-20b", "http://vllm.internal:8000/v1", None, None)
+    assert public_message(message, target) == expected

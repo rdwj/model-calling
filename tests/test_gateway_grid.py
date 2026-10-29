@@ -10,7 +10,8 @@ import pytest
 from model_calling.errors import APIStatusError
 from model_calling.formats import anthropic
 from model_calling.formats import chat_completions as chat
-from model_calling.gateway import client_status
+from model_calling.aliases import Target
+from model_calling.gateway import client_status, public_message
 from tests.harness.grid import (
     GATEWAY_EMBEDDING_INGRESSES,
     GATEWAY_INGRESSES,
@@ -78,6 +79,21 @@ async def post_chat_completions(gateway, cell: Cell):
     return await post(gateway, cell)
 
 
+def assert_no_backend_details(text: str, cell: Cell) -> None:
+    """Which backend serves an alias, and as what, is the gateway's business."""
+    backend = ALL_BACKENDS[cell.backend]
+    prefixed = model(cell)
+    leaks = [
+        prefixed,
+        f"'{prefixed.split('/', 1)[1]}'",
+        f"`{prefixed.split('/', 1)[1]}`",
+        backend.provider.name,
+        backend.gateway_config["base_url"],
+    ]
+    found = [leak for leak in leaks if leak.lower() in text.lower()]
+    assert not found, f"error body names the backend ({found}): {text}"
+
+
 def assert_backend_auth(cell: Cell, replay: ReplayTransport):
     """A backend with a key gets it as a bearer token; one without gets none."""
     assert replay.requests, "gateway never called the backend"
@@ -104,6 +120,7 @@ async def check_chat_completions_backend_error(gateway, cell, replay):
     assert (
         resp.status_code >= 400
     ), f"backend error surfaced as HTTP {resp.status_code}: {resp.text}"
+    assert_no_backend_details(resp.text, cell)
 
 
 # --- gateway_messages -------------------------------------------------------
@@ -137,6 +154,7 @@ async def check_messages_backend_error(gateway, cell, replay):
     assert resp.status_code == recorded.status, resp.text
     expected = anthropic.error_body(recorded.status, "")["error"]["type"]
     assert validate_anthropic_error(resp.json()).error.type == expected
+    assert_no_backend_details(resp.text, cell)
 
 
 # --- gateway_embeddings -----------------------------------------------------
@@ -153,6 +171,7 @@ async def check_embeddings_error(gateway, cell, replay):
     recorded = Exchange.load(fixture_for(cell.backend, cell.scenario, cell.form))
     assert resp.status_code == recorded.status, resp.text
     assert resp.json()["error"]["type"] == chat.error_body(recorded.status, "")["error"]["type"]
+    assert_no_backend_details(resp.text, cell)
 
 
 CHECKS = {
@@ -179,7 +198,7 @@ async def check_refused(gateway, cell, replay, monkeypatch):
     error = resp.json()["error"]
     assert error["type"] == ERROR_TYPES[cell.ingress](BAD_REQUEST, "")["error"]["type"]
     params = ", ".join(refused_params(cell.backend, cell.scenario))
-    assert error["message"] == f"{ALL_BACKENDS[cell.backend].provider.name} cannot honor {params}"
+    assert error["message"] == f"model {grid_alias(model(cell))!r} cannot honor {params}"
     assert not replay.requests, "a refused request reached the backend"
 
 
@@ -220,13 +239,15 @@ def as_served(value, library_model: str, alias: str):
 
 async def library_answer(library, cell: Cell):
     """What the library returns for the cell, as the gateway would send it:
-    a body, a list of stream payloads, or (status, error) for a failure."""
+    a body, a list of stream payloads, or (status, error) for a failure,
+    its message in the form the gateway shows clients."""
     library.use(cell.backend, cell.scenario, cell.form)
     method = getattr(library.client, INGRESS_CALLS[cell.ingress][2])
     try:
         result = await method(**request_body(cell))
     except APIStatusError as e:
-        return client_status(e), e.message
+        target = Target(grid_alias(model(cell)), model(cell), None, None, None)
+        return client_status(e), public_message(e.message, target)
     if hasattr(result, "to_dict"):
         return result.to_dict()
     return [item.to_dict() async for item in result]

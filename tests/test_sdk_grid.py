@@ -198,7 +198,7 @@ async def check_refused(sdk, openai_sdk, cell: Cell, replay, monkeypatch):
         await call(sdk, openai_sdk, cell)
     assert err.value.status_code == BAD_REQUEST
     params = ", ".join(refused_params(cell.backend, cell.scenario))
-    assert f"{BACKENDS[cell.backend].provider.name} cannot honor {params}" in err.value.message
+    assert f"model {model(cell)!r} cannot honor {params}" in err.value.message
     assert not replay.requests, "a refused request reached the backend"
 
 

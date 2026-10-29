@@ -247,7 +247,7 @@ async def test_messages_stream_error_after_start_is_an_error_event(gateway):
     assert last.startswith("event: error\n"), last
     assert json.loads(last.split("data: ", 1)[1])["error"] == {
         "type": "api_error",
-        "message": "Ollama error: model crashed",
+        "message": "the backend error: model crashed",
     }
 
 
@@ -284,7 +284,8 @@ async def test_strict_mode_refuses_a_parameter_the_backend_cannot_honor(
     monkeypatch.setattr(server, "DROP_PARAMS", False)
     resp = await gateway.client.post(path, json=forced_tool_body(gateway, choice, tools))
     assert resp.status_code == 400, resp.text
-    assert resp.json()["error"]["message"] == "ollama cannot honor tool_choice"
+    alias = grid_alias(BACKENDS["ollama"].gateway_model)
+    assert resp.json()["error"]["message"] == f"model {alias!r} cannot honor tool_choice"
 
 
 @pytest.mark.parametrize("path, choice, tools", FORCED_TOOL.values(), ids=FORCED_TOOL)

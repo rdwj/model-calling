@@ -16,6 +16,7 @@ import base64
 import binascii
 import json
 import logging
+import re
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -61,6 +62,10 @@ _IMPLIED_STATUS = (
 # the gateway's credentials elsewhere or override its parameter policy.
 RESERVED_FIELDS = ("api_base", "api_key", "drop_params")
 SSE_MEDIA_TYPE = "text/event-stream"
+# Stands in for a backend's name or address in what clients see.
+BACKEND = "the backend"
+# A URL, not counting punctuation that ends the sentence around it.
+_URL = re.compile(r"[a-z][a-z0-9+.-]*://[^\s'\"<>]*[^\s'\"<>.,:;!?)]", re.IGNORECASE)
 
 ErrorBody = Callable[[int, str], dict]
 
@@ -188,12 +193,12 @@ async def _serve(
         result = await call(target, params)
     except UnsupportedParamsError as e:
         # Strict mode. The library's hint (drop_params) isn't the gateway client's to use.
-        return error(BAD_REQUEST, f"{e.provider} cannot honor {', '.join(e.params)}")
+        return error(BAD_REQUEST, f"model {model!r} cannot honor {', '.join(e.params)}")
     except APIError as e:
-        return error(client_status(e), e.message)
-    except Exception as e:
-        logger.exception("request to %s failed", target.provider)
-        return error(BAD_GATEWAY, f"request for {model!r} failed: {e}")
+        return error(client_status(e), public_message(e.message, target))
+    except Exception:
+        logger.exception("request for %r to %s failed", model, target.provider)
+        return error(BAD_GATEWAY, f"request for {model!r} failed")
     if encode is None or not params.get("stream"):
         response = _with_alias(result.to_dict(), model)
         problem = check(response, target) if check else None
@@ -205,9 +210,24 @@ async def _serve(
     def encode_with_alias(payload: dict) -> str:
         return encode(_with_alias(payload, model))
 
+    def stream_error(status: int, message: str) -> dict:
+        return error_body(status, public_message(message, target))
+
     return StreamingResponse(
-        _stream(result, encode_with_alias, error_body, end), media_type=SSE_MEDIA_TYPE
+        _stream(result, encode_with_alias, stream_error, end), media_type=SSE_MEDIA_TYPE
     )
+
+
+def public_message(message: str, target: Target) -> str:
+    """An error message fit for the gateway's client: the backend's name,
+    its model name, and any address it mentions are replaced, since which
+    backend serves an alias is the gateway's business. The full message is
+    logged where the library raised it."""
+    message = _URL.sub(BACKEND, message)
+    native = target.model.split("/", 1)[1]
+    for name in sorted({target.model, native}, key=len, reverse=True):
+        message = re.sub(rf"(?<![\w.:/-]){re.escape(name)}(?![\w.:/-])", target.alias, message)
+    return re.sub(rf"\b{re.escape(target.provider)}\b", BACKEND, message, flags=re.IGNORECASE)
 
 
 def _backend(target: Target) -> dict:
@@ -264,9 +284,9 @@ async def _stream(
             yield end
     except APIError as e:
         yield encode(error_body(client_status(e), e.message))
-    except Exception as e:
+    except Exception:
         logger.exception("stream failed")
-        yield encode(error_body(INTERNAL_ERROR, f"stream failed: {e}"))
+        yield encode(error_body(INTERNAL_ERROR, "stream failed"))
     finally:
         await items.aclose()
 
