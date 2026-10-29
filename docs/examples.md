@@ -449,7 +449,7 @@ message = anthropic_client.messages.create(
 print(next(b.text for b in message.content if b.type == "text"))
 ```
 
-The gateway serves `POST /v1/chat/completions`, `POST /v1/messages`, and `POST /v1/embeddings`. It reads backend credentials from its environment (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and so on) and does not check client keys. Requests that include `api_base`, `api_key`, or `drop_params` in the body are rejected with a 400. The gateway drops unsupported parameters by default; set `MODEL_CALLING_STRICT_PARAMS=true` in the environment to raise 400 errors instead.
+The gateway serves `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses` (stateless), and `POST /v1/embeddings`. It reads backend credentials from its environment (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and so on) and does not check client keys. Requests that include `api_base`, `api_key`, or `drop_params` in the body are rejected with a 400. The gateway drops unsupported parameters by default; set `MODEL_CALLING_STRICT_PARAMS=true` in the environment to raise 400 errors instead.
 
 ## Gateway with curl
 

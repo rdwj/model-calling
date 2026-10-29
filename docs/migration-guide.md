@@ -327,7 +327,7 @@ response = client.chat.completions.create(
 )
 ```
 
-The same gateway serves Chat Completions (`POST /v1/chat/completions`), Anthropic Messages (`POST /v1/messages`), and Embeddings (`POST /v1/embeddings`).
+The same gateway serves Chat Completions (`POST /v1/chat/completions`), Anthropic Messages (`POST /v1/messages`), OpenAI Responses without a response store (`POST /v1/responses`), and Embeddings (`POST /v1/embeddings`).
 
 ### Anthropic Messages over any backend
 
