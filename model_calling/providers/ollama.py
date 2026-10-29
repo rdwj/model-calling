@@ -8,6 +8,7 @@ arguments as a single `ToolInputDelta`.
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from model_calling.core import (
@@ -49,8 +50,10 @@ logger = logging.getLogger(__name__)
 
 CHAT_PATH = "/api/chat"
 EMBED_PATH = "/api/embed"
-# Model metadata, including which `think` values the model takes.
+# Model metadata: whether the model thinks, and which `think` values it takes.
 SHOW_PATH = "/api/show"
+# The /api/show capability a model that can think lists.
+THINKING_CAPABILITY = "thinking"
 # Ollama has no tool_choice, so it can't make the model call a tool.
 FORCED_TOOL_CHOICES = ("any", "tool")
 # Ollama's done_reason -> internal stop reason. Ollama reports "stop" even
@@ -99,39 +102,61 @@ def _strict(tool: Any) -> bool:
     return isinstance(tool, Tool) and bool(tool.strict)
 
 
+def _wants_thinking(request: Request) -> bool:
+    return request.thinking is not None and request.thinking.mode != "disabled"
+
+
+@dataclass(frozen=True)
+class ModelInfo:
+    """What `/api/show` says about thinking: the model's named levels, and
+    whether it thinks at all (None when the answer lists no capabilities)."""
+
+    think_levels: tuple[str, ...] = ()
+    thinks: bool | None = None
+
+
 class OllamaProvider(Provider):
     """`think` takes a bool, or a named level for models that define levels
-    (gpt-oss: "low", "medium", "high"). Which ones a model takes comes from
-    `/api/show`, looked up only for a request with a thinking effort."""
+    (gpt-oss: "low", "medium", "high"). Whether a model thinks, and which
+    levels it takes, comes from `/api/show`, looked up for any request that
+    asks for thinking. Ollama refuses `think` for a model that can't think."""
 
     name = "ollama"
 
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        # The model's named thinking levels, once looked up.
-        self.think_levels: tuple[str, ...] = ()
+        self.model_info = ModelInfo()
+
+    @property
+    def think_levels(self) -> tuple[str, ...]:
+        return self.model_info.think_levels
 
     def endpoint(self) -> str:
         return f"{self.base_url}{CHAT_PATH}"
 
     def needs_model_info(self, request: Request) -> bool:
-        thinking = request.thinking
-        return thinking is not None and thinking.mode != "disabled" and thinking.effort is not None
+        return _wants_thinking(request)
 
     def model_info_request(self) -> tuple[str, dict]:
         return f"{self.base_url}{SHOW_PATH}", {"model": self.model}
 
-    def read_model_info(self, body: Any) -> tuple[str, ...]:
-        """The named levels in /api/show's `thinking.values`; booleans there
-        are on/off controls, not levels."""
-        thinking = body.get("thinking") if isinstance(body, dict) else None
+    def read_model_info(self, body: Any) -> ModelInfo:
+        """The named levels in /api/show's `thinking.values` (booleans there
+        are on/off controls, not levels) and the `thinking` capability."""
+        if not isinstance(body, dict):
+            return ModelInfo()
+        capabilities = body.get("capabilities")
+        thinks = THINKING_CAPABILITY in capabilities if isinstance(capabilities, list) else None
+        thinking = body.get("thinking")
         values = thinking.get("values") if isinstance(thinking, dict) else None
-        if not isinstance(values, list):
-            return ()
-        return tuple(v for v in values if isinstance(v, str))
+        levels = tuple(v for v in values if isinstance(v, str)) if isinstance(values, list) else ()
+        return ModelInfo(levels, thinks)
 
-    def use_model_info(self, info: tuple[str, ...] | None) -> None:
-        self.think_levels = info or ()
+    def use_model_info(self, info: ModelInfo | None) -> None:
+        self.model_info = info or ModelInfo()
+
+    def _cannot_think(self, request: Request) -> bool:
+        return _wants_thinking(request) and self.model_info.thinks is False
 
     # --- request ----------------------------------------------------------
 
@@ -146,6 +171,8 @@ class OllamaProvider(Provider):
             names.append("parallel_tool_calls")
         if any(_strict(t) for t in request.tools or ()):
             names.append("tools.strict")
+        if self._cannot_think(request):
+            names.append("thinking")
         return names
 
     def build_request(self, request: Request) -> dict:
@@ -175,7 +202,9 @@ class OllamaProvider(Provider):
         options = {k: v for k, v in options.items() if v is not None}
         if options:
             body["options"] = options
-        if request.thinking is not None:
+        if self._cannot_think(request):
+            logger.debug("%s cannot think; sending the request without think", self.model)
+        elif request.thinking is not None:
             body["think"] = self._think(request.thinking)
         fmt = request.response_format
         if fmt is not None and fmt.type == "json_object":

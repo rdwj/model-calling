@@ -164,6 +164,8 @@ class Provider(ABC):
         self.http_client = http_client
         self.extra_headers = dict(extra_headers or {})
         self.model_info_cache = {} if model_info_cache is None else model_info_cache
+        # The request `prepare` last ran for.
+        self._prepared: Request | None = None
 
     # --- what each provider defines --------------------------------------
 
@@ -209,9 +211,12 @@ class Provider(ABC):
         """Look up the model if `request` needs it. A failed lookup is
         logged and passed on as None (and not cached): the provider falls
         back to what it sends without one, and the call itself reports any
-        real problem with the model."""
-        if not self.needs_model_info(request):
+        real problem with the model. The library prepares before checking
+        parameters, so a second call with the same request object does
+        nothing."""
+        if request is self._prepared or not self.needs_model_info(request):
             return
+        self._prepared = request
         key = (self.name, self.base_url, self.model)
         if key not in self.model_info_cache:
             url, body = self.model_info_request()

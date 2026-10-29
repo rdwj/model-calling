@@ -117,7 +117,8 @@ async def test_cell(library, cell: Cell):
         await EMBEDDING_CHECKS[cell.scenario](library, cell)
     elif refused_params(cell.backend, cell.scenario):
         await check_refused(CALLS[cell.ingress][0], library, cell)
-        assert not replay.requests, "a refused request reached the backend"
+        # Only the model lookups strict mode needed reached the backend.
+        replay.check()
         return
     elif cell.scenario == "backend_error":
         await check_backend_error(CALLS[cell.ingress][0], library, cell)

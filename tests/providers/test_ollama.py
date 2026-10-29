@@ -20,7 +20,7 @@ from model_calling.core import (
     UrlSource,
 )
 from model_calling.formats import TranslationError, anthropic, chat_completions
-from model_calling.providers.ollama import OllamaProvider
+from model_calling.providers.ollama import ModelInfo, OllamaProvider
 from tests.harness.replay import Exchange, ReplayTransport, fixture_path
 
 
@@ -231,7 +231,9 @@ def test_unsupported_params(provider, to_internal, body, refused):
 
 GPT_OSS_INFO = Exchange.load(fixture_path("ollama", "model_info-gpt_oss_20b"))
 # qwen3:4b's `thinking` from /api/show (Ollama 0.40): on/off only.
-QWEN3_INFO = {"thinking": {"values": [True], "default": True}}
+QWEN3_INFO = {"capabilities": ["completion", "tools", "thinking"], "thinking": {"values": [True]}}
+# qwen3-coder:30b can't think (Ollama 0.40.12); Ollama refuses `think` for it.
+QWEN3_CODER_INFO = {"capabilities": ["tools", "completion"]}
 
 
 def thinking_request(mode="enabled", effort="low") -> Request:
@@ -264,12 +266,12 @@ def test_build_request_think(provider, info, mode, effort, think):
     "request_, needed",
     [
         (thinking_request(), True),
-        (thinking_request(effort=None), False),
+        (thinking_request(effort=None), True),
         (thinking_request(mode="disabled", effort=None), False),
         (Request(model="m", messages=[]), False),
     ],
 )
-def test_needs_model_info_only_for_an_effort(provider, request_, needed):
+def test_needs_model_info_only_for_thinking(provider, request_, needed):
     assert provider.needs_model_info(request_) is needed
 
 
@@ -300,14 +302,40 @@ async def test_prepare_looks_up_each_model_once():
     "body", [{"thinking": True}, {"thinking": {"values": "low"}}, ["low"], {}, None]
 )
 def test_read_model_info_tolerates_any_shape(provider, body):
-    assert provider.read_model_info(body) == ()
+    assert provider.read_model_info(body) == ModelInfo()
+
+
+@pytest.mark.parametrize(
+    "info, thinks", [(QWEN3_INFO, True), (QWEN3_CODER_INFO, False), ({}, None)]
+)
+def test_read_model_info_thinking_capability(provider, info, thinks):
+    assert provider.read_model_info(info).thinks is thinks
+
+
+@pytest.mark.parametrize(
+    "info, mode, refused",
+    [
+        (QWEN3_CODER_INFO, "enabled", ["thinking"]),
+        (QWEN3_CODER_INFO, "adaptive", ["thinking"]),
+        (QWEN3_CODER_INFO, "disabled", []),
+        (QWEN3_INFO, "enabled", []),
+        # Without the capability list (a failed lookup), Ollama decides.
+        (None, "enabled", []),
+    ],
+)
+def test_thinking_on_a_model_that_cannot_think(provider, info, mode, refused):
+    """Strict mode refuses it; dropped, the request goes without `think`."""
+    provider.use_model_info(None if info is None else provider.read_model_info(info))
+    request = thinking_request(mode, None if mode == "disabled" else "low")
+    assert provider.unsupported_params(request) == refused
+    assert ("think" not in provider.build_request(request)) is bool(refused)
 
 
 async def test_prepare_caches_only_the_levels():
     cache: dict = {}
     provider, replay = replayed_provider([GPT_OSS_INFO], cache)
     await provider.prepare(thinking_request())
-    assert list(cache.values()) == [("low", "medium", "high")]
+    assert list(cache.values()) == [ModelInfo(("low", "medium", "high"), True)]
     replay.check()
 
 

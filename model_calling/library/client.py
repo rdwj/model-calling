@@ -185,7 +185,7 @@ class Client:
         body = {**params, "model": model, "messages": messages, "stream": stream}
         provider = self._provider(http, model, api_base, api_key)
         request = _translate(provider, lambda: chat.request_to_internal(body))
-        self._check_params(provider, request, drop_params)
+        await self._check_params(provider, request, drop_params)
         if not stream:
             response = await _complete(provider, request)
             return _typed(
@@ -270,7 +270,7 @@ class Client:
                 provider=provider.name,
             )
         request = _translate(provider, lambda: anthropic.request_to_internal(body))
-        self._check_params(provider, request, drop_params)
+        await self._check_params(provider, request, drop_params)
         if not stream:
             response = await _complete(provider, request)
             # Messages always carries usage; a backend that reports none gets zeros.
@@ -383,7 +383,10 @@ class Client:
         except ValueError as e:
             raise BadRequestError(str(e), provider=prefix) from e
 
-    def _check_params(self, provider: Provider, request: Request, drop_params: bool | None):
+    async def _check_params(self, provider: Provider, request: Request, drop_params: bool | None):
+        """What a backend can honor may depend on its model (Ollama's
+        thinking), so the provider looks the model up first."""
+        await provider.prepare(request)
         self._refuse(provider, provider.unsupported_params(request), drop_params)
 
     def _refuse(self, provider: Provider, names: list[str], drop_params: bool | None):

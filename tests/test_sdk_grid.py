@@ -199,7 +199,8 @@ async def check_refused(sdk, openai_sdk, cell: Cell, replay, monkeypatch):
     assert err.value.status_code == BAD_REQUEST
     params = ", ".join(refused_params(cell.backend, cell.scenario))
     assert f"model {model(cell)!r} cannot honor {params}" in err.value.message
-    assert not replay.requests, "a refused request reached the backend"
+    # Only the model lookups strict mode needed reached the backend.
+    replay.check()
 
 
 @pytest.mark.parametrize("cell", grid(ingresses=SDK_INGRESSES))

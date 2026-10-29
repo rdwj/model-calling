@@ -199,7 +199,8 @@ async def check_refused(gateway, cell, replay, monkeypatch):
     assert error["type"] == ERROR_TYPES[cell.ingress](BAD_REQUEST, "")["error"]["type"]
     params = ", ".join(refused_params(cell.backend, cell.scenario))
     assert error["message"] == f"model {grid_alias(model(cell))!r} cannot honor {params}"
-    assert not replay.requests, "a refused request reached the backend"
+    # Only the model lookups strict mode needed reached the backend.
+    replay.check()
 
 
 @pytest.mark.parametrize("cell", GATEWAY_GRID)

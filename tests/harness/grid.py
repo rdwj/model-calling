@@ -99,6 +99,8 @@ def grid(
                     continue
                 if ingress in MESSAGES_INGRESSES and not spec.messages_form:
                     continue
+                if getattr(spec, "only_backends", None) and backend not in spec.only_backends:
+                    continue
                 cell = Cell(ingress, backend, scenario)
                 known = (KNOWN_FAILURES if known_failures else KNOWN_REQUEST_FAILURES).get(
                     (ingress, backend, scenario)

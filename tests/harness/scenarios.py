@@ -103,6 +103,8 @@ SEED = 7
 # Backend capabilities a scenario can need beyond text and tools.
 VISION = "vision"
 REASONING = "reasoning"
+# A model that can't think, for refusing thinking.
+NO_THINKING = "no_thinking"
 CHAT_COMPLETIONS = "chat_completions"
 MESSAGES = "messages"
 
@@ -141,6 +143,9 @@ class Scenario:
     messages_form: bool = True
     # A capability the backend's model needs (VISION, REASONING), if any.
     needs: Optional[str] = None
+    # The backends the scenario means anything for, if not all. Others get
+    # no cell at all, rather than an xfail, since nothing there is wrong.
+    only_backends: Optional[Tuple[str, ...]] = None
     # Replay another scenario's fixture: the native exchange is identical,
     # and strict body matching proves it.
     fixture: Optional[str] = None
@@ -349,6 +354,17 @@ SCENARIOS = {
             chat_form=False,
             needs=REASONING,
         ),
+        # Thinking, as Claude Code asks for it, on a model that can't think
+        # (found in Phase 8). Strict mode refuses it; the gateway drops it.
+        # Only Ollama says which models can't (/api/show's capabilities).
+        Scenario(
+            "thinking_unsupported",
+            THINKING_PROMPT,
+            chat_extra={"reasoning_effort": "high"},
+            messages_extra={"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}},
+            needs=NO_THINKING,
+            only_backends=("ollama",),
+        ),
         # Structured output. "response" is the name providers give a schema
         # that arrives without one, as from Messages.
         Scenario(
@@ -483,6 +499,7 @@ class Backend:
             self.unsupported(scenario) is None
             and scenario.name not in self.refuses
             and (self.only_scenarios is None or scenario.name in self.only_scenarios)
+            and (scenario.only_backends is None or self.name in scenario.only_backends)
         )
 
     def unsupported(self, scenario: Scenario) -> Optional[str]:
@@ -560,6 +577,8 @@ REPLAY_API_KEY = "replay-not-a-real-key"
 OLLAMA_VISION_MODEL = "gemma3"
 # gpt-oss takes named thinking levels; qwen3 only turns thinking on.
 OLLAMA_REASONING_MODEL = "gpt-oss:20b"
+# qwen3-coder can't think: /api/show lists no `thinking` capability.
+OLLAMA_NO_THINKING_MODEL = "qwen3-coder:30b"
 # Fixtures of a provider's model lookup (Ollama's /api/show) are named this
 # plus the model.
 MODEL_INFO_FIXTURE_PREFIX = "model_info-"
@@ -579,9 +598,15 @@ BACKENDS = {
             config_prefix="ollama",
             gateway_config={"base_url": OLLAMA_URL},
             provider=OllamaProvider,
-            capability_models={VISION: OLLAMA_VISION_MODEL, REASONING: OLLAMA_REASONING_MODEL},
-            # Ollama has no tool_choice, parallel switch, or strict tools.
+            capability_models={
+                VISION: OLLAMA_VISION_MODEL,
+                REASONING: OLLAMA_REASONING_MODEL,
+                NO_THINKING: OLLAMA_NO_THINKING_MODEL,
+            },
+            # Ollama has no tool_choice, parallel switch, or strict tools,
+            # and refuses `think` for a model that can't think.
             refuses={
+                "thinking_unsupported": ("thinking",),
                 "tool_required": ("tool_choice",),
                 "tool_named": ("tool_choice",),
                 "parallel_tools_off": ("parallel_tool_calls",),
@@ -737,18 +762,17 @@ def refused_params(backend_name: str, scenario_name: str) -> Optional[Tuple[str,
 
 
 def exchanges_for(backend_name: str, scenario_name: str, form: Optional[str] = None) -> list:
-    """The recorded exchanges a cell whose ingress sends `form` replays:
-    none for a refused one, which must never reach the backend, and a model
-    lookup before the call when the provider needs one."""
+    """The recorded exchanges a cell whose ingress sends `form` replays: a
+    model lookup first when the provider needs one, then the call, except
+    for a refused cell, whose request must never reach the backend. (Strict
+    mode may need the lookup to know what to refuse.)"""
     from tests.harness.replay import Exchange, fixture_path
 
-    if refused_params(backend_name, scenario_name):
-        return []
-    exchanges = [Exchange.load(fixture_for(backend_name, scenario_name, form))]
     backend, scenario = ALL_BACKENDS[backend_name], ALL_SCENARIOS[scenario_name]
     info = getattr(backend, "model_info_fixture", lambda s: None)(scenario)
-    if info is not None:
-        exchanges.insert(0, Exchange.load(fixture_path(backend_name, info)))
+    exchanges = [] if info is None else [Exchange.load(fixture_path(backend_name, info))]
+    if not refused_params(backend_name, scenario_name):
+        exchanges.append(Exchange.load(fixture_for(backend_name, scenario_name, form)))
     return exchanges
 
 
