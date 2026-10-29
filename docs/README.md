@@ -8,4 +8,3 @@ Index of model-calling documentation.
 - [examples.md](examples.md): Code examples for common use cases
 - [advanced.md](advanced.md): In-depth information
 - [migration-guide.md](migration-guide.md): Migrating from 0.1.x
-- [testing.md](testing.md): Running the test suite

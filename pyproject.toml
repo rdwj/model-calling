@@ -90,11 +90,9 @@ target-version = ["py311", "py312", "py313"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-# Plain `pytest` is the offline suite. Select the others explicitly with
-# `-m integration` or `-m live`; a later -m on the command line wins.
-addopts = '-v --strict-markers -m "not integration and not live"'
+# Plain `pytest` is the offline suite. Select live tests explicitly with `-m live`.
+addopts = '-v --strict-markers -m "not live"'
 markers = [
-    "integration: needs a running model-calling service and Ollama",
     "live: calls OpenRouter, costs money, and appends to tests/live/spend.jsonl",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "function_calling: tests that verify function calling capabilities",

@@ -2,15 +2,13 @@
 Shared pytest configuration.
 
 The default run is offline. It needs no network, backend, or running
-service, and reads nothing from the machine: not `~/.model_calling/`, not
-`.env`, and not the generated `tests/models_available.py`. Tests marked
-`integration` or `live` opt out of that isolation.
+service, and reads nothing from the machine: not `~/.model_calling/` or
+`.env`. Tests marked `live` opt out of that isolation.
 """
 
 import atexit
 import ipaddress
 import os
-import re
 import shutil
 import socket
 import tempfile
@@ -24,8 +22,7 @@ import pytest
 pytest_plugins = ["tests.harness.gateway", "tests.harness.library"]
 
 TESTS_DIR = Path(__file__).parent
-INTEGRATION_DIR = TESTS_DIR / "integration"
-OPT_OUT_MARKERS = ("integration", "live")
+OPT_OUT_MARKERS = ("live",)
 
 # Environment the package reads for backend URLs and credentials. Offline
 # tests must never see the developer's real values.
@@ -47,8 +44,8 @@ BACKEND_ENV_VARS = (
 
 # This module loads before any test module imports model_calling. Point
 # home at a temporary directory so offline tests don't read or write the
-# real home. Integration tests talk to a service in another process, and
-# live tests read only the environment, so neither needs the real home.
+# real home. Live tests read only the environment, so they don't need
+# the real home either.
 _SESSION_HOME = tempfile.mkdtemp(prefix="model-calling-tests-home-")
 atexit.register(shutil.rmtree, _SESSION_HOME, ignore_errors=True)
 os.environ["HOME"] = _SESSION_HOME
@@ -56,23 +53,8 @@ os.environ["USERPROFILE"] = _SESSION_HOME
 
 # Only the gateway entry point calls load_dotenv() (tests/test_packaging.py
 # checks that importing the server doesn't). Make it a no-op anyway so a
-# developer's .env never configures the code under test. The integration conftest calls
-# dotenv.main.load_dotenv directly when it wants the real thing.
+# developer's .env never configures the code under test.
 dotenv.load_dotenv = lambda *args, **kwargs: False
-
-
-def _selects_marker(config: pytest.Config, marker: str) -> bool:
-    """True when the -m expression asks for `marker` rather than excluding it."""
-    expr = config.getoption("markexpr") or ""
-    return re.search(rf"(?<!not )\b{marker}\b", expr) is not None
-
-
-def pytest_ignore_collect(collection_path: Path, config: pytest.Config):
-    # Importing the integration package reads .env and models_available.py,
-    # so skip it entirely unless the run selects integration tests.
-    if collection_path == INTEGRATION_DIR and not _selects_marker(config, "integration"):
-        return True
-    return None
 
 
 def _is_offline(item: pytest.Item) -> bool:
@@ -102,7 +84,7 @@ def offline_isolation(request, monkeypatch, tmp_path):
             if not loopback:
                 raise RuntimeError(
                     f"Offline test tried to connect to {address!r}. Serve backend "
-                    "responses from a fixture, or mark the test integration/live."
+                    "responses from a fixture, or mark the test live."
                 )
         return real_connect(sock, address)
 
@@ -114,7 +96,7 @@ def offline_isolation(request, monkeypatch, tmp_path):
     def blocked_transport(transport, request):
         raise RuntimeError(
             f"Offline test sent {request.method} {request.url} over the network. "
-            "Use the replay transport from tests/harness, or mark the test integration/live."
+            "Use the replay transport from tests/harness, or mark the test live."
         )
 
     async def blocked_async_transport(transport, request):

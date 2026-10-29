@@ -1,11 +1,10 @@
 # Tests
 
-There are three suites, selected by pytest marker.
+There are two suites, selected by pytest marker.
 
 | Suite | Command | Needs |
 | --- | --- | --- |
 | Offline (default) | `uv run pytest` | nothing outside the repo |
-| Integration | `uv run pytest -m integration` | a running gateway on `MODEL_CALLING_URL` (default `http://localhost:8000`) backed by Ollama |
 | Live | `uv run pytest -m live` | `OPENROUTER_API_KEY` in the environment; costs money |
 
 CI runs only the offline suite. To check that it doesn't lean on your
@@ -107,11 +106,3 @@ Run gitleaks on `tests/fixtures/` before committing new recordings.
 Live tests and the recorder append each paid OpenRouter call's cost to
 `live/spend.jsonl`. Commit the ledger after every live run. Both refuse to
 make calls once the ledger total reaches the $5 epic budget.
-
-## Integration suite
-
-`integration/` holds the older tests that call a running gateway over
-HTTP. It is only collected when the run selects `-m integration`. The
-`run_tests.sh` and `test_ollama.sh` scripts at the repo root run it, and
-`auto_config_tests.sh` writes `tests/models_available.py` to choose its
-Ollama models.

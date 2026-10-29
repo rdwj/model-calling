@@ -43,4 +43,3 @@ client.close()
 - [Examples](examples.md): Code examples for common use cases
 - [Advanced Topics](advanced.md): In-depth information
 - [Migration Guide](migration-guide.md): Migrating from 0.1.x
-- [Testing Guide](testing.md): Running the test suite

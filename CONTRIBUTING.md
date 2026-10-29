@@ -79,14 +79,14 @@ To add support for a new backend, implement the `Provider` interface in `model_c
 ## Testing Guidelines
 
 - **Write tests** for all new functionality.
-- **Run the full test suite** before submitting pull requests.
+- **Run the full test suite** before submitting pull requests:
+  ```bash
+  uv run pytest              # offline suite (default)
+  uv run pytest -m live      # live tests (needs OPENROUTER_API_KEY)
+  ```
 - **Test edge cases** and error handling.
 - **Keep the default suite offline.** Plain `pytest` must pass without network access, a running backend, or files outside the repository. Tests that call real providers use the `live` marker and read `OPENROUTER_API_KEY` from the environment. Every live run appends its cost to the committed `tests/live/spend.jsonl`.
 - **Fixture-backed tests.** New offline coverage goes in the (ingress, backend, scenario) grid in `tests/harness/grid.py`, replaying fixtures recorded with `tests/harness/record.py`. See [tests/README.md](tests/README.md).
-- Scripts for the `integration` suite, which needs a running gateway and Ollama:
-  - `run_tests.sh`: run the integration suite
-  - `test_ollama.sh`: run a subset of it
-  - `diagnose_models.sh`: check model compatibility
 
 ## Style Guidelines
 
