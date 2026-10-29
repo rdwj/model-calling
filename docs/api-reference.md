@@ -538,7 +538,9 @@ Response format:
 
 #### POST /v1/config/update
 
-Update a prefix's runtime config. Changes apply to the next request.
+Update a prefix's runtime config. Changes apply to the next request and last until the gateway restarts.
+
+Disabled unless the gateway starts with `MODEL_CALLING_ADMIN_TOKEN` set: without it, the endpoint returns 404, the same as an unknown route. With it set, send `Authorization: Bearer <token>`; a missing or wrong token gets 403.
 
 Request body:
 
@@ -551,7 +553,7 @@ Request body:
 
 Response: 200 OK.
 
-Use this to set backend URLs at runtime. The `OLLAMA_BASE_URL` and `VLLM_BASE_URL` environment variables are logged at startup but not applied yet. Use `/v1/config/update` to point the gateway elsewhere.
+For backend URLs that should hold from startup, set `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, and `MODEL_CALLING_ANTHROPIC_BASE_URL` instead (see [Environment Variables](advanced.md#environment-variables)).
 
 #### POST /v1/models/refresh
 

@@ -158,9 +158,11 @@ The gateway does not check client keys; it uses its own backend keys from its en
 
 The gateway drops unsupported parameters by default. Set `MODEL_CALLING_STRICT_PARAMS=true` (accepts true/false/1/0/yes/no) to turn on strict mode: 400 with message "\<provider\> cannot honor \<param\>".
 
-Set a backend's URL at runtime with `POST /v1/config/update`, for example `{"prefix": "ollama", "config": {"base_url": "http://ollama:11434"}}`. The `OLLAMA_BASE_URL` and `VLLM_BASE_URL` variables the container files set are logged at startup but not applied yet. This endpoint is unauthenticated, so keep the gateway on a trusted network.
+### Backend URLs
 
-Environment: `OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `PORT`, `MODEL_CALLING_STRICT_PARAMS`.
+The gateway takes backend URLs from its environment: `OLLAMA_BASE_URL` is Ollama's native root (`http://ollama:11434`), while `VLLM_BASE_URL` and `MODEL_CALLING_ANTHROPIC_BASE_URL` are API roots with `/v1`. `VLLM_API_KEY` is sent to vLLM if set. `POST /v1/config/update` changes a backend's settings at runtime. It is off (404) unless `MODEL_CALLING_ADMIN_TOKEN` is set, and then a request needs `Authorization: Bearer <token>`.
+
+Environment: `OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, `VLLM_API_KEY`, `MODEL_CALLING_ANTHROPIC_BASE_URL`, `MODEL_CALLING_ADMIN_TOKEN`, `PORT`, `MODEL_CALLING_STRICT_PARAMS`. The `model-calling` command also reads a `.env` file from the directory it starts in.
 
 ## Documentation
 

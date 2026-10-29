@@ -82,6 +82,8 @@ config = {"vllm": {"base_url": "http://vllm-server:8000/v1"}}
 
 The Ollama base URL is still the server root (`http://localhost:11434`). The library appends `/api/chat` or `/api/embed` depending on the call.
 
+The gateway's `VLLM_BASE_URL` variable follows the same rule. The 0.1.x container files set it to the server root (`http://localhost:8000`); append `/v1` to any value carried over.
+
 ### The library is strict by default
 
 A parameter the backend cannot honor raises `UnsupportedParamsError` (a subclass of `BadRequestError`). Pass `drop_params=True` client-wide or per call to drop unsupported parameters instead.
@@ -254,15 +256,7 @@ client.close()
 
 ### Using the gateway
 
-A gateway serves many applications. Each app points the `openai` or `anthropic` SDK at the gateway, and the gateway holds the backend configurations and keys. Update a backend URL with `POST /v1/config/update`:
-
-```bash
-curl -X POST http://localhost:8000/v1/config/update \
-  -H 'Content-Type: application/json' \
-  -d '{"prefix": "vllm", "config": {"base_url": "https://vllm.apps.cluster.example.com/v1"}}'
-```
-
-The gateway reads backend keys from its environment (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`). In OpenShift, mount them from Secrets:
+A gateway serves many applications. Each app points the `openai` or `anthropic` SDK at the gateway, and the gateway holds the backend configurations and keys. It reads backend URLs (`VLLM_BASE_URL`, `OLLAMA_BASE_URL`) and keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `VLLM_API_KEY`) from its environment. In OpenShift, mount the keys from Secrets:
 
 ```yaml
 apiVersion: v1
@@ -284,6 +278,8 @@ spec:
       - name: gateway
         image: quay.io/your-org/model-calling:latest
         env:
+        - name: VLLM_BASE_URL
+          value: https://vllm.apps.cluster.example.com/v1
         - name: OPENROUTER_API_KEY
           valueFrom:
             secretKeyRef:
@@ -465,4 +461,4 @@ When moving an application from local to production:
 
 9. **Check error handling.** Catch `model_calling.APIError` or its subclasses (`BadRequestError`, `AuthenticationError`, `RateLimitError`, `InternalServerError`). The `provider`, `status`, and `body` attributes help with debugging.
 
-10. **Consider the gateway.** For multiple applications, a single gateway with `/v1/config/update` can route to many backends. Applications call it with the official `openai` or `anthropic` SDKs.
+10. **Consider the gateway.** For multiple applications, a single gateway configured from its environment can route to many backends. Applications call it with the official `openai` or `anthropic` SDKs.

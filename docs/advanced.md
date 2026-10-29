@@ -431,16 +431,21 @@ uvicorn model_calling.server:app --host 0.0.0.0 --port 8000
 
 ### Environment Variables
 
-The gateway reads `.env` (via python-dotenv) at startup. The library never does.
+The `model-calling` command (and `python -m model_calling`) reads a `.env` file from the directory it starts in, via python-dotenv, before the gateway builds its backend settings. Importing `model_calling.server`, as `uvicorn model_calling.server:app` does, never reads `.env`, and neither does the library.
 
 - `OPENAI_API_KEY`, `OPENAI_ORG_ID`: OpenAI credentials
 - `OPENROUTER_API_KEY`: OpenRouter key
 - `ANTHROPIC_API_KEY`: Anthropic key
 - `COHERE_API_KEY`: Cohere key (legacy adapters only)
+- `OLLAMA_BASE_URL`: Ollama's native API root, without `/v1` (default `http://localhost:11434`)
+- `VLLM_BASE_URL`: vLLM's API root with `/v1` (default `http://localhost:8000/v1`)
+- `VLLM_API_KEY`: sent to vLLM as a bearer token, if set
+- `MODEL_CALLING_ANTHROPIC_BASE_URL`: the Anthropic backend's API root with `/v1` (default `https://api.anthropic.com/v1`)
+- `MODEL_CALLING_ADMIN_TOKEN`: enables `/v1/config/update` (see [Runtime Configuration](#runtime-configuration))
 - `PORT`: server port (default 8000)
 - `MODEL_CALLING_STRICT_PARAMS`: strict mode (see below)
 
-Note: `OLLAMA_BASE_URL` and `VLLM_BASE_URL` appear in the Containerfile but are not applied yet. Set the backend URL with `/v1/config/update`.
+The URL variables mean what `base_url` means in `Client(config=...)`. The gateway logs the Ollama, vLLM, and Anthropic URLs in effect at startup. The Anthropic variable is not `ANTHROPIC_BASE_URL` because the `anthropic` SDK and Claude Code read that name as the root without `/v1`, and a client pointed at this gateway sets it to the gateway's own address.
 
 ### Strict Mode
 
@@ -469,10 +474,11 @@ An error the backend reports inside a stream maps by its kind: rate limit become
 
 ### Runtime Configuration
 
-Update a prefix's settings without restarting the gateway:
+`POST /v1/config/update` changes a prefix's settings without restarting the gateway. A changed `base_url` receives the key the gateway holds for that backend, so the endpoint is off by default: it returns 404 unless the gateway starts with `MODEL_CALLING_ADMIN_TOKEN` set. With the token set, send it as a bearer token; a request without it gets 403.
 
 ```bash
 curl -X POST http://localhost:8000/v1/config/update \
+  -H "Authorization: Bearer $MODEL_CALLING_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "prefix": "ollama",
@@ -482,7 +488,7 @@ curl -X POST http://localhost:8000/v1/config/update \
   }'
 ```
 
-The change applies to the next request. The endpoint is unauthenticated, so the gateway should not be exposed beyond trusted networks.
+The change applies to the next request and lasts until the gateway restarts. For settings that should survive a restart, use the environment variables above.
 
 ### Building Containers
 
@@ -512,7 +518,7 @@ The `podman-compose.yml` file runs the gateway alongside Ollama:
 podman-compose up
 ```
 
-The file sets `OLLAMA_BASE_URL=http://ollama:11434`, but the gateway doesn't apply that variable yet, so point it at the Ollama container after startup with `/v1/config/update` (above). The file uses digest-pinned images and bind mounts Ollama's model storage.
+The file sets `OLLAMA_BASE_URL=http://ollama:11434`, so the gateway reaches the Ollama container with no further setup. The file uses digest-pinned images and bind mounts Ollama's model storage.
 
 ## Not Provided
 
