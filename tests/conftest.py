@@ -3,7 +3,7 @@ Shared pytest configuration.
 
 The default run is offline. It needs no network, backend, or running
 service, and reads nothing from the machine: not `~/.model_calling/` or
-`.env`. Tests marked `live` opt out of that isolation.
+`.env`. Tests marked `live` or `acceptance` opt out of that isolation.
 """
 
 import atexit
@@ -22,7 +22,7 @@ import pytest
 pytest_plugins = ["tests.harness.gateway", "tests.harness.library"]
 
 TESTS_DIR = Path(__file__).parent
-OPT_OUT_MARKERS = ("live",)
+OPT_OUT_MARKERS = ("live", "acceptance")
 
 # Environment the package reads for backend URLs and credentials. Offline
 # tests must never see the developer's real values.

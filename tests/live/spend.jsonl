@@ -129,3 +129,9 @@
 {"ts": "2026-10-29T20:07:26+00:00", "source": "tests/live", "endpoint": "chat/completions", "model": "mistralai/mistral-nemo", "id": "gen-1793304444-nL7aQYhHKtmvS4PV8cAL", "cost_usd": 4.38e-07}
 {"ts": "2026-10-29T20:07:28+00:00", "source": "tests/live", "endpoint": "messages", "model": "mistralai/mistral-nemo", "id": "msg_UKbHZp5iVIN99C8tmqnt", "cost_usd": 2.88e-07}
 {"ts": "2026-10-29T20:07:29+00:00", "source": "tests/live", "endpoint": "responses", "model": "mistralai/mistral-nemo", "id": "gen-1793304448-Huvk0r2JQUpNZNS9YsrE", "cost_usd": 2.88e-07}
+{"ts": "2026-10-29T22:18:51+00:00", "source": "tests/acceptance", "endpoint": "claude code /v1/messages (anthropic, 4 calls)", "model": "anthropic/claude-haiku-5.5", "id": null, "cost_usd": 0.00119044}
+{"ts": "2026-10-29T22:19:19+00:00", "source": "tests/acceptance", "endpoint": "claude code /v1/messages (anthropic, 2 calls)", "model": "anthropic/claude-haiku-5.5", "id": null, "cost_usd": 0.000603555}
+{"ts": "2026-10-29T22:20:28+00:00", "source": "tests/acceptance", "endpoint": "claude code /v1/messages (anthropic, 4 calls)", "model": "anthropic/claude-haiku-5.5", "id": null, "cost_usd": 0.00054366}
+{"ts": "2026-10-29T22:21:13+00:00", "source": "tests/acceptance", "endpoint": "claude code /v1/messages (openrouter, 4 calls)", "model": "openai/gpt-oss-120b", "id": null, "cost_usd": 0.00021606}
+{"ts": "2026-10-29T22:21:38+00:00", "source": "tests/acceptance", "endpoint": "claude code /v1/messages (anthropic, 4 calls)", "model": "anthropic/claude-haiku-5.5", "id": null, "cost_usd": 0.00055458}
+{"ts": "2026-10-29T22:22:30+00:00", "source": "tests/acceptance", "endpoint": "claude code /v1/messages (openrouter, 4 calls)", "model": "openai/gpt-oss-120b", "id": null, "cost_usd": 0.00034893}

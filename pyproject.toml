@@ -91,9 +91,10 @@ target-version = ["py311", "py312", "py313"]
 testpaths = ["tests"]
 pythonpath = ["."]
 # Plain `pytest` is the offline suite. Select live tests explicitly with `-m live`.
-addopts = '-v --strict-markers -m "not live"'
+addopts = '-v --strict-markers -m "not live and not acceptance"'
 markers = [
     "live: calls OpenRouter, costs money, and appends to tests/live/spend.jsonl",
+    "acceptance: drives Claude Code through the gateway on real backends (tests/acceptance)",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "function_calling: tests that verify function calling capabilities",
 ]

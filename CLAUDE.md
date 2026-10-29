@@ -54,6 +54,12 @@ tracked in git.
   `tests/live/test_anthropic_live.py` does through a callback.
 - **claude-haiku-5.5 on OpenRouter never thinks** (`thinking_tokens: 0` for enabled or adaptive,
   checked 2026-10-28); use claude-haiku-4.5 for live thinking.
+- **Claude Code `--bare` offers only Bash, Edit, and Read** (2.1.308; `--tools Write` doesn't add
+  it). Edit creates a file when `old_string` is empty, but models don't assume so; say it in the
+  task. `--allowedTools` is variadic and swallows a trailing prompt, so pass the prompt on stdin.
+- **Claude Code always asks for thinking** (`adaptive`, `display: omitted`) plus
+  `context_management` and `output_config.effort`, and puts a device id in `metadata.user_id`.
+  Never commit a captured Claude Code request body.
 - **Mount the alias file's directory, never the file.** A single-file bind mount (compose) or a
   `subPath` mount (Kubernetes) pins the original inode, so an editor's rename-on-save or a ConfigMap
   update never reaches the container and hot reload silently stops working.

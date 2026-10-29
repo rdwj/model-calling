@@ -6,6 +6,7 @@ There are two suites, selected by pytest marker.
 | --- | --- | --- |
 | Offline (default) | `uv run pytest` | nothing outside the repo |
 | Live | `uv run pytest -m live` | `OPENROUTER_API_KEY` in the environment; costs money |
+| Acceptance | `uv run pytest -m acceptance` | Claude Code, Ollama, and `OPENROUTER_API_KEY`; see `acceptance/README.md` |
 
 CI runs only the offline suite. To check that it doesn't lean on your
 machine, run it with an empty home directory:
