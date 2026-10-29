@@ -22,6 +22,12 @@ def main():
     """Start the model-calling gateway"""
     try:
         import uvicorn
+        from dotenv import find_dotenv, load_dotenv
+
+        # Only the entry point reads .env, from the directory the gateway
+        # starts in, and before the server builds its backend configs.
+        # Importing model_calling.server never does.
+        load_dotenv(find_dotenv(usecwd=True))
         import model_calling.server  # noqa: F401 - fail here, not inside uvicorn
     except ModuleNotFoundError as e:
         if e.name not in ("uvicorn", "fastapi", "dotenv", "starlette"):

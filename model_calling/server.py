@@ -11,7 +11,6 @@ from typing import Dict, Any, List, Optional, Union
 from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 
 from model_calling import __version__
 from model_calling import gateway
@@ -20,9 +19,6 @@ from model_calling.providers import PROVIDERS, split_model
 from model_calling.registry import registry
 from model_calling.cache import embedding_cache
 from model_calling.embedding_adapter import create_openai_embedding_response
-
-# Load environment variables from .env file if present
-load_dotenv()
 
 
 @contextlib.asynccontextmanager

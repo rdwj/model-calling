@@ -53,8 +53,9 @@ atexit.register(shutil.rmtree, _SESSION_HOME, ignore_errors=True)
 os.environ["HOME"] = _SESSION_HOME
 os.environ["USERPROFILE"] = _SESSION_HOME
 
-# server.py calls load_dotenv() at import. Make that a no-op so a developer's
-# .env never configures the code under test. The integration conftest calls
+# Only the gateway entry point calls load_dotenv() (tests/test_packaging.py
+# checks that importing the server doesn't). Make it a no-op anyway so a
+# developer's .env never configures the code under test. The integration conftest calls
 # dotenv.main.load_dotenv directly when it wants the real thing.
 dotenv.load_dotenv = lambda *args, **kwargs: False
 

@@ -45,3 +45,44 @@ def test_gateway_without_the_server_extra_prints_an_install_hint(name):
     assert "pip install 'model-calling[server]'" in result.stderr
     assert f"({name} is not installed)" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+DOTENV_VAR = "MODEL_CALLING_TEST_DOTENV_MARKER"
+
+# Runs main() with uvicorn.run replaced, and prints what .env contributed.
+_RUN_MAIN = f"""
+import os
+import uvicorn
+uvicorn.run = lambda *args, **kwargs: print(os.environ.get({DOTENV_VAR!r}))
+from model_calling.__main__ import main
+main()
+"""
+
+
+def run_in(directory, code: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, cwd=directory
+    )
+
+
+@pytest.fixture
+def dotenv_dir(tmp_path):
+    (tmp_path / ".env").write_text(f"{DOTENV_VAR}=from-dotenv\n")
+    return tmp_path
+
+
+def test_importing_the_server_does_not_read_dotenv(dotenv_dir):
+    code = f"""
+import os
+before = dict(os.environ)
+import model_calling.server
+assert dict(os.environ) == before, sorted(set(os.environ) ^ set(before))
+"""
+    result = run_in(dotenv_dir, code)
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_entry_point_reads_dotenv_from_the_working_directory(dotenv_dir):
+    result = run_in(dotenv_dir, _RUN_MAIN)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "from-dotenv", result.stdout
