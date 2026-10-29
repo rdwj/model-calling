@@ -634,3 +634,29 @@ def test_parse_response_tolerates_nulls(provider, body):
     resp = provider.parse_response(body)
     assert resp.model == "gpt-oss-20b"
     assert resp.stop_reason == "end_turn"
+
+
+def test_unsupported_params_silent_on_messages_only_fields(provider):
+    """Chat Completions backends drop Messages-only fields silently (Phase 12 item 7).
+
+    context_management, metadata, and cache_control have no Chat Completions
+    meaning, so they're dropped hints rather than unsupported parameters.
+    This matches Claude Code's request shape: the gateway drops them without
+    naming them in the refusal.
+    """
+    # Request shaped like Claude Code's, with Messages-only fields.
+    request = req(
+        system=[Text(text="You are helpful.")],
+        extras={
+            "context_management": {"type": "always"},
+            "metadata": {"user_id": "test-user"},
+            "cache_control": {"type": "ephemeral"},
+        },
+    )
+    # In strict mode, these fields are not refused.
+    assert provider.unsupported_params(request) == []
+    # build_request drops them (they're not in the body).
+    body = provider.build_request(request)
+    assert "context_management" not in body
+    assert "metadata" not in body
+    assert "cache_control" not in body
