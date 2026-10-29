@@ -10,12 +10,21 @@ client with `aclose()` / `async with` after async use and `close()` /
 """
 
 import copy
+import logging
+import os
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from model_calling.aliases import (
+    AliasConfig,
+    AliasConfigError,
+    AliasStore,
+    Target,
+    dimension_mismatch,
+)
 from model_calling.callbacks import Callback
 from model_calling.core import Request, Response, StreamError, StreamEvent, Usage
 from model_calling.errors import (
@@ -42,6 +51,19 @@ from model_calling.types.embeddings import CreateEmbeddingResponse
 from model_calling.types.messages import Message, MessageStreamEvent, parse_stream_event
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
+
+PYYAML_MISSING = "Client(models=...) needs PyYAML: pip install 'model-calling[server]'"
+
+
+def _warn_shadowing(config: AliasConfig) -> None:
+    """Log aliases that also read as prefixed names; the alias wins."""
+    shadowing = [a for a in config.aliases if "/" in a and split_model(a)[0] in PROVIDERS]
+    if shadowing:
+        logger.warning(
+            "aliases %s shadow the prefixed names they look like; the alias is used",
+            ", ".join(shadowing),
+        )
 
 
 def _wire(value: Any) -> Any:
@@ -68,12 +90,19 @@ class Client:
         config: Mapping[str, Mapping[str, Any]] | None = None,
         callbacks: Sequence[Callback] = (),
         drop_params: bool = False,
+        models: str | os.PathLike | None = None,
     ):
         """`config` maps a model prefix (`anthropic`, `ollama`, `vllm`, `openai`,
         `openrouter`) to settings merged over `providers.default_configs()`:
         `base_url`, `api_key`, `headers`, `callbacks`, and `transport` (an
         httpx transport, mostly for tests). `callbacks` run for every prefix,
         before the prefix's own.
+
+        `models` names a model alias file, the format the gateway reads (see
+        `model_calling.aliases`). A name the file defines is called on its
+        target, even one that looks like a prefixed name; any other name is
+        routed by prefix as usual. A missing or invalid file raises
+        `AliasConfigError` here; later edits reload as in the gateway.
 
         The call methods take `self` positionally only, so any request field,
         `self` included, can be passed as a keyword.
@@ -87,6 +116,19 @@ class Client:
             self.config[prefix] = {**self.config.get(prefix, {}), **overrides}
         self.callbacks = list(callbacks)
         self.drop_params = drop_params
+        self._store: AliasStore | None = None
+        self._aliases: AliasConfig | None = None
+        if models is not None:
+            try:
+                import yaml  # noqa: F401 - the alias loader needs it
+            except ImportError as e:
+                raise ImportError(PYYAML_MISSING) from e
+            path = os.fspath(models)
+            if not os.path.exists(path):
+                raise AliasConfigError(f"alias file {path} not found")
+            self._store = AliasStore(path)
+            self._aliases = self._store.check()
+            _warn_shadowing(self._aliases)
         self._http = HttpClients()
         self._sync_http = HttpClients()
         self._sync: LoopThread | None = None
@@ -139,6 +181,7 @@ class Client:
     async def _completion(
         self, http, model, messages, stream, api_base, api_key, drop_params, params
     ):
+        model, api_base, api_key, _ = self._resolve(model, api_base, api_key)
         body = {**params, "model": model, "messages": messages, "stream": stream}
         provider = self._provider(http, model, api_base, api_key)
         request = _translate(provider, lambda: chat.request_to_internal(body))
@@ -211,6 +254,7 @@ class Client:
     async def _messages(
         self, http, model, messages, max_tokens, stream, api_base, api_key, drop_params, params
     ):
+        model, api_base, api_key, _ = self._resolve(model, api_base, api_key)
         body = {
             **params,
             "model": model,
@@ -277,6 +321,7 @@ class Client:
         )
 
     async def _embedding(self, http, model, input, api_base, api_key, drop_params, params):
+        model, api_base, api_key, target = self._resolve(model, api_base, api_key)
         body = {**params, "model": model, "input": input}
         provider = self._provider(http, model, api_base, api_key)
         request = _translate(provider, lambda: embeddings.request_to_internal(body))
@@ -286,14 +331,37 @@ class Client:
             response = await provider.embed(request)
         except TranslationError as e:
             raise BadRequestError(str(e), provider=provider.name) from e
-        return _typed(
-            provider,
-            lambda: CreateEmbeddingResponse.model_validate(
-                embeddings.response_from_internal(response, model, fmt)
-            ),
-        )
+        payload = _typed(provider, lambda: embeddings.response_from_internal(response, model, fmt))
+        problem = target and dimension_mismatch(payload, target)
+        if problem:
+            raise APIResponseValidationError(problem, provider=provider.name)
+        return _typed(provider, lambda: CreateEmbeddingResponse.model_validate(payload))
 
     # --- plumbing -------------------------------------------------------------
+
+    def _resolve(
+        self, model: str, api_base: str | None, api_key: str | None
+    ) -> tuple[str, str | None, str | None, Target | None]:
+        """The prefixed model, backend, and key for `model`, through the alias
+        file when it defines `model`. Explicit `api_base` and `api_key` win."""
+        if self._store is None:
+            return model, api_base, api_key, None
+        aliases = self._store.current()
+        if aliases is not self._aliases:
+            self._aliases = aliases
+            _warn_shadowing(aliases)
+        try:
+            target = aliases.resolve(model)
+        except AliasConfigError as e:
+            raise BadRequestError(str(e)) from e
+        if target is None:
+            return model, api_base, api_key, None
+        return (
+            target.model,
+            target.api_base if api_base is None else api_base,
+            target.api_key if api_key is None else api_key,
+            target,
+        )
 
     def _provider(
         self, http: HttpClients, model: str, api_base: str | None, api_key: str | None

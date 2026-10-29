@@ -12,8 +12,6 @@ the gateway's own client sees. A streaming call returns once the backend has
 accepted the request, so a refusal still produces a proper status code.
 """
 
-import base64
-import binascii
 import json
 import logging
 import re
@@ -22,7 +20,13 @@ from typing import Any
 
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from model_calling.aliases import CONFIG_ENV, AliasConfig, AliasConfigError, Target
+from model_calling.aliases import (
+    CONFIG_ENV,
+    AliasConfig,
+    AliasConfigError,
+    Target,
+    dimension_mismatch,
+)
 from model_calling.errors import (
     APIError,
     APITimeoutError,
@@ -123,7 +127,7 @@ async def embeddings(client: Client, body: Any, aliases: AliasConfig, *, drop_pa
         )
 
     return await _serve(
-        body, aliases, call, chat.error_body, encode=None, end=None, check=_check_dimensions
+        body, aliases, call, chat.error_body, encode=None, end=None, check=dimension_mismatch
     )
 
 
@@ -244,32 +248,6 @@ def _with_alias(payload: dict, alias: str) -> dict:
     if isinstance(message, dict) and "model" in message:
         message["model"] = alias
     return payload
-
-
-def _check_dimensions(response: dict, target: Target) -> str | None:
-    """Refuse embeddings of another size than the alias declares, so a
-    backend swap can't put mismatched vectors into an index."""
-    if target.dimensions is None:
-        return None
-    for item in response.get("data", ()):
-        size = _vector_size(item.get("embedding"))
-        if size is not None and size != target.dimensions:
-            return (
-                f"model {target.alias!r} is declared with {target.dimensions} dimensions, "
-                f"but its backend returned {size}"
-            )
-    return None
-
-
-def _vector_size(embedding) -> int | None:
-    if isinstance(embedding, list):
-        return len(embedding)
-    if isinstance(embedding, str):  # encoding_format=base64: packed float32s
-        try:
-            return len(base64.b64decode(embedding, validate=True)) // 4
-        except (binascii.Error, ValueError):
-            return None
-    return None
 
 
 async def _stream(

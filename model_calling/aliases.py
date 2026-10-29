@@ -16,6 +16,8 @@ defaults for that provider, environment overrides included. `AliasStore`
 rereads the file when it changes, so an edit needs no restart.
 """
 
+import base64
+import binascii
 import logging
 import os
 import re
@@ -218,6 +220,33 @@ class _UniqueKeyLoader:
 
             cls._cls = Loader
         return cls._cls
+
+
+def dimension_mismatch(response: dict, target: Target) -> str | None:
+    """Why an embeddings response breaks the alias's declared size, or None.
+    Refusing it keeps a backend swap from putting mismatched vectors into an
+    index."""
+    if target.dimensions is None:
+        return None
+    for item in response.get("data", ()):
+        size = _vector_size(item.get("embedding"))
+        if size is not None and size != target.dimensions:
+            return (
+                f"model {target.alias!r} is declared with {target.dimensions} dimensions, "
+                f"but its backend returned {size}"
+            )
+    return None
+
+
+def _vector_size(embedding) -> int | None:
+    if isinstance(embedding, list):
+        return len(embedding)
+    if isinstance(embedding, str):  # encoding_format=base64: packed float32s
+        try:
+            return len(base64.b64decode(embedding, validate=True)) // 4
+        except (binascii.Error, ValueError):
+            return None
+    return None
 
 
 def load(path: str) -> AliasConfig:

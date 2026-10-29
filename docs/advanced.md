@@ -451,6 +451,21 @@ The gateway reads the file named by `MODEL_CALLING_CONFIG`, or `model-calling.ya
 
 Clients see only aliases. `GET /v1/models` lists them, responses carry the alias in `model`, and any other name gets 404; a `prefix/model` string such as `ollama/qwen3:4b` is only served if the file defines it as an alias. Error messages name the alias, never the backend, its model name, or its address. Cohere is not available yet.
 
+#### Aliases in the library
+
+`Client` reads the same file when you pass its path, so an app that calls the library directly can use the names its gateway clients use:
+
+```python
+from model_calling import Client
+
+client = Client(models="model-calling.yaml")
+response = await client.acompletion("chat", messages)
+```
+
+A name the file defines is called on its target; any other name is routed by its prefix as usual, so `ollama/qwen3:4b` still works. If the file defines an alias that is itself prefix-shaped, such as `ollama/qwen3:4b`, the alias wins, and the client logs a warning naming it when the file loads. An explicit `api_base` or `api_key` on a call overrides the alias's backend. Unlike the gateway, the library returns the backend's model name in `model`, not the alias.
+
+The file reloads on change as it does in the gateway. A missing or invalid file raises `AliasConfigError` when the client is created, a backend whose `api_key_env` variable is unset raises `BadRequestError` on the call, and an embedding of the wrong size for an alias with `dimensions` raises `APIResponseValidationError`. Reading the file needs PyYAML, which the `server` extra installs.
+
 ### Environment Variables
 
 The `model-calling` command (and `python -m model_calling`) reads a `.env` file from the directory it starts in, via python-dotenv, before the gateway builds its backend settings. Importing `model_calling.server`, as `uvicorn model_calling.server:app` does, never reads `.env`, and neither does the library.

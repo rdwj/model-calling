@@ -10,8 +10,8 @@ import struct
 import pytest
 from openai.types import Model
 
-from model_calling.gateway import _check_dimensions, public_message
-from model_calling.aliases import Target
+from model_calling.gateway import public_message
+from model_calling.aliases import Target, dimension_mismatch
 from tests.harness.replay import ReplayTransport
 from tests.harness.scenarios import (
     ALL_BACKENDS,
@@ -162,7 +162,7 @@ def packed(size: int) -> str:
 def test_dimension_check_reads_both_encodings(embedding, declared, refused):
     target = Target("e", "ollama/m", None, None, declared)
     response = {"data": [{"embedding": embedding}]}
-    assert (_check_dimensions(response, target) is not None) is refused
+    assert (dimension_mismatch(response, target) is not None) is refused
 
 
 @pytest.mark.parametrize(
@@ -185,3 +185,23 @@ def test_dimension_check_reads_both_encodings(embedding, declared, refused):
 def test_public_message_hides_the_backend(message, expected):
     target = Target("chat", "vllm/gpt-oss-20b", "http://vllm.internal:8000/v1", None, None)
     assert public_message(message, target) == expected
+
+
+async def test_prefix_shaped_alias_serves_alias_name_in_response(gateway):
+    """An alias literally named ollama/<model> is served by the gateway,
+    and the response's model field is that alias string."""
+    # Set up the backend replay
+    gateway.use("ollama", "text")
+    # Create an alias with a prefix-shaped name
+    gateway.write_config(
+        {
+            "backends": {"local": {"provider": "ollama"}},
+            "models": {"ollama/my-model": {"backend": "local", "model": OLLAMA_MODEL}},
+        }
+    )
+    # Make a request using the prefix-shaped alias
+    resp = await gateway.client.post(CHAT_PATH, json=TEXT.chat_completions_body("ollama/my-model"))
+    assert resp.status_code == 200, resp.text
+    completion = validate_chat_completion(resp.json())
+    # The response's model field should be the alias, not the backend model
+    assert completion.model == "ollama/my-model"

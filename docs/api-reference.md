@@ -13,6 +13,7 @@ client = Client(
     config=None,
     callbacks=(),
     drop_params=False,
+    models=None,
 )
 ```
 
@@ -31,6 +32,8 @@ Settings merge over the defaults from `providers.default_configs()`.
 **`callbacks`**: sequence of `Callback` instances. These run for every prefix, before any prefix-specific callbacks.
 
 **`drop_params`**: bool. When True, parameters the backend cannot honor are dropped silently. When False (the default), they raise `UnsupportedParamsError`.
+
+**`models`**: str or path-like, optional. A model alias file in the gateway's format. Names it defines are called on their targets; other names route by prefix. Reloads on change; a missing or invalid file raises `AliasConfigError` here. Needs PyYAML (the `server` extra). See [Aliases in the library](advanced.md#aliases-in-the-library).
 
 ### Config example
 
