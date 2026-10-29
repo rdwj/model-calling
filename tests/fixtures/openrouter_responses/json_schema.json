@@ -1,0 +1,138 @@
+{
+  "meta": {
+    "backend": "openrouter_responses",
+    "scenario": "json_schema",
+    "recorded_at": "2026-10-29T23:39:38+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/responses",
+    "json": {
+      "model": "mistralai/mistral-nemo",
+      "input": [
+        {
+          "type": "message",
+          "role": "user",
+          "content": "What is the capital of France? Answer as JSON."
+        }
+      ],
+      "max_output_tokens": 1024,
+      "text": {
+        "format": {
+          "type": "json_schema",
+          "name": "response",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "country": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city",
+              "country"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "store": false,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "gen-1793317176-5JQNEyjsWjqOxMbXfnJn",
+      "object": "response",
+      "created_at": 1793317176,
+      "model": "mistralai/mistral-nemo",
+      "status": "completed",
+      "completed_at": 1793317178,
+      "output": [
+        {
+          "id": "msg_tmp_518vq2uyryp",
+          "type": "message",
+          "role": "assistant",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "{\n  \"city\": \"Paris\"\n  , \"country\": \"France\"\n}",
+              "annotations": [],
+              "logprobs": []
+            }
+          ]
+        }
+      ],
+      "error": null,
+      "incomplete_details": null,
+      "tools": [],
+      "tool_choice": "auto",
+      "parallel_tool_calls": true,
+      "max_output_tokens": 1024,
+      "temperature": 1,
+      "top_p": 1,
+      "presence_penalty": 0,
+      "frequency_penalty": 0,
+      "top_logprobs": 0,
+      "max_tool_calls": null,
+      "metadata": {},
+      "background": false,
+      "previous_response_id": null,
+      "service_tier": "auto",
+      "truncation": "disabled",
+      "store": false,
+      "instructions": null,
+      "text": {
+        "format": {
+          "type": "json_schema",
+          "name": "response",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "country": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city",
+              "country"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "reasoning": null,
+      "safety_identifier": null,
+      "prompt_cache_key": null,
+      "prompt_cache_options": null,
+      "usage": {
+        "input_tokens": 14,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 18,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 32,
+        "cost": 7.92e-07,
+        "is_byok": false,
+        "cost_details": {
+          "upstream_inference_cost": 7.92e-07,
+          "upstream_inference_input_cost": 2.52e-07,
+          "upstream_inference_output_cost": 5.4e-07
+        }
+      }
+    }
+  }
+}

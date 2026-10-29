@@ -1,0 +1,108 @@
+{
+  "meta": {
+    "backend": "openrouter_responses",
+    "scenario": "image",
+    "recorded_at": "2026-10-29T23:39:35+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/responses",
+    "json": {
+      "model": "google/gemma-3-4b-it",
+      "input": [
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_image",
+              "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAS0lEQVR42u3PQQkAAAgAsetfWiP4FgYrsKZeS0BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEDgsqnc8OJg6Ln3AAAAAElFTkSuQmCC"
+            },
+            {
+              "type": "input_text",
+              "text": "What color is this image? Reply with one word."
+            }
+          ]
+        }
+      ],
+      "max_output_tokens": 256,
+      "store": false,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "gen-1793317174-OXnDmnddkseJ3XdQwM6W",
+      "object": "response",
+      "created_at": 1793317174,
+      "model": "google/gemma-3-4b-it",
+      "status": "completed",
+      "completed_at": 1793317175,
+      "output": [
+        {
+          "id": "msg_tmp_knjptallk2c",
+          "type": "message",
+          "role": "assistant",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Red",
+              "annotations": [],
+              "logprobs": []
+            }
+          ]
+        }
+      ],
+      "error": null,
+      "incomplete_details": null,
+      "tools": [],
+      "tool_choice": "auto",
+      "parallel_tool_calls": true,
+      "max_output_tokens": 256,
+      "temperature": 1,
+      "top_p": 1,
+      "presence_penalty": 0,
+      "frequency_penalty": 0,
+      "top_logprobs": 0,
+      "max_tool_calls": null,
+      "metadata": {},
+      "background": false,
+      "previous_response_id": null,
+      "service_tier": "default",
+      "truncation": "disabled",
+      "store": false,
+      "instructions": null,
+      "text": {
+        "format": {
+          "type": "text"
+        }
+      },
+      "reasoning": null,
+      "safety_identifier": null,
+      "prompt_cache_key": null,
+      "prompt_cache_options": null,
+      "usage": {
+        "input_tokens": 279,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 2,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 281,
+        "cost": 1.415e-05,
+        "is_byok": false,
+        "cost_details": {
+          "upstream_inference_cost": 1.415e-05,
+          "upstream_inference_input_cost": 1.395e-05,
+          "upstream_inference_output_cost": 2e-07
+        }
+      }
+    }
+  }
+}
