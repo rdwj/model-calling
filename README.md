@@ -13,7 +13,11 @@ pip install 'model-calling[server]'    # adds the gateway (FastAPI + uvicorn)
 pip install 'model-calling[moderation]' # adds moderation endpoint (torch + transformers)
 ```
 
-The library depends on httpx and pydantic. Importing it never loads FastAPI and never reads `.env`.
+The library depends on httpx and pydantic, pinned exactly (`httpx==0.28.1`, `pydantic==2.14.1`) so every release is tested against the versions it installs; an app that pins other versions of either will conflict. Importing it never loads FastAPI and never reads `.env`.
+
+## Status
+
+0.2.0 is the first release of the rewritten library. It covers Chat Completions and Messages, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, and Anthropic, plus the alias-routed gateway. Not yet available: the OpenAI Responses API, the Cohere backend, retries and fallbacks. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
 
 ## Quick start
 
