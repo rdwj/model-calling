@@ -272,6 +272,7 @@ def _tool_in(raw: dict) -> Tool | Opaque:
         name=rest.pop("name"),
         description=_take(rest, "description"),
         input_schema=rest.pop("input_schema"),
+        strict=_take(rest, "strict"),
         cache_control=cache_control,
         extras=_extras(rest),
     )
@@ -286,6 +287,7 @@ def _tool_out(tool: Tool | Opaque) -> dict:
             "name": tool.name,
             "description": tool.description,
             "input_schema": tool.input_schema,
+            "strict": tool.strict,
             "cache_control": _cache_out(tool.cache_control),
         },
     )

@@ -32,6 +32,8 @@ class Tool(CoreModel):
     name: str
     description: str | None = None
     input_schema: dict[str, Any]
+    # Ask the backend to hold the model's input to `input_schema` exactly.
+    strict: bool | None = None
     cache_control: CacheControl | None = None
 
 

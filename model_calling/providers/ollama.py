@@ -37,8 +37,6 @@ from model_calling.core import (
 )
 from model_calling.core.embeddings import EmbeddingRequest, EmbeddingResponse
 from model_calling.formats import TranslationError
-from model_calling.formats.anthropic import FORMAT as ANTHROPIC_FORMAT
-from model_calling.formats.chat_completions import FORMAT as CHAT_FORMAT
 from model_calling.formats.embeddings import FORMAT as EMBEDDINGS_FORMAT
 from model_calling.providers.base import (
     BAD_GATEWAY,
@@ -55,8 +53,6 @@ EMBED_PATH = "/api/embed"
 SHOW_PATH = "/api/show"
 # Ollama has no tool_choice, so it can't make the model call a tool.
 FORCED_TOOL_CHOICES = ("any", "tool")
-# Formats whose tool definitions can ask for strict schema adherence.
-_STRICT_TOOL_FORMATS = (CHAT_FORMAT, ANTHROPIC_FORMAT)
 # Ollama's done_reason -> internal stop reason. Ollama reports "stop" even
 # when the turn ends in tool calls, so callers check for those first.
 _STOP_REASONS = {"stop": "end_turn", "length": "max_tokens"}
@@ -100,9 +96,7 @@ def _tool_call_in(raw: dict) -> ToolCall:
 
 def _strict(tool: Any) -> bool:
     """Whether a tool asks for strict schema adherence, which Ollama can't give."""
-    return isinstance(tool, Tool) and any(
-        tool.extras_for(f).get("strict") for f in _STRICT_TOOL_FORMATS
-    )
+    return isinstance(tool, Tool) and bool(tool.strict)
 
 
 class OllamaProvider(Provider):

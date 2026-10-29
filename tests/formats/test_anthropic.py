@@ -308,6 +308,8 @@ EDGE_REQUESTS = {
     "unknown_tool_choice": {**REQUEST, "tool_choice": {"type": "auto_v2"}},
     "system_shorthand": {**REQUEST, "system": "Be terse."},
     "streaming": {**REQUEST, "stream": True},
+    "strict_tool": {**REQUEST, "tools": [{"name": "f", "input_schema": {}, "strict": True}]},
+    "strict_null_tool": {**REQUEST, "tools": [{"name": "f", "input_schema": {}, "strict": None}]},
 }
 
 
@@ -381,3 +383,9 @@ def test_unsigned_thinking_gets_an_empty_signature():
     assert body["content"] == [{"type": "thinking", "thinking": "hm", "signature": ""}]
     validate_anthropic_message(body)
     assert fmt.response_to_internal(body).content[0].signature is None
+
+
+def test_tool_strict_is_typed():
+    body = {**REQUEST, "tools": [{"name": "f", "input_schema": {}, "strict": True}]}
+    tool = fmt.request_to_internal(body).tools[0]
+    assert (tool.strict, tool.extras) == (True, {})

@@ -488,3 +488,15 @@ def test_response_raw_arguments():
     validated = validate_chat_completion(out)
     call = validated.choices[0].message.tool_calls[0]
     assert call.function.arguments == "{invalid json"
+
+
+@pytest.mark.parametrize(
+    "strict, typed, extras", [(True, True, {}), (None, None, {"strict": None})]
+)
+def test_tool_strict(strict, typed, extras):
+    """strict is typed so every backend sees it; an explicit null stays in extras."""
+    fn = {"name": "f", "parameters": {"type": "object"}, "strict": strict}
+    req = chat.request_to_internal(
+        {"model": "m", "messages": [], "tools": [{"type": "function", "function": fn}]}
+    )
+    assert (req.tools[0].strict, req.tools[0].extras_for(chat.FORMAT)) == (typed, extras)

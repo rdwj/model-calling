@@ -56,14 +56,7 @@ KNOWN_FAILURES: Dict[Tuple[str, str, str], str] = {
 }
 # Known failures in what we send: replay rejects the request, so these fail
 # every test of the cell, and stay marked when `known_failures=False`.
-KNOWN_REQUEST_FAILURES: Dict[Tuple[str, str, str], str] = {
-    (ingress, backend, "tool_strict"): (
-        "a Messages tool's strict is dropped on the way to Chat Completions backends, "
-        "even in strict mode (found in Phase 4 review)"
-    )
-    for ingress in MESSAGES_INGRESSES
-    for backend in ("openai_compat", "vllm")
-}
+KNOWN_REQUEST_FAILURES: Dict[Tuple[str, str, str], str] = {}
 KNOWN_FAILURES.update(KNOWN_REQUEST_FAILURES)
 
 

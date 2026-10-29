@@ -212,6 +212,8 @@ class OpenAICompatProvider(Provider):
             fn["description"] = tool.description
         fn["parameters"] = tool.input_schema
         fn.update(tool.extras_for(FORMAT))
+        if tool.strict is not None:
+            fn["strict"] = tool.strict
         return {"type": "function", "function": fn}
 
     @staticmethod

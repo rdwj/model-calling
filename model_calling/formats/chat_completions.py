@@ -185,6 +185,8 @@ def _tools_in(raw_tools: list | None) -> list | None:
                 name=fn.pop("name"),
                 description=fn.pop("description", None),
                 input_schema=fn.pop("parameters", None) or {"type": "object", "properties": {}},
+                # An explicit null stays in extras.
+                strict=fn.pop("strict") if fn.get("strict") is not None else None,
                 extras={FORMAT: fn} if fn else {},
             )
         )
