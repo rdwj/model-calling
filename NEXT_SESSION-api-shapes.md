@@ -1,60 +1,72 @@
 # Next Session — api-shapes
 
-## Next: Phase 11 slice 2, removals, library aliases, and the compose proof
+## Next: Phase 8, Claude Code acceptance
 
-Slice 1 put the gateway on aliases (`model_calling/aliases.py`,
-`gateway._serve`). Slice 2 finishes Phase 11 per its definition of done
-below: the old configuration paths go, `Client` takes the alias file, and
-`podman-compose up` proves the swap end to end.
+Prove the Messages path end to end: Claude Code, pointed at the gateway,
+completes a scripted tool-using task, with every model it asks for mapped
+by alias. Phase 8's work list and definition of done are below; this
+session does all of it.
 
-1. **Decide `/v1/models/refresh` and `/v1/moderations`** (stop-and-ask
-   first: public endpoints). Both still take `prefix/model` names and the
-   legacy `registry`. Recommendation to bring to rdwj: retire `refresh`
-   (it reports legacy capability probes nothing else uses) and keep
-   `moderations` on its fixed Granite Guardian model. Then delete what
-   becomes dead in `registry.py` and `server._ported`.
-2. **Remove `POST /v1/config/update`** (confirmed with rdwj 2026-10-29):
-   `require_admin`, `config.admin_token`, `MODEL_CALLING_ADMIN_TOKEN`, the
-   legacy client's `update_config`/`admin_token`, the Phase 10 tests for
-   them, and every doc mention; migration guide entry replaces the
-   admin-token one.
-3. **`Client(models="model-calling.yaml")`**: same `AliasStore`, resolved
-   per call; prefixed names still work in the library; an alias and a
-   prefixed name never collide silently (decide: alias wins, or refuse a
-   file alias that looks like a known prefix).
-4. **Compose and examples.** `podman-compose.yml` mounts a sample alias
-   file; docs show an OpenShift ConfigMap mount (not `subPath`); move the
-   `examples/*.py` that drive the gateway to aliases or to `Client`.
-5. **Prove it.** `podman-compose up`, `chat` served from the Ollama
-   container (pull a small model, e.g. `qwen3:0.6b`, into its volume), then
-   edit the mounted file on the host to point `chat` at another model and
-   see the next request switch with no container restart.
+1. **Map Claude Code's models through aliases** (research first). Find
+   which env vars Claude Code 2.1.x reads for its base URL, auth, main
+   model, and background (Haiku-class) model, and what model ids it sends
+   by default; check `claude --help` and the installed docs, don't work
+   from memory. Write one alias file per run in a temp directory (e.g.
+   `main` and `small`), and set the model vars to the aliases so no
+   Claude id has to be an alias name. If Claude Code insists on sending
+   its own ids, alias those names instead (alias-wins makes that legal).
+2. **Acceptance script** under `tests/acceptance/`: start the gateway
+   (`python -m model_calling` with `MODEL_CALLING_CONFIG` and a free
+   port), point Claude Code at it, run `claude -p` in a temp directory on
+   a fixed task (create a file, edit it, run a command), then check the
+   resulting files deterministically. Capture the gateway log for
+   failures. Marked so plain `pytest` never runs it.
+3. **Run it on three backends:** (a) a Claude model via the `anthropic`
+   provider on OpenRouter (claude-haiku-4.5 or 5.5; see CLAUDE.md on
+   which one thinks), (b) a non-Claude model via OpenRouter Chat
+   Completions, (c) host Ollama `qwen3-coder:30b` (fallback
+   `gpt-oss:20b`; both already pulled). Record spend in
+   `tests/live/spend.jsonl` via `usage.cost`, as
+   `tests/live/test_anthropic_live.py` does.
+4. **Fix what it finds.** Expect gaps Claude Code exposes on the Messages
+   ingress (beta headers or query params, `cache_control`, tool shapes,
+   `count_tokens`, streaming edge cases). Each fix gets an offline grid
+   cell or a strict xfail naming its phase; never loosen a validator.
+5. **README** in `tests/acceptance/`: prerequisites (Claude Code,
+   `OPENROUTER_API_KEY` in the environment, the Ollama model pulled).
 
-**Sequencing.** 1 (ask first), 2, 3, 4, 5. If the session runs long, stop
-after 3 with tests green; 4 and 5 are one sitting together.
+**Sequencing.** 1, 2, then 3 in the order (c), (a), (b): Ollama is free,
+so the script gets debugged there before any spend. 4 interleaves with 3.
+If the session runs long, stop after (c) and (a) pass, with (b) named as
+the gap.
 
 **Constraints for the session:**
-- Exit predicate: Phase 11's definition of done (below), including
-  `grep -rn "config/update\|ADMIN_TOKEN" model_calling docs README.md`
-  returning nothing and the compose edit-without-restart check.
-- No live spend needed. If rdwj wants the live suite run once (it was
-  moved to aliases in slice 1 but never run), it is about 22 cheap calls.
+- Exit predicate: Phase 8's definition of done (all three backends pass
+  and the run's spend is committed), with offline `pytest` still green
+  and no new xfails except ones naming a later phase.
+- Live budget: $0.053 of $5 spent. Cap this session at $1; a `claude -p`
+  run can make many calls, so check `spend.jsonl` after each backend.
 
 **Session start protocol:**
 - Premise checks (report before acting): `main` matches `origin/main` at
-  the plan commit after `ddbf44b`; "Test Package" green; `HOME=$(mktemp -d)
-  uv run pytest` shows 1426 passed, 35 xfailed; podman machine running.
+  the plan commit after `53ca328`; "Test Package" green;
+  `HOME=$(mktemp -d) uv run pytest` shows 1424 passed, 35 xfailed;
+  `podman-compose down` has been run (compose's Ollama publishes 11434
+  and shadows host Ollama, which has `qwen3-coder:30b`); `curl
+  localhost:11434/api/tags` lists `qwen3-coder:30b`; `claude --version`
+  (2.1.308 at planning); `OPENROUTER_API_KEY` is set.
 - Rules with history:
   - Never loosen replay matching or a validator; strict-xfail with the
     fixing phase named.
-  - Errors and responses never name a backend (the grid's
-    `assert_no_backend_details` guards error cells; keep it on any new
-    error path).
-  - Check every commit passes on its own.
-- Stop-and-ask before: retiring or renaming any endpoint other than
-  `/v1/config/update`; any new dependency; force-pushing.
+  - Errors and responses never name a backend (keep
+    `assert_no_backend_details` on any new error path).
+  - Diff-review every subagent's output; two this epic edited files
+    outside their brief.
+- Stop-and-ask before: any spend past $1; retiring or renaming an
+  endpoint; any new dependency; running Claude Code anywhere but a temp
+  directory.
 - Close ritual: `/session-close`, then `/plan-next-session`. Next pick is
-  among Phase 8 (now unblocked by aliases), Phase 6 slice 2, and Phase 7.
+  between Phase 7 and Phase 6 slice 2.
 
 ## Remaining epic phases
 
@@ -84,9 +96,9 @@ conformance); see the "What landed" ledger and
 xfail reasons, and summaries cite them, so the gateway-configuration phase
 added on 2026-10-28 is Phase 10 and sits before Phase 9, which it gates,
 and the model-alias phase added on 2026-10-29 is Phase 11. Phase 6 slice 1
-(Anthropic) and Phase 10 are done. Order: Phase 11 next, slice 1 then
-slice 2 (decided 2026-10-29); then among 8, 6 slice 2 (Cohere, hand-built
-fixtures: no key), and 7; 9 last.
+(Anthropic), Phase 10, and Phase 11 are done. Order: Phase 8 next
+(decided 2026-10-29); then 7 and 6 slice 2 (Cohere, hand-built fixtures:
+no key); 9 last.
 
 ### Phase 4: Chat Completions conformance
 
@@ -371,7 +383,16 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-29): Phase 11 slice 1
+## What landed last session (2026-10-29): Phase 11 slice 2, Phase 11 complete
+
+All five items, `c6e001b..53ca328`: `/v1/models/refresh` and the legacy
+registry gone (moderations kept), `/v1/config/update` and the admin token
+gone, `Client(models=...)` with alias-wins, examples on the library,
+compose mounting `examples/config/`, and a hand-run swap with no restart.
+Also fixed Windows CI. Record:
+`session-summaries/2026-10-29-api-shapes-phase11-slice2.md`.
+
+## What landed earlier (2026-10-29): Phase 11 slice 1
 
 The gateway serves models by alias from a hot-reloaded YAML file,
 `10df304..ddbf44b`: no backend name crosses the wire (responses, errors,
@@ -534,18 +555,20 @@ of 23 files.
   read from an environment variable. The clean-room rule and the budget are
   also recorded in `CONTRIBUTING.md` and `CLAUDE.md`.
 
-- **The legacy registry probes every Ollama model at gateway startup.**
-  With ~30 local models it saturates Ollama, which answers 503 "server
-  busy" (the gateway returns 502) for a minute or two. Wait it out when
-  driving a locally started gateway; Phase 11 slice 2 removes the legacy
-  wire routing and is the place to retire it.
+- **`PYPI_README.md` is the published readme and has drifted** from
+  `README.md` (it predates the Anthropic backend). Sync it in Phase 9
+  before 0.2.0.
+- **The live suite has never run on aliases** (moved in Phase 11 slice 1).
+  Phase 8's live runs will exercise the gateway path; run `-m live` once
+  if anything there looks off.
 
 ## If blocked
 
-- If podman can't run, prove the mounted-file swap with a gateway test that
-  rewrites the file through a symlink swap (as `tests/test_aliases.py`
-  does) and leave the compose check as a named gap in the summary.
-- If rdwj wants `/v1/models/refresh` kept, give it alias resolution
-  instead (resolve, then probe the target) rather than prefixed names.
+- If Claude Code can't be pointed at the gateway (auth or model-id
+  handling it won't let go of), record exactly what it sends (gateway log)
+  and stop-and-ask; don't build workarounds into the gateway.
+- If OpenRouter is down or the key is missing, finish (c) on Ollama and
+  name (a) and (b) as gaps.
 - Fallback work in this epic: the Phase 6 slice 1 review leftovers listed
-  under "Still open" (each small, offline).
+  under "Still open" (each small, offline), or Phase 7 slice 1 (Responses
+  ingress, stateless).
