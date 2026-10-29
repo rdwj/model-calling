@@ -96,7 +96,7 @@ uv run python -m tests.harness.record --backend ollama --scenario tools --force
 
 Ollama must be running with `qwen3:4b`, `gemma3`, `gpt-oss:20b`, and `nomic-embed-text` pulled, and recording OpenRouter
 fixtures needs `OPENROUTER_API_KEY`. Recording vLLM needs `VLLM_BASE_URL`
-(the server root, without `/v1`) and `VLLM_MODEL`, plus `VLLM_API_KEY` if
+(the API root with `/v1`, as the gateway reads it) and `VLLM_MODEL`, plus `VLLM_API_KEY` if
 the endpoint wants one; `VLLM_VERIFY_TLS=false` skips certificate checks
 for an endpoint reached through a port-forward. Native request bodies come
 from each backend's provider, so recordings match what the gateway sends.

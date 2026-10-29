@@ -7,13 +7,14 @@ import logging
 import os
 import sys
 
-from model_calling.config import load_config
-
 SERVER_EXTRA_HINT = (
     "The model-calling gateway needs the server extra "
     "({missing} is not installed). Install it with:\n"
     "    pip install 'model-calling[server]'"
 )
+
+# Backends whose URL usually comes from the environment.
+LOGGED_BACKENDS = ("ollama", "vllm", "anthropic")
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def main():
         # starts in, and before the server builds its backend configs.
         # Importing model_calling.server never does.
         load_dotenv(find_dotenv(usecwd=True))
-        import model_calling.server  # noqa: F401 - fail here, not inside uvicorn
+        import model_calling.server  # fail here, not inside uvicorn
     except ModuleNotFoundError as e:
         if e.name not in ("uvicorn", "fastapi", "dotenv", "starlette"):
             raise
@@ -37,16 +38,14 @@ def main():
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    # Load configuration from environment
-    config = load_config()
-
     # Get port from environment or use default
     port = int(os.environ.get("PORT", 8000))
 
-    # Log startup information
+    # The URLs the server will call, environment overrides applied.
+    config = model_calling.server.registry.client.config
     logger.info(f"Starting model-calling service on port {port}")
-    logger.info(f"Ollama base URL: {config['ollama']['base_url']}")
-    logger.info(f"vLLM base URL: {config['vllm']['base_url']}")
+    for prefix in LOGGED_BACKENDS:
+        logger.info(f"{prefix} base URL: {config[prefix]['base_url']}")
 
     # Start the server
     uvicorn.run("model_calling.server:app", host="0.0.0.0", port=port, log_level="info")

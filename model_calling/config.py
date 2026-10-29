@@ -1,66 +1,36 @@
 """
-Configuration module for model-calling service.
+Gateway backend settings from the environment.
+
+The library reads only API keys from the environment
+(`providers.default_configs`); the gateway also takes backend URLs from it,
+so a container can point it at its backends.
 """
 
 import os
-from typing import Dict, Any
+from typing import Dict, Mapping, Tuple
 
-# Default configurations
-DEFAULT_CONFIG = {
-    "ollama": {
-        "base_url": "http://localhost:11434",
-        # Function-call capable models
-        "function_call_models": [
-            "mistral",
-            "mistral-small",
-            "mistral-large",
-            "llama3",
-            "llama-3",
-            "neural-chat",
-            "openhermes",
-            "nous-hermes",
-            "qwen",
-            "yi",
-            "gemma",
-        ],
-    },
-    "vllm": {
-        "base_url": "http://localhost:8000/v1",
-        # Add any vLLM specific settings here
-    },
+# Variable -> (model prefix, provider setting). URLs mean what `base_url`
+# means everywhere: the API root with /v1 included, except Ollama's native
+# API, which has none. The Anthropic variable is not `ANTHROPIC_BASE_URL`:
+# the `anthropic` SDK and Claude Code read that name as the root without
+# /v1, and a client pointed at this gateway sets it to the gateway itself.
+BACKEND_ENV: Dict[str, Tuple[str, str]] = {
+    "OLLAMA_BASE_URL": ("ollama", "base_url"),
+    "VLLM_BASE_URL": ("vllm", "base_url"),
+    "VLLM_API_KEY": ("vllm", "api_key"),
+    "MODEL_CALLING_ANTHROPIC_BASE_URL": ("anthropic", "base_url"),
 }
 
 
-# Override with environment variables
-def load_config() -> Dict[str, Any]:
-    """Load configuration from environment variables and defaults"""
-    config = DEFAULT_CONFIG.copy()
-
-    # Ollama settings
-    if os.environ.get("OLLAMA_BASE_URL"):
-        config["ollama"]["base_url"] = os.environ.get("OLLAMA_BASE_URL")
-
-    # vLLM settings
-    if os.environ.get("VLLM_BASE_URL"):
-        config["vllm"]["base_url"] = os.environ.get("VLLM_BASE_URL")
-
-    return config
-
-
-# Current active configuration
-active_config = load_config()
-
-
-def get_config(provider: str = None) -> Dict[str, Any]:
-    """Get configuration, optionally for a specific provider"""
-    if provider:
-        return active_config.get(provider, {})
-    return active_config
-
-
-def update_config(provider: str, updates: Dict[str, Any]) -> None:
-    """Update configuration for a provider"""
-    if provider in active_config:
-        active_config[provider].update(updates)
-    else:
-        active_config[provider] = updates
+def backend_overrides(environ: Mapping[str, str] = os.environ) -> Dict[str, Dict[str, str]]:
+    """Per-prefix settings from the set, non-empty `BACKEND_ENV` variables,
+    in the shape `Client(config=...)` takes."""
+    overrides: Dict[str, Dict[str, str]] = {}
+    for var, (prefix, setting) in BACKEND_ENV.items():
+        value = environ.get(var, "").strip()
+        if not value:
+            continue
+        if setting == "base_url":
+            value = value.rstrip("/")
+        overrides.setdefault(prefix, {})[setting] = value
+    return overrides

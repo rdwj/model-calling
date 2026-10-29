@@ -26,7 +26,7 @@ replays each backend's `stream` fixture, since its native request is the
 same.
 
 The `vllm` recordings go to `VLLM_BASE_URL` and `VLLM_MODEL` from the
-environment. The fixtures store the replay URL (`http://localhost:8000`) and
+environment. The fixtures store the replay URL (`http://localhost:8000/v1`) and
 the model name `gpt-oss-20b` in their place, so deployment details stay out
 of the repo. `vllm_messages` is recorded the same way. Its request bodies
 come from the Anthropic provider, which the grid reaches through the

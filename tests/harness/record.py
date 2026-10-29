@@ -11,9 +11,9 @@ pulled. OpenRouter needs
 OPENROUTER_API_KEY in the environment; each paid call is appended to
 tests/live/spend.jsonl and the epic budget guard runs first. vLLM (both its Chat
 Completions and its Anthropic Messages endpoint) is read from
-VLLM_BASE_URL and VLLM_MODEL (VLLM_API_KEY optional); fixtures store
-the replay URL and model from scenarios.py instead, so no deployment
-details reach the repo. VLLM_VERIFY_TLS=false skips certificate checks for
+VLLM_BASE_URL (the API root with /v1, as the gateway reads it) and
+VLLM_MODEL (VLLM_API_KEY optional); fixtures store the replay URL and model
+from scenarios.py instead, so no deployment details reach the repo. VLLM_VERIFY_TLS=false skips certificate checks for
 vLLM only, for an endpoint reached through a port-forward. Request headers
 are never written, account ids are scrubbed from response bodies, and a
 fixture containing a key is refused.
@@ -106,7 +106,7 @@ def _target(backend: Backend) -> Target:
     if verify not in ("true", "false"):
         sys.exit(f"{VLLM_VERIFY_TLS_ENV} must be 'true' or 'false', not {verify!r}.")
     return Target(
-        url=f"{base_url}/v1{backend.endpoint[len(VLLM_URL):]}",
+        url=f"{base_url}{backend.endpoint[len(VLLM_URL):]}",
         model=_require_env(VLLM_MODEL_ENV, why),
         api_key=os.environ.get(VLLM_KEY_ENV) or None,
         verify_tls=verify == "true",

@@ -16,6 +16,7 @@ from model_calling.thinking import ThinkingStyle
 from model_calling.callbacks import DefaultCallback
 from model_calling.library import Client
 from model_calling.capability_cache import capability_cache
+from model_calling.config import backend_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +105,11 @@ class ModelRegistry:
         self.default_callback = DefaultCallback()
         # The library client the server answers ported prefixes with; closed
         # when the server stops. Unsupported parameters are dropped, as the
-        # gateway always has.
-        self.client = Client(callbacks=[self.default_callback], drop_params=True)
+        # gateway always has. Backend URLs and keys set in the environment
+        # override the library defaults.
+        self.client = Client(
+            config=backend_overrides(), callbacks=[self.default_callback], drop_params=True
+        )
 
         # Default configurations. The ported prefixes' entries are the client's
         # own config dicts, so an update here reaches the next request.
@@ -161,6 +165,8 @@ class ModelRegistry:
             try:
                 # Run comprehensive capability testing
                 logger.info(f"Running comprehensive capability tests for {model_name}...")
+                # Probe the configured Ollama, which env or config updates may move.
+                capability_tester.base_url = base_url
                 test_results = await capability_tester.test_all_capabilities(model_name)
 
                 # Update capabilities based on test results

@@ -33,10 +33,11 @@ USER 1001
 # Expose the port
 EXPOSE 8000
 
-# Environment variables
+# Environment variables. Backend URLs are the API root: /v1 for vLLM,
+# none for Ollama's native API.
 ENV PORT=8000
 ENV OLLAMA_BASE_URL=http://localhost:11434
-ENV VLLM_BASE_URL=http://localhost:8000
+ENV VLLM_BASE_URL=http://localhost:8000/v1
 
 # Run the server
 CMD ["python", "-m", "model_calling"]

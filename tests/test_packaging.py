@@ -49,11 +49,12 @@ def test_gateway_without_the_server_extra_prints_an_install_hint(name):
 
 DOTENV_VAR = "MODEL_CALLING_TEST_DOTENV_MARKER"
 
-# Runs main() with uvicorn.run replaced, and prints what .env contributed.
-_RUN_MAIN = f"""
+# Runs main() with uvicorn.run replaced by printing `expr`.
+_RUN_MAIN = """
 import os
 import uvicorn
-uvicorn.run = lambda *args, **kwargs: print(os.environ.get({DOTENV_VAR!r}))
+import model_calling
+uvicorn.run = lambda *args, **kwargs: print({expr})
 from model_calling.__main__ import main
 main()
 """
@@ -67,7 +68,9 @@ def run_in(directory, code: str) -> subprocess.CompletedProcess:
 
 @pytest.fixture
 def dotenv_dir(tmp_path):
-    (tmp_path / ".env").write_text(f"{DOTENV_VAR}=from-dotenv\n")
+    (tmp_path / ".env").write_text(
+        f"{DOTENV_VAR}=from-dotenv\nOLLAMA_BASE_URL=http://ollama.from-dotenv:11434\n"
+    )
     return tmp_path
 
 
@@ -83,6 +86,14 @@ assert dict(os.environ) == before, sorted(set(os.environ) ^ set(before))
 
 
 def test_the_entry_point_reads_dotenv_from_the_working_directory(dotenv_dir):
-    result = run_in(dotenv_dir, _RUN_MAIN)
+    result = run_in(dotenv_dir, _RUN_MAIN.format(expr=f"os.environ.get({DOTENV_VAR!r})"))
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "from-dotenv", result.stdout
+
+
+def test_backend_urls_in_dotenv_reach_the_server(dotenv_dir):
+    expr = "model_calling.server.registry.client.config['ollama']['base_url']"
+    result = run_in(dotenv_dir, _RUN_MAIN.format(expr=expr))
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "http://ollama.from-dotenv:11434"
+    assert "ollama base URL: http://ollama.from-dotenv:11434" in result.stderr

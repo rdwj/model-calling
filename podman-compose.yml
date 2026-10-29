@@ -13,7 +13,7 @@ services:
     environment:
       - PORT=8000
       - OLLAMA_BASE_URL=http://ollama:11434
-      - VLLM_BASE_URL=http://vllm:8000
+      - VLLM_BASE_URL=http://vllm:8000/v1
     networks:
       - model-network
     depends_on:

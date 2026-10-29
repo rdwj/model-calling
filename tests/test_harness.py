@@ -12,6 +12,7 @@ from tests.harness import ledger
 from tests.harness.grid import Cell
 from tests.harness.replay import FIXTURES_DIR, Exchange, ReplayTransport
 from tests.harness.scenarios import (
+    ALL_BACKENDS,
     BACKENDS,
     CHAT_COMPLETIONS,
     EMBEDDING_BACKENDS,
@@ -325,3 +326,19 @@ def test_replay_records_a_non_json_body():
         with pytest.raises(AssertionError, match="isn't JSON"):
             client.post(URL, content=b"not json")
     assert replay.failures
+
+
+@pytest.mark.parametrize(
+    "backend, base_url, expected",
+    [
+        ("vllm", "https://vllm.example/v1", "https://vllm.example/v1/chat/completions"),
+        ("vllm_messages", "https://vllm.example/v1/", "https://vllm.example/v1/messages"),
+        ("ollama", "https://vllm.example/v1", "http://localhost:11434/api/chat"),
+    ],
+)
+def test_recorder_reads_vllm_base_url_as_the_api_root(monkeypatch, backend, base_url, expected):
+    from tests.harness.record import _target
+
+    monkeypatch.setenv("VLLM_BASE_URL", base_url)
+    monkeypatch.setenv("VLLM_MODEL", "deployed-model")
+    assert _target(ALL_BACKENDS[backend]).url == expected
