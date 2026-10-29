@@ -536,7 +536,48 @@ The `podman-compose.yml` file runs the gateway alongside Ollama:
 podman-compose up
 ```
 
-The file sets `OLLAMA_BASE_URL=http://ollama:11434`, so the gateway reaches the Ollama container with no further setup. The file uses digest-pinned images and bind mounts Ollama's model storage.
+The gateway reads its aliases from `examples/config/model-calling.yaml`, which serves `chat` from the Ollama container's `qwen3:0.6b`. Pull the model into Ollama's volume once:
+
+```bash
+podman exec ollama ollama pull qwen3:0.6b
+```
+
+Compose mounts the `examples/config` directory rather than the file. A single-file bind mount keeps the file's original inode, and since editors save by renaming a new file over the old one, the container would never see the edit. With the directory mounted, edit the file on the host and the next request uses the new mapping, with no restart. The images are digest-pinned, and Ollama's models live in the `ollama_data` volume.
+
+### OpenShift
+
+Mount the alias file from a ConfigMap as a volume and point `MODEL_CALLING_CONFIG` at it:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-calling-models
+data:
+  model-calling.yaml: |
+    backends:
+      prod: {provider: vllm, base_url: https://vllm.example.svc/v1, api_key_env: VLLM_API_KEY}
+    models:
+      chat: {backend: prod, model: gpt-oss-20b}
+---
+# In the Deployment's pod spec:
+containers:
+  - name: model-calling
+    env:
+      - name: MODEL_CALLING_CONFIG
+        value: /config/model-calling.yaml
+      - name: VLLM_API_KEY
+        valueFrom: {secretKeyRef: {name: vllm-api-key, key: token}}
+    volumeMounts:
+      - name: models
+        mountPath: /config
+        readOnly: true
+volumes:
+  - name: models
+    configMap: {name: model-calling-models}
+```
+
+Don't mount it with `subPath`: Kubernetes never updates a `subPath` mount, so edits to the ConfigMap would reach the pod only on restart. A whole-volume mount is updated in place, through a symlink swap the gateway follows, within the kubelet's sync period (about a minute by default). `oc edit configmap model-calling-models` then switches models with no rollout.
 
 ## Not Provided
 

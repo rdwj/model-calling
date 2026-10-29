@@ -1,66 +1,49 @@
 # Model Calling Examples
 
-This directory contains example scripts demonstrating how to use the model-calling service.
+Example scripts demonstrating the model-calling library and gateway.
 
-## Examples
+## Library examples
 
-1. **ollama_example.py** - Basic examples using Ollama models with both standard chat and function calling
-2. **vllm_example.py** - Examples of using vLLM-deployed models on remote servers
-3. **agent_example.py** - How to build a complete agent that uses function calling to retrieve data
-4. **library_usage.py** - How to use model-calling as an imported library in your own applications
-5. **hosted_providers.py** - Examples of using hosted providers like OpenAI, Anthropic, and Cohere
-6. **vision_example.py** - Examples of using vision capabilities for image analysis and alt text generation
-7. **reasoning_example.py** - Examples of using reasoning capabilities for solving problems step-by-step
+Feature examples that use the library directly with prefixed model names (`ollama/qwen3:0.6b`, `vllm/...`, `openai/...`, etc.):
 
-## Running the Examples
+- **library_usage.py** — sync Client with chat completions and tool calling
+- **ollama_example.py** — async Client with chat and streaming
+- **agent_example.py** — building an agent with tool calling
+- **embeddings_example.py** — embeddings and similarity search
+- **compare_embeddings.py** — comparing multiple embedding models
+- **hosted_providers.py** — OpenAI and Anthropic backends (API keys required)
+- **reasoning_example.py** — reasoning models (if available locally)
+- **vision_example.py** — vision models for image analysis (if available)
+- **vllm_example.py** — vLLM backend (requires a running vLLM server)
 
-Make sure the model-calling service is running first:
-
-```bash
-cd /Users/wesjackson/Code/model-calling
-python -m model_calling.server
-```
-
-Then, in a separate terminal, run any of the examples:
+Run from the repo root:
 
 ```bash
-cd /Users/wesjackson/Code/model-calling
-python -m examples.ollama_example
+uv run python examples/library_usage.py
 ```
 
-## Using Different Models
+## Gateway example
 
-The examples are configured to use `mistral-small3.1:24b` by default. You can modify the model name in the examples to use any Ollama or vLLM model you have available.
+**gateway_example.py** drives a running gateway with the official `openai` and `anthropic` SDKs. The gateway resolves model aliases from its config file.
 
-For Ollama models, use the format:
-```
-ollama/model-name
-```
-
-For vLLM models, use the format:
-```
-vllm/model-name
-```
-
-## Function Calling
-
-Not all models support function calling. Requests with `tools` go to the backend as is; a model that can't use tools answers with the backend's error or ignores them.
-
-## Using Hosted Providers
-
-To run the hosted providers example, you'll need API keys for the services you want to test:
-
-1. Copy the example .env file and add your API keys:
+Start the compose stack (mounts `examples/config/model-calling.yaml`):
 
 ```bash
-cp .env.example .env
-# Edit .env with your API keys
+podman-compose up
 ```
 
-2. Run the example:
+Then run the example:
 
 ```bash
-python -m examples.hosted_providers
+uv run python examples/gateway_example.py
 ```
 
-The example will skip any providers for which you don't have API keys.
+## Configuration
+
+**config/model-calling.yaml** — sample alias file showing local Ollama backend and how to switch to production vLLM.
+
+## Model names
+
+Library examples use prefixed names: `ollama/qwen3:0.6b`, `vllm/mistral-7b`. Gateway examples use aliases defined in the config file: `chat`, `embed`.
+
+Tool calling support depends on the model. Unsupported parameters raise an error by default; pass `drop_params=True` to drop them instead.

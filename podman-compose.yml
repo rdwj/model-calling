@@ -14,6 +14,12 @@ services:
       - PORT=8000
       - OLLAMA_BASE_URL=http://ollama:11434
       - VLLM_BASE_URL=http://vllm:8000/v1
+      - MODEL_CALLING_CONFIG=/config/model-calling.yaml
+    # The directory, not the file: a single-file bind mount keeps the
+    # original inode, so an editor's save (a new file renamed over the old
+    # one) would never reach the container. Edits reload without a restart.
+    volumes:
+      - ./examples/config:/config:ro,z
     networks:
       - model-network
     depends_on:

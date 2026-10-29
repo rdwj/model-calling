@@ -4,7 +4,7 @@ Example of using vision capabilities with model-calling service.
 import asyncio
 import base64
 import os
-from model_calling.client import ModelCallingClient
+from model_calling import Client
 
 
 async def generate_alt_text(image_path, prompt=None):
@@ -13,11 +13,11 @@ async def generate_alt_text(image_path, prompt=None):
     if not os.path.exists(image_path):
         print(f"Error: Image file '{image_path}' not found.")
         return None
-    
+
     # Encode the image to base64
     with open(image_path, "rb") as image_file:
         base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-    
+
     # Default prompt for alt text generation
     if prompt is None:
         prompt = (
@@ -26,33 +26,31 @@ async def generate_alt_text(image_path, prompt=None):
             "accessibility purposes. Focus on the main elements visible in the "
             "image and their relationships. Keep it under 100 words."
         )
-    
+
     # Create the client
-    client = ModelCallingClient()
-    
-    # Format the message with the image
-    message_content = f"{prompt}\n\n![Image](data:image/png;base64,{base64_image})"
-    
-    try:
-        # Call the vision model
-        print(f"Calling vision model to analyze image: {os.path.basename(image_path)}")
-        response = await client.chat_completion(
-            model="ollama/llava:7b",  # Using Llava vision model
-            messages=[
-                {"role": "user", "content": message_content}
-            ],
-            timeout=120  # Longer timeout for image processing
-        )
-        
-        # Extract and return the generated alt text
-        alt_text = response["choices"][0]["message"]["content"]
-        print("\nGenerated Alt Text:")
-        print(alt_text)
-        return alt_text
-    
-    except Exception as e:
-        print(f"Error generating alt text: {e}")
-        return None
+    async with Client() as client:
+        # Format the message with the image
+        message_content = f"{prompt}\n\n![Image](data:image/png;base64,{base64_image})"
+
+        try:
+            # Call the vision model
+            print(f"Calling vision model to analyze image: {os.path.basename(image_path)}")
+            response = await client.acompletion(
+                model="ollama/llava:7b",  # Using Llava vision model
+                messages=[
+                    {"role": "user", "content": message_content}
+                ]
+            )
+
+            # Extract and return the generated alt text
+            alt_text = response.choices[0].message.content
+            print("\nGenerated Alt Text:")
+            print(alt_text)
+            return alt_text
+
+        except Exception as e:
+            print(f"Error generating alt text: {e}")
+            return None
 
 
 async def vision_classification_example(image_path):
@@ -61,40 +59,39 @@ async def vision_classification_example(image_path):
     if not os.path.exists(image_path):
         print(f"Error: Image file '{image_path}' not found.")
         return None
-    
+
     # Encode the image to base64
     with open(image_path, "rb") as image_file:
         base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-    
+
     # Create the client
-    client = ModelCallingClient()
-    
-    # Format the message with the image and classification prompt
-    message_content = (
-        "Please classify what's in this image. Provide a short list of categories "
-        "that best describe the content.\n\n"
-        f"![Image](data:image/png;base64,{base64_image})"
-    )
-    
-    try:
-        # Call the vision model
-        print(f"Classifying image: {os.path.basename(image_path)}")
-        response = await client.chat_completion(
-            model="ollama/llava:7b",  # Using Llava vision model
-            messages=[
-                {"role": "user", "content": message_content}
-            ]
+    async with Client() as client:
+        # Format the message with the image and classification prompt
+        message_content = (
+            "Please classify what's in this image. Provide a short list of categories "
+            "that best describe the content.\n\n"
+            f"![Image](data:image/png;base64,{base64_image})"
         )
-        
-        # Extract and return the classification
-        classification = response["choices"][0]["message"]["content"]
-        print("\nImage Classification:")
-        print(classification)
-        return classification
-    
-    except Exception as e:
-        print(f"Error classifying image: {e}")
-        return None
+
+        try:
+            # Call the vision model
+            print(f"Classifying image: {os.path.basename(image_path)}")
+            response = await client.acompletion(
+                model="ollama/llava:7b",  # Using Llava vision model
+                messages=[
+                    {"role": "user", "content": message_content}
+                ]
+            )
+
+            # Extract and return the classification
+            classification = response.choices[0].message.content
+            print("\nImage Classification:")
+            print(classification)
+            return classification
+
+        except Exception as e:
+            print(f"Error classifying image: {e}")
+            return None
 
 
 async def main():

@@ -1,11 +1,10 @@
 """
-Example of using hosted providers (OpenAI, Anthropic, Cohere).
+Example of using hosted providers (OpenAI, Anthropic).
 """
 import asyncio
-import json
 import os
 from dotenv import load_dotenv
-from model_calling.client import ModelCallingClient
+from model_calling import Client
 
 # Load environment variables
 load_dotenv()
@@ -13,13 +12,11 @@ load_dotenv()
 
 async def test_hosted_providers():
     """Test different hosted providers"""
-    client = ModelCallingClient()
-    
-    try:
+    async with Client() as client:
         # 1. Test OpenAI
         if os.environ.get("OPENAI_API_KEY"):
             print("\n=== Testing OpenAI (GPT-4) ===")
-            response = await client.chat_completion(
+            response = await client.acompletion(
                 model="openai/gpt-4-turbo",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
@@ -27,12 +24,12 @@ async def test_hosted_providers():
                 ],
                 temperature=0.7
             )
-            
+
             print("Response:")
-            print(response["choices"][0]["message"]["content"])
-            
+            print(response.choices[0].message.content)
+
             # Test function calling with OpenAI
-            print("\n=== Testing OpenAI with Function Calling ===")
+            print("\n=== Testing OpenAI with Tool Calling ===")
             tools = [
                 {
                     "type": "function",
@@ -52,8 +49,8 @@ async def test_hosted_providers():
                     }
                 }
             ]
-            
-            response = await client.chat_completion(
+
+            response = await client.acompletion(
                 model="openai/gpt-4-turbo",
                 messages=[
                     {"role": "user", "content": "What's the weather like in Paris?"}
@@ -61,18 +58,18 @@ async def test_hosted_providers():
                 tools=tools,
                 temperature=0.7
             )
-            
-            message = response["choices"][0]["message"]
-            if "function_call" in message:
-                print(f"Function call requested: {message['function_call']['name']}")
-                print(f"Arguments: {message['function_call']['arguments']}")
+
+            message = response.choices[0].message
+            if message.tool_calls:
+                print(f"Tool called: {message.tool_calls[0].function.name}")
+                print(f"Arguments: {message.tool_calls[0].function.arguments}")
         else:
             print("Skipping OpenAI test - no API key found")
         
         # 2. Test Anthropic
         if os.environ.get("ANTHROPIC_API_KEY"):
             print("\n=== Testing Anthropic (Claude) ===")
-            response = await client.chat_completion(
+            response = await client.acompletion(
                 model="anthropic/claude-haiku-5-5",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
@@ -80,12 +77,12 @@ async def test_hosted_providers():
                 ],
                 temperature=0.7
             )
-            
+
             print("Response:")
-            print(response["choices"][0]["message"]["content"])
-            
-            # Test function calling with Anthropic
-            print("\n=== Testing Anthropic with Function Calling ===")
+            print(response.choices[0].message.content)
+
+            # Test tool calling with Anthropic
+            print("\n=== Testing Anthropic with Tool Calling ===")
             tools = [
                 {
                     "type": "function",
@@ -105,8 +102,8 @@ async def test_hosted_providers():
                     }
                 }
             ]
-            
-            response = await client.chat_completion(
+
+            response = await client.acompletion(
                 model="anthropic/claude-haiku-5-5",
                 messages=[
                     {"role": "user", "content": "What's the weather like in Tokyo?"}
@@ -114,33 +111,15 @@ async def test_hosted_providers():
                 tools=tools,
                 temperature=0.7
             )
-            
-            message = response["choices"][0]["message"]
-            if "function_call" in message:
-                print(f"Function call requested: {message['function_call']['name']}")
-                print(f"Arguments: {message['function_call']['arguments']}")
+
+            message = response.choices[0].message
+            if message.tool_calls:
+                print(f"Tool called: {message.tool_calls[0].function.name}")
+                print(f"Arguments: {message.tool_calls[0].function.arguments}")
         else:
             print("Skipping Anthropic test - no API key found")
-        
-        # 3. Test Cohere
-        if os.environ.get("COHERE_API_KEY"):
-            print("\n=== Testing Cohere ===")
-            response = await client.chat_completion(
-                model="cohere/command",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "What are three interesting facts about coral reefs?"}
-                ],
-                temperature=0.7
-            )
-            
-            print("Response:")
-            print(response["choices"][0]["message"]["content"])
-        else:
-            print("Skipping Cohere test - no API key found")
-            
-    finally:
-        await client.close()
+
+        # Cohere backend is not available in the library
 
 
 if __name__ == "__main__":

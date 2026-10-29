@@ -3,21 +3,20 @@ Example of integrating model-calling as a library in your own applications.
 """
 import asyncio
 import json
-from typing import Dict, Any, List, Callable, Awaitable, Optional
+from typing import Dict, Any, Optional
 
-# Import the client
-from model_calling.client import ModelCallingClient
+from model_calling import Client
 
 
 class WeatherAgent:
     """Example agent that can look up weather information"""
-    
-    def __init__(self, model: str = "ollama/mistral-small3.1:24b"):
+
+    def __init__(self, model: str = "ollama/qwen3:0.6b"):
         """Initialize with the model to use"""
         self.model = model
-        self.client = ModelCallingClient()
+        self.client = Client()
         self.conversation_history = []
-        
+
         # Register available tools
         self.tools = [
             {
@@ -38,7 +37,7 @@ class WeatherAgent:
                 }
             }
         ]
-        
+
         # Map of tool names to functions
         self.tool_functions = {
             "get_weather": self.get_weather
@@ -49,16 +48,16 @@ class WeatherAgent:
         print(f"Getting weather for {location}...")
         # In a real app, this would call a weather API
         # For this example, we'll simulate the response
-        
+
         weather_data = {
             "temperature": 22,
             "unit": "celsius",
             "description": "Partly cloudy with a chance of rain",
             "humidity": 65
         }
-        
+
         return weather_data
-    
+
     async def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
         """Process a user message and return a response"""
         try:
@@ -67,76 +66,85 @@ class WeatherAgent:
                 # Start a new conversation
                 if system_prompt:
                     self.conversation_history.append({"role": "system", "content": system_prompt})
-            
+
             # Add user message
             self.conversation_history.append({"role": "user", "content": message})
-            
+
             # Get response from model
-            response = await self.client.chat_completion(
+            response = await self.client.acompletion(
                 model=self.model,
                 messages=self.conversation_history,
                 tools=self.tools
             )
-            
+
             # Process the response
-            assistant_message = response["choices"][0]["message"]
-            
-            # Check if the model wants to call a function
-            if "function_call" in assistant_message:
-                function_call = assistant_message["function_call"]
-                function_name = function_call["name"]
-                
+            assistant_message = response.choices[0].message
+
+            # Check if the model wants to call a tool
+            if assistant_message.tool_calls:
+                tool_call = assistant_message.tool_calls[0]
+                function_name = tool_call.function.name
+
                 # Parse arguments
-                arguments = json.loads(function_call["arguments"])
-                
-                # Add assistant's function call to history
+                arguments = json.loads(tool_call.function.arguments)
+
+                # Add assistant's tool call to history
                 self.conversation_history.append({
                     "role": "assistant",
-                    "content": assistant_message.get("content", ""),
-                    "function_call": function_call
+                    "content": assistant_message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tool_call.id,
+                            "type": "function",
+                            "function": {
+                                "name": function_name,
+                                "arguments": tool_call.function.arguments
+                            }
+                        }
+                    ]
                 })
-                
+
                 # Call the appropriate function
                 if function_name in self.tool_functions:
                     function_result = await self.tool_functions[function_name](**arguments)
-                    
+
                     # Add function result to history
                     self.conversation_history.append({
-                        "role": "function",
-                        "name": function_name,
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
                         "content": json.dumps(function_result)
                     })
-                    
+
                     # Get final response with function result
-                    final_response = await self.client.chat_completion(
+                    final_response = await self.client.acompletion(
                         model=self.model,
                         messages=self.conversation_history
                     )
-                    
-                    final_message = final_response["choices"][0]["message"]
+
+                    final_message = final_response.choices[0].message
                     self.conversation_history.append({
                         "role": "assistant",
-                        "content": final_message["content"]
+                        "content": final_message.content
                     })
-                    
-                    return final_message["content"]
+
+                    return final_message.content
                 else:
                     return f"Error: Function {function_name} not found"
             else:
-                # Standard response (no function call)
+                # Standard response (no tool call)
                 self.conversation_history.append({
                     "role": "assistant",
-                    "content": assistant_message["content"]
+                    "content": assistant_message.content
                 })
-                
-                return assistant_message["content"]
-        
+
+                return assistant_message.content
+
         except Exception as e:
             return f"Error: {str(e)}"
-    
+
     async def close(self):
         """Close the client"""
-        await self.client.close()
+        await self.client.aclose()
 
 
 async def main():

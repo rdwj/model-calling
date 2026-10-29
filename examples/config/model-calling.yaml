@@ -1,0 +1,24 @@
+# Sample model alias configuration for the compose setup.
+# The gateway rereads this file when it changes, so edit by replacing the file
+# atomically (save to a temp file, then rename or move).
+
+backends:
+  local:
+    provider: ollama
+    base_url: http://ollama:11434
+
+  # Uncomment and configure for production vLLM deployment:
+  # prod:
+  #   provider: vllm
+  #   base_url: https://vllm.example.com/v1
+  #   api_key_env: VLLM_API_KEY
+
+models:
+  chat:
+    backend: local
+    model: qwen3:0.6b
+
+  # To switch to production, change the backend:
+  # chat:
+  #   backend: prod
+  #   model: gpt-oss-20b
