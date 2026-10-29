@@ -83,6 +83,7 @@ To add support for a new backend, implement the `Provider` interface in `model_c
   ```bash
   uv run pytest              # offline suite (default)
   uv run pytest -m live      # live tests (needs OPENROUTER_API_KEY)
+  uv run pytest -m acceptance  # Claude Code through the gateway; see tests/acceptance/README.md
   ```
 - **Test edge cases** and error handling.
 - **Keep the default suite offline.** Plain `pytest` must pass without network access, a running backend, or files outside the repository. Tests that call real providers use the `live` marker and read `OPENROUTER_API_KEY` from the environment. Every live run appends its cost to the committed `tests/live/spend.jsonl`.
