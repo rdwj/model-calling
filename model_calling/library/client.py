@@ -13,10 +13,10 @@ import copy
 import logging
 import os
 import threading
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
-from typing import Any, TypeVar
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from model_calling.aliases import (
     AliasConfig,
@@ -26,7 +26,7 @@ from model_calling.aliases import (
     dimension_mismatch,
 )
 from model_calling.callbacks import Callback
-from model_calling.core import Request, Response, StreamError, StreamEvent, Usage
+from model_calling.core import Request, Usage
 from model_calling.errors import (
     APIResponseValidationError,
     BadRequestError,
@@ -37,6 +37,13 @@ from model_calling.formats import anthropic, embeddings
 from model_calling.formats import chat_completions as chat
 from model_calling.formats.anthropic_stream import AnthropicStreamEncoder
 from model_calling.formats.chat_completions_stream import ChatCompletionsStreamEncoder
+from model_calling.library._calls import (
+    complete,
+    encoded,
+    open_stream,
+    translate,
+    typed,
+)
 from model_calling.library._sync import LoopThread
 from model_calling.providers import (
     PROVIDERS,
@@ -50,7 +57,6 @@ from model_calling.types.chat import ChatCompletion, ChatCompletionChunk
 from model_calling.types.embeddings import CreateEmbeddingResponse
 from model_calling.types.messages import Message, MessageStreamEvent, parse_stream_event
 
-T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 PYYAML_MISSING = "Client(models=...) needs PyYAML: pip install 'model-calling[server]'"
@@ -184,17 +190,17 @@ class Client:
         model, api_base, api_key, _ = self._resolve(model, api_base, api_key)
         body = {**params, "model": model, "messages": messages, "stream": stream}
         provider = self._provider(http, model, api_base, api_key)
-        request = _translate(provider, lambda: chat.request_to_internal(body))
+        request = translate(provider, lambda: chat.request_to_internal(body))
         await self._check_params(provider, request, drop_params)
         if not stream:
-            response = await _complete(provider, request)
-            return _typed(
+            response = await complete(provider, request)
+            return typed(
                 provider,
                 lambda: ChatCompletion.model_validate(chat.response_from_internal(response, model)),
             )
         encoder = ChatCompletionsStreamEncoder(model, chat.include_usage(request))
-        events = await _open_stream(provider, request)
-        return _encoded(provider, events, encoder.encode, ChatCompletionChunk.model_validate)
+        events = await open_stream(provider, request)
+        return encoded(provider, events, encoder.encode, ChatCompletionChunk.model_validate)
 
     # --- Anthropic Messages -------------------------------------------------
 
@@ -269,19 +275,19 @@ class Client:
                 f"max_tokens is required and must be a positive integer, not {max_tokens!r}",
                 provider=provider.name,
             )
-        request = _translate(provider, lambda: anthropic.request_to_internal(body))
+        request = translate(provider, lambda: anthropic.request_to_internal(body))
         await self._check_params(provider, request, drop_params)
         if not stream:
-            response = await _complete(provider, request)
+            response = await complete(provider, request)
             # Messages always carries usage; a backend that reports none gets zeros.
             usage = response.usage or Usage(input_tokens=0, output_tokens=0)
             response = response.model_copy(update={"model": model, "usage": usage})
-            return _typed(
+            return typed(
                 provider, lambda: Message.model_validate(anthropic.response_from_internal(response))
             )
         encoder = AnthropicStreamEncoder(model)
-        events = await _open_stream(provider, request)
-        return _encoded(provider, events, encoder.encode, parse_stream_event)
+        events = await open_stream(provider, request)
+        return encoded(provider, events, encoder.encode, parse_stream_event)
 
     # --- Embeddings -----------------------------------------------------------
 
@@ -324,18 +330,18 @@ class Client:
         model, api_base, api_key, target = self._resolve(model, api_base, api_key)
         body = {**params, "model": model, "input": input}
         provider = self._provider(http, model, api_base, api_key)
-        request = _translate(provider, lambda: embeddings.request_to_internal(body))
-        fmt = _translate(provider, lambda: embeddings.encoding_format(body))
+        request = translate(provider, lambda: embeddings.request_to_internal(body))
+        fmt = translate(provider, lambda: embeddings.encoding_format(body))
         self._refuse(provider, provider.unsupported_embedding_params(request), drop_params)
         try:
             response = await provider.embed(request)
         except TranslationError as e:
             raise BadRequestError(str(e), provider=provider.name) from e
-        payload = _typed(provider, lambda: embeddings.response_from_internal(response, model, fmt))
+        payload = typed(provider, lambda: embeddings.response_from_internal(response, model, fmt))
         problem = target and dimension_mismatch(payload, target)
         if problem:
             raise APIResponseValidationError(problem, provider=provider.name)
-        return _typed(provider, lambda: CreateEmbeddingResponse.model_validate(payload))
+        return typed(provider, lambda: CreateEmbeddingResponse.model_validate(payload))
 
     # --- plumbing -------------------------------------------------------------
 
@@ -439,81 +445,3 @@ class Client:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
-
-
-def _translate(provider: Provider, fn: Callable[[], Request]) -> Request:
-    try:
-        return fn()
-    except TranslationError as e:
-        raise BadRequestError(str(e), provider=provider.name) from e
-
-
-async def _complete(provider: Provider, request: Request) -> Response:
-    """`provider.complete`, with a request the backend can't express as a
-    `BadRequestError`. Unreadable responses are already typed by the provider."""
-    try:
-        return await provider.complete(request)
-    except TranslationError as e:
-        raise BadRequestError(str(e), provider=provider.name) from e
-
-
-async def _open_stream(provider: Provider, request: Request) -> AsyncIterator[StreamEvent]:
-    """Start a stream and read its first event, so a refused request raises
-    before the caller starts iterating."""
-    events = provider.stream(request)
-    try:
-        first = await anext(events)
-    except TranslationError as e:
-        raise BadRequestError(str(e), provider=provider.name) from e
-    except StopAsyncIteration:
-        raise APIResponseValidationError(
-            f"{provider.name} ended the stream before it started", provider=provider.name
-        ) from None
-    except BaseException:
-        await events.aclose()
-        raise
-    if isinstance(first, StreamError):
-        await events.aclose()
-        raise provider.stream_error(first)
-    return _from(first, events, provider)
-
-
-async def _from(
-    first: StreamEvent, rest: AsyncIterator[StreamEvent], provider: Provider
-) -> AsyncIterator[StreamEvent]:
-    """`first` then `rest`, raising on a backend error event. Always closes
-    `rest`, so the connection is released and callbacks finish."""
-    try:
-        event: StreamEvent | None = first
-        while event is not None:
-            if isinstance(event, StreamError):
-                raise provider.stream_error(event)
-            yield event
-            event = await anext(rest, None)
-    finally:
-        await rest.aclose()
-
-
-def _typed(provider: Provider, build: Callable[[], T]) -> T:
-    """Our output as a typed object. A failure means the backend sent
-    something our formats can't express, so it is typed as such."""
-    try:
-        return build()
-    except (ValidationError, TranslationError, RuntimeError) as e:
-        raise APIResponseValidationError(
-            f"{provider.name} sent a response we could not express: {e}", provider=provider.name
-        ) from e
-
-
-async def _encoded(
-    provider: Provider,
-    events: AsyncIterator[StreamEvent],
-    encode: Callable[[StreamEvent], list[dict]],
-    parse: Callable[[dict], Any],
-) -> AsyncIterator[Any]:
-    try:
-        async for event in events:
-            for item in _typed(provider, lambda: encode(event)):
-                yield _typed(provider, lambda: parse(item))
-    finally:
-        await events.aclose()
