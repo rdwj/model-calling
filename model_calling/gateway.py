@@ -1,6 +1,6 @@
 """
 Serve one ingress request through the library `Client`: Chat Completions,
-Anthropic Messages, or Embeddings.
+Anthropic Messages, OpenAI Responses (stateless), or Embeddings.
 
 Clients name models by alias (`model_calling.aliases`); the gateway resolves
 the alias to a backend once per request and answers with the alias in
@@ -37,7 +37,7 @@ from model_calling.errors import (
     RateLimitError,
     UnsupportedParamsError,
 )
-from model_calling.formats import TranslationError, anthropic
+from model_calling.formats import TranslationError, anthropic, responses as responses_format
 from model_calling.formats import chat_completions as chat
 from model_calling.library import Client
 from model_calling.token_estimate import estimate_input_tokens
@@ -88,7 +88,7 @@ def client_status(error: APIError) -> int:
     return status
 
 
-# --- the three ingresses ------------------------------------------------------
+# --- the ingresses ------------------------------------------------------------
 
 
 async def chat_completions(client: Client, body: Any, aliases: AliasConfig, *, drop_params: bool):
@@ -113,7 +113,23 @@ async def messages(client: Client, body: Any, aliases: AliasConfig, *, drop_para
             **params,
         )
 
-    return await _serve(body, aliases, call, anthropic.error_body, _anthropic_event, None)
+    return await _serve(body, aliases, call, anthropic.error_body, _named_event, None)
+
+
+async def responses(client: Client, body: Any, aliases: AliasConfig, *, drop_params: bool):
+    async def call(target: Target, params):
+        return await client.aresponses(
+            target.model,
+            params.pop("input", None),
+            drop_params=drop_params,
+            **_backend(target),
+            **params,
+        )
+
+    sse = _ResponsesSSE()
+    return await _serve(
+        body, aliases, call, responses_format.error_body, sse.encode, None, stream_error=sse.error
+    )
 
 
 async def embeddings(client: Client, body: Any, aliases: AliasConfig, *, drop_params: bool):
@@ -164,14 +180,22 @@ def unknown_model(model: str, aliases: AliasConfig) -> str:
 
 
 async def _serve(
-    body, aliases: AliasConfig, call, error_body: ErrorBody, encode, end: str | None, check=None
+    body,
+    aliases: AliasConfig,
+    call,
+    error_body: ErrorBody,
+    encode,
+    end: str | None,
+    check=None,
+    stream_error: ErrorBody | None = None,
 ):
     """Validate the envelope, resolve the alias, make the call, and answer
     in the ingress's format.
 
     `encode` turns one streamed item into SSE text, or is None for an
     ingress that never streams; `end` closes a stream. `check` may refuse a
-    response: it returns an error message, or None.
+    response: it returns an error message, or None. `stream_error` builds
+    the event for a failure mid-stream, when that isn't an `error_body`.
     """
 
     def error(status: int, message: str) -> JSONResponse:
@@ -214,11 +238,11 @@ async def _serve(
     def encode_with_alias(payload: dict) -> str:
         return encode(_with_alias(payload, model))
 
-    def stream_error(status: int, message: str) -> dict:
-        return error_body(status, public_message(message, target))
+    def failure(status: int, message: str) -> dict:
+        return (stream_error or error_body)(status, public_message(message, target))
 
     return StreamingResponse(
-        _stream(result, encode_with_alias, stream_error, end), media_type=SSE_MEDIA_TYPE
+        _stream(result, encode_with_alias, failure, end), media_type=SSE_MEDIA_TYPE
     )
 
 
@@ -241,12 +265,14 @@ def _backend(target: Target) -> dict:
 
 def _with_alias(payload: dict, alias: str) -> dict:
     """Show the alias, not the backend's model, wherever a response names it:
-    the body or chunk's `model`, or a Messages stream's `message_start`."""
+    the body or chunk's `model`, a Messages stream's `message_start`, or the
+    response a Responses stream event carries."""
     if "model" in payload:
         payload["model"] = alias
-    message = payload.get("message")
-    if isinstance(message, dict) and "model" in message:
-        message["model"] = alias
+    for key in ("message", "response"):
+        inner = payload.get(key)
+        if isinstance(inner, dict) and "model" in inner:
+            inner["model"] = alias
     return payload
 
 
@@ -274,6 +300,23 @@ def _sse(payload: dict | str) -> str:
     return f"data: {data}\n\n"
 
 
-def _anthropic_event(payload: dict) -> str:
-    """Anthropic names each event in an `event:` line, as its `type`."""
+def _named_event(payload: dict) -> str:
+    """An event named in an `event:` line, as its `type`: how Anthropic
+    Messages and OpenAI Responses streams send events."""
     return f"event: {payload['type']}\n{_sse(payload)}"
+
+
+class _ResponsesSSE:
+    """One Responses stream's SSE text. An error mid-stream continues the
+    events' sequence numbers."""
+
+    def __init__(self):
+        self.next_sequence = 0
+
+    def encode(self, payload: dict) -> str:
+        if "sequence_number" in payload:
+            self.next_sequence = payload["sequence_number"] + 1
+        return _named_event(payload)
+
+    def error(self, status: int, message: str) -> dict:
+        return responses_format.stream_error_event(status, message, self.next_sequence)

@@ -151,6 +151,7 @@ NAME_ONLY = {
         {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 8},
     ),
     "embeddings": ("/v1/embeddings", {"input": "hi"}),
+    "responses": ("/v1/responses", {"input": "hi"}),
 }
 NOT_FOUND_TYPES = {"/v1/messages": "not_found_error"}
 
@@ -184,6 +185,8 @@ ENVELOPE_ERRORS = {
     "messages_no_model": ("/v1/messages", {"model": None}, "model is required"),
     "messages_no_max_tokens": ("/v1/messages", {"max_tokens": None}, "max_tokens is required"),
     "embeddings_no_input": ("/v1/embeddings", {"input": None}, "input is required"),
+    "responses_reserved": ("/v1/responses", {"api_key": "k"}, "api_key"),
+    "responses_no_input": ("/v1/responses", {"input": None}, "input is required"),
 }
 
 

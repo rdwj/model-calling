@@ -156,6 +156,13 @@ async def count_tokens(request: Request):
     return gateway.count_tokens(await request.json(), MODELS.current())
 
 
+@app.post("/v1/responses")
+async def responses(request: Request):
+    """OpenAI Responses, stateless, over every ported backend."""
+    body = await request.json()
+    return await gateway.responses(CLIENT, body, MODELS.current(), drop_params=DROP_PARAMS)
+
+
 @app.post("/v1/embeddings")
 async def create_embeddings(request: Request):
     """OpenAI Embeddings, for any configured model."""
