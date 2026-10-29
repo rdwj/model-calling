@@ -3,6 +3,7 @@ The alias file: validation, resolution, and reloading on change.
 """
 
 import os
+import sys
 import textwrap
 
 import pytest
@@ -243,6 +244,10 @@ def test_store_keeps_the_config_when_the_file_disappears(edits):
     assert "is missing" in store.error
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows can't rename a symlink over an existing one; ConfigMaps are Linux-only",
+)
 def test_store_follows_a_symlink_swap(tmp_path):
     """A mounted ConfigMap updates by repointing a symlink, not by writing
     the file the app opens."""
