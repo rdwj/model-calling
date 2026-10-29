@@ -42,5 +42,10 @@ tracked in git.
 - **anthropic 2.x runs on `httpx2`**, its fork of httpx. `AsyncAnthropic(http_client=...)`
   rejects an `httpx.AsyncClient`; give it `httpx2.AsyncClient(transport=httpx2.ASGITransport(app=...))`
   to drive the in-process gateway, as `tests/test_sdk_grid.py` does.
+- **Ollama's `think` values are per model.** `/api/show` returns `thinking.values`: gpt-oss
+  takes only `"low"|"medium"|"high"`, qwen3:4b only `true`. An unknown level silently falls back
+  to the model default (checked on Ollama 0.40.12), so never guess; the provider looks it up.
+- **The gateway drops unsupported params by default**; only the library is strict. Grid cells
+  that assert a strict refusal through the gateway set `server.DROP_PARAMS = False`.
 - **OpenRouter's generation cost lookup can lag over 10s.** The ledger polls up to 30s;
   a `0.05` entry in `spend.jsonl` is the unknown-cost placeholder, not a real charge.
