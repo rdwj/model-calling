@@ -129,10 +129,15 @@ class AnthropicStreamParser(StreamParser):
         stop_reason = anthropic.stop_reason_to_internal(delta.get("stop_reason"))
         if stop_reason == "end_turn" and self.called_tool:
             stop_reason = "tool_use"
+        # Pass through stop_details and container from the wire.
+        stop_details = delta.get("stop_details")
+        container = delta.get("container")
         return MessageDelta(
             stop_reason=stop_reason,
             stop_sequence=delta.get("stop_sequence"),
             usage=usage,
+            stop_details=stop_details,
+            container=container,
         )
 
     def _cumulative(self, raw: dict) -> Usage:

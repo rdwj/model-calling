@@ -114,12 +114,18 @@ class AnthropicStreamEncoder:
                 "cache_read_input_tokens": wire.get("cache_read_input_tokens"),
                 "cache_creation_input_tokens": wire.get("cache_creation_input_tokens"),
             }
+        delta: dict[str, Any] = {
+            "stop_reason": stop_reason_from_internal(event.stop_reason),
+            "stop_sequence": event.stop_sequence,
+        }
+        # Pass through stop_details and container.
+        if event.stop_details is not None:
+            delta["stop_details"] = event.stop_details
+        if event.container is not None:
+            delta["container"] = event.container
         return {
             "type": "message_delta",
-            "delta": {
-                "stop_reason": stop_reason_from_internal(event.stop_reason),
-                "stop_sequence": event.stop_sequence,
-            },
+            "delta": delta,
             "usage": out_usage,
         }
 
