@@ -25,6 +25,7 @@ from model_calling.providers import (
     AnthropicProvider,
     OllamaProvider,
     OpenRouterProvider,
+    OpenRouterResponsesProvider,
     Provider,
     VLLMProvider,
 )
@@ -571,8 +572,9 @@ class Backend:
         """The form the native body is built from, for an ingress sending
         `form`. A Chat Completions backend always uses the scenario's native
         form, and strict replay proves the other form sends the same body."""
-        if self.speaks != MESSAGES:
+        if self.speaks == CHAT_COMPLETIONS:
             return scenario.native_form
+        # Messages and Responses backends use the form they're sent.
         if form in scenario.forms:
             return form
         return scenario.forms[0]
@@ -674,6 +676,22 @@ BACKENDS = {
             gateway_config={"base_url": OPENROUTER_URL, "api_key": REPLAY_API_KEY},
             needs_openrouter_key=True,
             provider=OpenRouterProvider,
+            capability_models={
+                VISION: OPENROUTER_VISION_MODEL,
+                REASONING: OPENROUTER_REASONING_MODEL,
+            },
+        ),
+        Backend(
+            name="openrouter_responses",
+            gateway_model="openrouter_responses/mistralai/mistral-nemo",
+            native_model="mistralai/mistral-nemo",
+            missing_native_model="model-calling/does-not-exist",
+            endpoint=f"{OPENROUTER_URL}/responses",
+            config_prefix="openrouter_responses",
+            gateway_config={"base_url": OPENROUTER_URL, "api_key": REPLAY_API_KEY},
+            needs_openrouter_key=True,
+            provider=OpenRouterResponsesProvider,
+            speaks=RESPONSES,
             capability_models={
                 VISION: OPENROUTER_VISION_MODEL,
                 REASONING: OPENROUTER_REASONING_MODEL,

@@ -111,6 +111,10 @@ def grid(
                     continue
                 if ingress in RESPONSES_INGRESSES and not spec.responses_form:
                     continue
+                # Non-Responses ingresses can't send to a Responses backend if the scenario has no Responses form.
+                backend_speaks = getattr(ALL_BACKENDS[backend], "speaks", CHAT_COMPLETIONS)
+                if backend_speaks == RESPONSES and not spec.responses_form:
+                    continue
                 if getattr(spec, "only_backends", None) and backend not in spec.only_backends:
                     continue
                 cell = Cell(ingress, backend, scenario)
