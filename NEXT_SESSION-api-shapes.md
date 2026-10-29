@@ -1,71 +1,82 @@
 # Next Session — api-shapes
 
-## Next: Phase 10, gateway configuration and hardening
+## Next: Phase 11 slice 1, model aliases from a hot-reloaded file
 
-Make the gateway configurable from its environment and safe on a shared
-network, per the Phase 10 definition of done below. Two design calls were
-made in planning (2026-10-28) and are not open: URL variables are the API
-root with `/v1`, and `/v1/config/update` is off unless an admin token is set.
+Gateway clients ask for an alias (`chat`, `embed`) and a YAML file decides
+which backend and model serve it, reloaded without a restart. This is the
+project's original purpose: the app never changes when Ollama in dev
+becomes vLLM in production. rdwj made the design calls on 2026-10-29; they
+are listed at the top of Phase 11 below and are not open.
 
-1. **Backend URLs from the environment.** The gateway applies
-   `OLLAMA_BASE_URL`, `VLLM_BASE_URL`, `VLLM_API_KEY`, and (new, since the
-   Anthropic provider exists) `ANTHROPIC_BASE_URL` to its provider configs.
-   They mean what `base_url` means everywhere else: the API root with `/v1`
-   (Ollama's native root has none). Change `Containerfile` and
-   `podman-compose.yml` to `/v1` values, and make the recorder
-   (`tests/harness/record.py` `_target`) read `VLLM_BASE_URL` as the API root
-   too. `model_calling/config.py` (`load_config`, `active_config`) and its use
-   in `__main__.py` either become the one source or go; no logging-only path
-   survives.
-2. **Protect `POST /v1/config/update`.** 404 unless `MODEL_CALLING_ADMIN_TOKEN`
-   is set; with it set, a request must carry `Authorization: Bearer <token>`
-   or gets 403. Compare with `hmac.compare_digest`. The legacy
-   `model_calling/client.py` (line ~100 calls this endpoint) gains a token
-   argument. This removes nothing public, but it changes default behavior:
-   add it to the migration guide's breaking-changes list.
-3. **No `.env` at import.** Move `load_dotenv()` from `server.py:25` into the
-   entry point (`__main__.py`), so importing `model_calling.server` never
-   reads real keys.
-4. **Docs.** README, `docs/advanced.md`, `docs/api-reference.md`, and
-   `docs/migration-guide.md` (lines ~253, 464 describe the endpoint as open):
-   replace every "not applied yet" note, document the token.
+1. **The file and its loader.** Backends (provider, `base_url`,
+   `api_key_env`) and models (backend, model, optional `dimensions` for
+   embeddings), validated with errors that name the offending key. Start
+   from the shape in Phase 11. Decide and record: the env variable for the
+   path (suggest `MODEL_CALLING_CONFIG`) and whether the entry point
+   defaults to `./model-calling.yaml`; what a gateway with no file does
+   (suggest: starts, lists no models, and every request gets a 404 whose
+   message names the variable). Pin PyYAML `==6.0.3` as a direct `[server]`
+   dependency (already in the lock; check `pip-audit`).
+2. **Hot reload.** `os.stat` per request (follows symlinks, so a ConfigMap
+   `..data` swap counts); compare mtime and size; parse and validate the
+   new file before swapping it in; an invalid edit keeps the last good
+   config and logs one error per change, not per request. Each request
+   resolves its alias once, at the start.
+3. **Alias routing for Chat Completions and Messages.** Resolve the alias to
+   a provider config and model, call `Client` with that, and put the alias
+   in the response `model` field (streaming too). `/v1/models` lists
+   aliases only. An unknown name, including any `prefix/model`, is a 404 in
+   the ingress's error format naming the alias. Phase 10's URL variables
+   remain defaults for a backend the file gives no URL.
+4. **Embeddings.** Same routing for `/v1/embeddings`; with `dimensions`
+   declared, a response of another size is a 502 naming the alias and both
+   sizes.
+5. **Move the grid to aliases.** The gateway fixture writes an alias file
+   per cell and gateway cells send the alias. The library cells keep
+   prefixed names (the library still takes them); where library and
+   gateway output are compared, `model` differs by design.
+6. **Prove the swap.** A test rewrites the file from an Ollama backend to a
+   vLLM backend between two requests for `chat` and sees the second go to
+   the vLLM fixture; a malformed rewrite leaves the old mapping serving.
 
-**Sequencing.** 3 first (smallest, and it makes the env-driven tests in 1
-trustworthy), then 1, 2, 4. If the session runs long, stop after 2; don't
-cut the tests that prove 1 and 2.
+**Sequencing.** 1 and 2 first with their own unit tests, then 3, then 5
+(the grid will show what 3 broke), then 4 and 6. If the session runs long,
+stop after 5 with the grid green; 4 and the dimensions check can move to
+slice 2. Leave the legacy registry, `/v1/config/update`,
+`/v1/models/refresh`, `/v1/moderations`, `Client(models=...)`, and the
+compose/docs rewrite to slice 2, but add a short "Model aliases" section to
+`docs/advanced.md` so the new behavior isn't undocumented.
 
 **Constraints for the session:**
-- Exit predicate is Phase 10's definition of done: a gateway test sets the
-  URL variables and replayed requests go to those hosts; `podman-compose up`
-  reaches the Ollama container with no `/v1/config/update` call; an
-  unauthenticated update gets 404 with no token configured and 403 with one;
-  `python -c "import model_calling.server"` in a directory with a `.env`
-  leaves `os.environ` unchanged; `grep -rn "not applied yet" README.md docs`
-  returns nothing. Plus `HOME=$(mktemp -d) uv run pytest` green.
-- No live spend is needed; this is offline work plus one local
-  `podman-compose up` check.
+- Exit predicate: the swap test and malformed-rewrite test in item 6 pass;
+  `prefix/model` and unknown names get 404 in both Chat Completions and
+  Messages formats; `/v1/models` lists only aliases; the grid is green with
+  no new xfails; `HOME=$(mktemp -d) uv run pytest` green; each commit
+  passes on its own.
+- Breaking for gateway clients: prefixed names stop working, and Cohere
+  stops being reachable through the gateway until Phase 6 slice 2 ports it
+  (decided: aliases target ported providers only). Add both to the
+  migration guide's upgrading section in the same commit as the behavior.
+- No live spend; offline only.
 
 **Session start protocol:**
 - Premise checks (before item 1, report before acting): `main` matches
-  `origin/main` at the plan commit after `8f4c4a0`; "Test Package" green on
-  it; `HOME=$(mktemp -d) uv run pytest` shows 1323 passed, 35 xfailed;
-  `grep -rn "not applied yet" README.md docs` still finds the notes (nobody
-  did this in a parallel session); podman machine running.
+  `origin/main` at the plan commit after `1741f28`; "Test Package" green on
+  it; `HOME=$(mktemp -d) uv run pytest` shows 1355 passed, 35 xfailed;
+  `grep -rni "alias" model_calling` finds no alias feature (nobody started
+  this in parallel); PyYAML 6.0.3 still in `uv.lock`.
 - Rules with history:
-  - Never loosen a check or replay matching; re-record or strict-xfail.
-    Changing the recorder's `VLLM_BASE_URL` meaning must not change any
-    stored fixture URL (they hold `http://localhost:8000/v1` already).
-  - Check every commit passes on its own (done for every commit last
-    session; keep it up).
-  - Gateway behavior changes only where this plan says so.
-- Stop-and-ask before: removing or renaming any public endpoint or
-  environment variable; changing rdwj's `~/.zshrc` (its `VLLM_BASE_URL`
-  is the server root and must gain `/v1` after item 1; tell rdwj, don't
-  edit it); moving the dependency cutoff or a pin; force-pushing.
-- Close ritual: `/session-close`, then `/plan-next-session`. Next pick is
-  among Phase 8 (Claude Code acceptance; its backends are ready), Phase 6
-  slice 2 (Cohere, hand-built fixtures: decided 2026-10-28 that there is
-  no key), and Phase 7.
+  - Never loosen replay matching or a validator to get the grid green;
+    re-record or strict-xfail with the fixing phase named.
+  - Gateway behavior changes only where this plan says so. Slice 1 does not
+    remove endpoints; the legacy registry stays for the endpoints that
+    still use it.
+  - Check that every commit passes on its own.
+- Stop-and-ask before: removing or renaming any public endpoint (slice 2
+  owns those); any dependency beyond PyYAML or moving the cutoff; changing
+  stored fixture URLs; force-pushing.
+- Close ritual: `/session-close`, then `/plan-next-session` (next pick is
+  Phase 11 slice 2).
 
 ## Remaining epic phases
 
@@ -81,18 +92,23 @@ Ollama, vLLM, OpenAI-compatible (including OpenRouter), Anthropic, and
 Cohere v2. An offline test suite enumerates that ingress × backend grid and
 validates output against the official `openai` and `anthropic` SDK types.
 Live smoke tests run through OpenRouter, and Claude Code completes a
-tool-using task through the gateway. The epic ends with 0.2.0 on PyPI and a
-pilot project migrated.
+tool-using task through the gateway. Gateway clients name models only by
+alias (`chat`, `embed`), never by backend: a hot-reloaded YAML file maps
+each alias to a backend and model, so swapping Ollama for vLLM in
+production is a file edit with no app change and no redeploy. This was the
+project's original purpose (rdwj, 2026-10-29). The epic ends with 0.2.0 on
+PyPI and a pilot project migrated.
 
 Phases 1–5 are done (harness, internal format and adapter port,
 library API with the server on `Client`, Chat Completions and Messages
 conformance); see the "What landed" ledger and
 `session-summaries/`. Phase numbers are kept stable because code comments,
 xfail reasons, and summaries cite them, so the gateway-configuration phase
-added on 2026-10-28 is Phase 10 and sits before Phase 9, which it gates.
-Order: Phase 6 slice 1 (Anthropic) is done; Phase 10 next (decided
-2026-10-28), then among 8, 6 slice 2 (Cohere, hand-built fixtures: no
-key), and 7; 9 last.
+added on 2026-10-28 is Phase 10 and sits before Phase 9, which it gates,
+and the model-alias phase added on 2026-10-29 is Phase 11. Phase 6 slice 1
+(Anthropic) and Phase 10 are done. Order: Phase 11 next, slice 1 then
+slice 2 (decided 2026-10-29); then among 8, 6 slice 2 (Cohere, hand-built
+fixtures: no key), and 7; 9 last.
 
 ### Phase 4: Chat Completions conformance
 
@@ -216,45 +232,94 @@ The headline end-to-end test of the Messages path.
 **Definition of done:** the script passes for all three backends, and the
 run's spend is committed to `tests/live/spend.jsonl`.
 
-**Dependencies:** Phases 5 and 6.
+**Dependencies:** Phases 5, 6, and 11 (the run maps Claude Code's model
+ids, including its background Haiku model, through aliases).
 
 **Parallel-ok:** with Phase 7.
 
-### Phase 10: Gateway configuration and hardening
+### Phase 11: Model aliases from a hot-reloaded config file
 
-Make the gateway deployable outside localhost and safe to run on a shared
-network. Found during Phase 3 slice 2: the container files set backend URLs
-the gateway never applies, and the runtime config endpoint can redirect the
-gateway's API keys.
+Gateway clients stop naming backends. Today the model string carries the
+backend (`ollama/qwen3:4b` in dev, `vllm/gpt-oss-20b` in prod), so the app
+changes when the backend does. After this phase the app asks for an alias
+and a YAML file decides what serves it. Calls made with rdwj on
+2026-10-29, not open: the file holds backends (URL and the *name* of the
+env var with the key, never a key) as well as models; it reloads without a
+restart; `ollama/`-style names leave the gateway wire entirely; embeddings
+get aliases; `POST /v1/config/update` is removed; `Client` accepts the file
+opt-in and keeps accepting prefixed names (the library is the layer allowed
+to know backends); aliases target ported providers only, so Cohere aliases
+come with Phase 6 slice 2.
 
-**Work:**
-1. Apply `OLLAMA_BASE_URL` and `VLLM_BASE_URL` (and a vLLM key variable) to
-   the gateway's provider configs. Decide at the start whether
-   `VLLM_BASE_URL` is the server root or the API root with `/v1`
-   (`Containerfile`, `podman-compose.yml`, and the recorder use the server
-   root; the provider and library use the API root). Remove the logging-only
-   `config.load_config` path or make it the one source.
-2. Protect `POST /v1/config/update`: off by default with an environment
-   switch, or a shared-secret header. Changing `base_url` must not be able
-   to send a hosted key to an arbitrary host unauthenticated.
-3. Stop `server.py` from loading `.env` at import: load it in the entry
-   point (`__main__`) so importing the app in tests or other processes
-   never picks up real keys.
-4. Document the settings in README and `docs/advanced.md`, replacing the
-   "not applied yet" notes.
+A starting shape for the file, to settle in slice 1:
 
-**Definition of done:** a gateway test sets `OLLAMA_BASE_URL` and
-`VLLM_BASE_URL` and the replayed requests go to those hosts;
-`podman-compose up` reaches the Ollama container with no
-`/v1/config/update` call; an unauthenticated `/v1/config/update` gets 403
-(or 404 when disabled); `python -c "import model_calling.server"` in a
-directory with a `.env` leaves `os.environ` unchanged; no doc says "not
-applied yet".
+```yaml
+backends:
+  local: {provider: ollama, base_url: http://ollama:11434}
+  prod: {provider: vllm, base_url: https://vllm.example/v1, api_key_env: VLLM_API_KEY}
+models:
+  chat: {backend: local, model: qwen3:4b}
+  embed: {backend: local, model: nomic-embed-text, dimensions: 768}
+```
 
-**Dependencies:** Phase 3.
+Named backends allow two instances of one provider. The Phase 10 URL
+variables stay as defaults for a provider the file names without a URL,
+and the file wins where both set one.
 
-**Parallel-ok:** with Phases 4, 5, and 6. Must land before Phase 9 (the
-pilot migration runs the gateway against a configured backend).
+**Slice 1: the file and alias routing.**
+1. Loader with a schema (unknown keys, unknown backends, a key literal
+   instead of `api_key_env`, and duplicate aliases are errors naming the
+   line or key). Path from an env variable; decide the name and whether
+   `./` gets a default.
+2. Hot reload: check the file's mtime (following symlinks, so an OpenShift
+   ConfigMap's `..data` swap counts) per request or on a short interval; an
+   invalid edit keeps the last good config and logs the error; a request
+   in flight finishes on the config it started with.
+3. Chat Completions, Messages, and embeddings resolve the alias to a
+   provider and model; the response `model` field and `/v1/models` show
+   aliases only; an unknown name, including any `prefix/model` name, is a
+   404 in the ingress's error format naming the alias.
+4. An embedding alias with `dimensions` fails loudly (a 502 naming the
+   alias and both sizes) when the backend returns another size, so a swap
+   that would corrupt a vector index can't pass silently.
+5. The grid moves to aliases: the harness writes an alias file per cell,
+   gateway cells send aliases, and the library-vs-gateway comparisons
+   account for the alias in `model`.
+
+**Slice 2: removals, library, docs.**
+1. Remove the gateway's legacy wire routing: the unprefixed-name default to
+   Ollama and the fallthrough to `registry` adapters for chat and
+   embeddings. Decide what `/v1/models/refresh` and `/v1/moderations` take
+   as a model name, or retire them (stop-and-ask: public endpoints).
+2. Remove `POST /v1/config/update`, `require_admin`, and
+   `MODEL_CALLING_ADMIN_TOKEN` (stop-and-ask confirmed 2026-10-29), and the
+   legacy client's `update_config`.
+3. `Client(models="models.yaml")` with the same loader and reload; prefixed
+   names still work in the library.
+4. `podman-compose.yml` mounts a sample alias file; the docs show an
+   OpenShift ConfigMap mount (not `subPath`, which never updates); the
+   migration guide lists the removals and the prefix change; README leads
+   the gateway section with the dev-to-prod swap.
+
+**Definition of done:** a gateway test sends `model: chat` to a running
+in-process gateway, rewrites the alias file from an Ollama backend to a vLLM
+backend, and the next request goes to the vLLM fixture with no restart and
+the response still says `chat`; a malformed rewrite leaves the old mapping
+serving and logs the error; `prefix/model` and unknown names get 404 in both
+Chat Completions and Messages formats; an embedding alias whose backend
+returns the wrong size gets the documented 502; `POST /v1/config/update`
+returns 404 and `grep -rn "config/update\|ADMIN_TOKEN" model_calling docs
+README.md` finds nothing; `podman-compose up` serves `chat` from the Ollama
+container using the mounted file, and editing the file on the host switches
+the target without restarting the container; the grid stays green with no
+new xfails.
+
+**Dependencies:** Phase 10 (done).
+
+**Parallel-ok:** with Phase 6 slice 2 (Cohere joins as an alias target when
+it lands). Phases 7 and 8 should follow it: Responses would otherwise build
+prefix routing that slice 2 removes, and Claude Code sends Claude model ids
+that only aliases can map.
 
 ### Phase 9: Pass-through, release, and pilot migration
 
@@ -296,7 +361,7 @@ pilot migration runs the gateway against a configured backend).
 venv runs an `acompletion` and an `amessages` smoke call. sanicode's test
 suite passes with LiteLLM removed from its dependencies.
 
-**Dependencies:** Phases 7, 8, and 10.
+**Dependencies:** Phases 7, 8, 10, and 11.
 
 **Parallel-ok:** no.
 
@@ -312,17 +377,30 @@ suite passes with LiteLLM removed from its dependencies.
 - Library API familiar to LiteLLM users, with documented breaking changes
 - Bugs surfaced during the public-release cleanup
 - Gateway configuration from the environment and a protected config endpoint
+- Model aliases from a hot-reloaded YAML file; no backend names on the gateway wire
 - 0.2.0 release and a pilot migration
 
 **Out of scope (future epics):**
 - Local Responses store (`previous_response_id`, `store`, retrieval endpoints)
 - Token counting and cost accounting (`token_counter`, `cost_per_token`,
   pricing data)
-- Router features (fallbacks, load balancing, retries across deployments)
+- Router features (fallbacks, load balancing, retries across deployments).
+  Phase 11's aliases map one name to one target; they don't route.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-28): Phase 6 slice 1
+## What landed last session (2026-10-29): Phase 10 complete
+
+All four items plus three review fixes, `47de0be..70e31fb`: backend URLs
+and the vLLM key from the environment (`MODEL_CALLING_ANTHROPIC_BASE_URL`,
+not `ANTHROPIC_BASE_URL`, by rdwj's call), the admin token on
+`/v1/config/update` (slice 2 of Phase 11 removes the endpoint), `.env` read
+only by the entry point from the start directory, and docs. Phase 10's
+definition of done is met, including a `podman-compose up` check. Then
+planned Phase 11 with rdwj. Record:
+`session-summaries/2026-10-29-api-shapes-phase10.md`.
+
+## What landed earlier (2026-10-28): Phase 6 slice 1
 
 All four items plus review fixes, `c777d03..e155148`: the Anthropic
 Messages provider on `anthropic/`, `vllm_messages` in the grid with
@@ -467,14 +545,17 @@ of 23 files.
 - **The legacy registry probes every Ollama model at gateway startup.**
   With ~30 local models it saturates Ollama, which answers 503 "server
   busy" (the gateway returns 502) for a minute or two. Wait it out when
-  driving a locally started gateway; Phase 10 is the place to rethink it.
+  driving a locally started gateway; Phase 11 slice 2 removes the legacy
+  wire routing and is the place to retire it.
 
 ## If blocked
 
-- If podman can't run locally, prove the compose wiring with a gateway
-  test that sets the same environment and leave the `podman-compose up`
-  check as a named gap in the session summary.
-- If the `config.py` path turns out to be load-bearing elsewhere, keep it
-  but make the gateway read it (one source), rather than deleting it.
+- If hot reload fights the test harness (timestamps with coarse mtime
+  resolution), compare mtime, size, and inode, or let tests trigger a
+  reload check directly; don't sleep in tests.
+- If moving the grid to aliases balloons, give each cell a neutral alias
+  generated from its (backend, scenario) in the fixture rather than
+  hand-editing cells. Never alias a `prefix/model` name to itself: that
+  reopens the wire to backend names.
 - Fallback work in this epic: the Phase 6 slice 1 review leftovers listed
   under "Still open" (each small, offline).
