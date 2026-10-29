@@ -72,8 +72,8 @@ the gap.
 - Stop-and-ask before: any spend past $1; retiring or renaming an
   endpoint; any new dependency; running Claude Code anywhere but a temp
   directory.
-- Close ritual: `/session-close`, then `/plan-next-session`. Next pick is
-  Phase 12 (offline cleanup), per the 2026-10-29 re-plan.
+- Close ritual: `/session-close`, then `/plan-next-session`. Next is Session B,
+  the workflow (see "Session B: the workflow design" below).
 
 ## Remaining epic phases
 
@@ -100,8 +100,72 @@ Re-planned 2026-10-29 after the first reconciliation
 slices, pass-through narrowed into Phase 7 slice 2, and the carried
 offline leftovers given an owner as Phase 12.
 
-**Order:** 8 → 12 → 7 slice 1 → 7 slice 2 → 6 slice 2 → 9 slice 1 →
-9 slice 2. About seven sessions.
+**Session plan (decided 2026-10-29, after 0.2.0 shipped):**
+
+| Session | Phases (issues) | Mode |
+|---|---|---|
+| A, evening of 2026-10-29 | 8 (#1) | Interactive: the "Next" slice above |
+| B, overnight after A | 12 (#2), 7 slices 1–2 (#3, #4), 6 slice 2 (#5) | Workflow, unattended; design below |
+| Later | 9 follow-ups (#6), pilot (#7), then 0.3.0 | Needs rdwj or outside infrastructure |
+
+B starts only if A finishes, but doesn't depend on A's code: it picks up
+whatever A left for Phase 12 from A's session summary. If A doesn't
+finish, B waits.
+
+### Session B: the workflow design
+
+Run with the Workflow tool; rdwj opts in by starting the session ("run
+the workflow"). All judgment below was settled with rdwj on 2026-10-29;
+an agent that hits a question not answered here stops its stream and
+records the question instead of deciding it.
+
+**Session start (before launching, report the results):** the A premise
+checks plus: A's summary exists and its Phase 12 leftovers are copied
+into the Phase 12 brief; offline suite green on `main`; live spend so far
+read from `tests/live/spend.jsonl`.
+
+**Streams** (each in its own git worktree off `main`, one implementer,
+then an independent reviewer that sees the code and the brief, not the
+implementer's conclusions):
+
+1. **Phase 6 slice 2, Cohere v2** (#5). Sonnet implements; Opus reviews,
+   checking the hand-built fixtures against the Cohere v2 API reference
+   independently (maker ≠ checker: the implementer wrote the fixtures).
+2. **Phase 12, offline leftovers** (#2). Two Sonnet implementers in
+   sequence within the stream (Anthropic provider items 1–2 and 4, then
+   the grid cells, timeout, and A's leftovers), one Sonnet reviewer.
+3. **Phase 7 slice 1, Responses ingress** (#3). Opus implements (the
+   mapping is the hard part); Sonnet reviews against the pinned `openai`
+   SDK types.
+4. **Phase 7 slice 2, Responses backend** (#4). Starts after stream 3
+   merges. Sonnet implements, Sonnet reviews. The only stream with live
+   spend.
+
+**Per-item verifier:** the stream's grid cells and tests pass; full
+offline suite green with exactly 35 xfails plus any new strict xfail
+naming a later phase; flake8 (CI selection) 0; black clean. A reviewer's
+"must fix" findings go back to the implementer once; still failing after
+that, the stream stops.
+
+**Merge (sequential, deterministic code, not an agent's judgment):** onto
+branch `batch/0.3.0` in the order 1, 2, 3, then 4. Rebase each stream on
+the branch, run the full offline suite, and merge only if green. A
+conflict or red suite after one rebase-and-fix attempt stops that stream;
+later streams continue. At the end push `batch/0.3.0` and open a draft PR
+summarizing each stream's outcome. Never push to `main` (rdwj, 2026-10-29).
+
+**Budget and breakers:** live spend for the whole run is capped at $0.50
+(stream 4 only: Responses fixtures via OpenRouter with a
+mistral-nemo-class model and the live smoke). Check the ledger before
+each live step; at the cap, stream 4 lands offline-only and says so. No
+stream retries more than twice. About 8–10 agents; stay within that.
+
+**Exit predicate:** every stream either merged into `batch/0.3.0` with
+its issue's definition of done met, or stopped with a written reason; the
+draft PR exists; a session summary records which.
+
+**Morning:** rdwj reviews the draft PR. Issues close when the PR merges
+to `main`, not before.
 
 ### Phase 8: Claude Code acceptance
 
@@ -157,7 +221,9 @@ Items deferred across sessions without an owner. All offline, each small.
    `setup_tests.sh`, `fix_test_imports.sh`, `make_tests_executable.sh`,
    and any other that only serves them; check each before deleting) and
    the `integration` marker; update CONTRIBUTING (decided 2026-10-29).
-6. Add whatever Phase 8 surfaced but didn't fix.
+6. A configurable request timeout (per prefix in `config` and per
+   call); 0.2.0 fixes it at 300 s (`DEFAULT_TIMEOUT`).
+7. Add whatever Phase 8 surfaced but didn't fix.
 
 **Definition of done:** each item is a passing grid cell or test, or a
 deletion; nothing is left in "Still open" or carried forward to a later
@@ -165,18 +231,27 @@ phase without a named owner;
 `grep -rn "integration" pyproject.toml CONTRIBUTING.md` finds no test
 marker or script; offline `pytest` green with no new xfails.
 
-**Dependencies:** Phase 8 (so its leftovers land here).
+**Dependencies:** none for items 1–6; item 7 needs Phase 8's summary.
 
 **Parallel-ok:** with Phase 6 slice 2.
 
 ### Phase 7: OpenAI Responses ingress and backend (stateless)
 
+Decided with rdwj 2026-10-29 for the first cut. **Stateless:** `store`
+(absent or true) is accepted and the response reports `store: false`;
+`previous_response_id`, `conversation`, and `background` get a 400 naming
+the field. **Scope:** input message items (text, image),
+`function_call`, and `function_call_output`; `instructions` becomes the
+system prompt; output message and `function_call` items, plus reasoning
+items carrying thinking as summary text. Built-in tools (`web_search`,
+`file_search`, `code_interpreter`, computer use) and encrypted reasoning
+(`include: reasoning.encrypted_content`) get a 400 naming them.
+
 **Slice 1: ingress.**
 1. `POST /v1/responses`, streaming and non-streaming, through
    `gateway._serve` with aliases from the start; `responses` /
    `aresponses` in the library.
-2. `previous_response_id`, `store: true`, and other state-dependent
-   fields return a 400 naming the field.
+2. The stateless and scope rules above, each with a grid cell.
 3. A Responses grid row over the existing backends, including an
    `sdk_responses` ingress modeled on `sdk_completion`
    (`client.responses.create(...)` against the in-process gateway).
