@@ -10,8 +10,9 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    # PyPI trusted publishing: the publisher configured on pypi.org names
-    # this repo, this workflow file, and this environment.
+    # PyPI trusted publishing: the publisher on pypi.org names this repo,
+    # this file by name (workflow.yml), and this environment. Renaming the
+    # file breaks publishing until the publisher is updated to match.
     environment: pypi
     permissions:
       contents: read
