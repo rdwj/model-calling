@@ -21,7 +21,11 @@ from openai.types.chat.completion_create_params import (
     CompletionCreateParamsNonStreaming,
     CompletionCreateParamsStreaming,
 )
-from openai.types.responses import Response
+from openai.types.responses import Response, ResponseStreamEvent
+from openai.types.responses.response_create_params import (
+    ResponseCreateParamsNonStreaming,
+    ResponseCreateParamsStreaming,
+)
 from pydantic import TypeAdapter
 
 SSE_DONE = "[DONE]"
@@ -35,6 +39,11 @@ _chat_completion_request = {
     False: TypeAdapter(CompletionCreateParamsNonStreaming),
     True: TypeAdapter(CompletionCreateParamsStreaming),
 }
+_responses_request = {
+    False: TypeAdapter(ResponseCreateParamsNonStreaming),
+    True: TypeAdapter(ResponseCreateParamsStreaming),
+}
+_responses_event = TypeAdapter(ResponseStreamEvent)
 
 
 def validate_chat_completion(body: dict) -> ChatCompletion:
@@ -76,6 +85,11 @@ def validate_chat_completion_request(body: dict) -> dict:
     return _validate_request(_chat_completion_request, body)
 
 
+def validate_responses_request(body: dict) -> dict:
+    """Validate a Responses request body against the SDK's request TypedDicts."""
+    return _validate_request(_responses_request, body)
+
+
 def _validate_request(adapters: dict, body: dict) -> dict:
     """The SDKs type `Iterable` fields, which pydantic validates lazily, and
     their TypedDicts ignore unknown keys. So this consumes every iterator,
@@ -98,6 +112,10 @@ def validate_anthropic_stream(events: List[dict]) -> List[Any]:
 
 def validate_response(body: dict) -> Response:
     return Response.model_validate(body)
+
+
+def validate_responses_stream(events: List[dict]) -> List[Any]:
+    return [_responses_event.validate_python(event) for event in events]
 
 
 def parse_sse(text: str) -> List[Union[dict, str]]:
