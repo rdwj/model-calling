@@ -56,9 +56,8 @@ the gap.
   run can make many calls, so check `spend.jsonl` after each backend.
 
 **Session start protocol:**
-- Premise checks (report before acting): `main` matches `origin/main` at
-  the plan commit after `53ca328`; "Test Package" green;
-  `HOME=$(mktemp -d) uv run pytest` shows 1424 passed, 35 xfailed;
+- Premise checks (report before acting): `main` matches `origin/main` (at or after `883a470`); "Test Package" green;
+  `HOME=$(mktemp -d) uv run pytest` shows 1423 passed, 35 xfailed;
   `podman-compose down` has been run (compose's Ollama publishes 11434
   and shadows host Ollama, which has `qwen3-coder:30b`); `curl
   localhost:11434/api/tags` lists `qwen3-coder:30b`; `claude --version`
@@ -283,7 +282,13 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-29): Phase 11 slice 2, Phase 11 complete
+## What landed last session (2026-10-29): Phase 11 slice 2, reconcile, 0.2.0 released
+
+`model-calling==0.2.0` is on PyPI (tag `v0.2.0` at `f88dcc8`); the rest of
+the epic is GitHub issues #1–#8 (milestone 0.3.0). Record:
+`session-summaries/2026-10-29-api-shapes-phase11-slice2.md`.
+
+## What landed earlier (2026-10-29): Phase 11 slice 2, Phase 11 complete
 
 All five items, `c6e001b..53ca328`: `/v1/models/refresh` and the legacy
 registry gone (moderations kept), `/v1/config/update` and the admin token
