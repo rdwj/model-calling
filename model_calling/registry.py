@@ -8,7 +8,7 @@ import httpx
 import json
 import asyncio
 import time
-from typing import Dict, Any, Optional, Type, List, Set, Tuple
+from typing import Dict, Any, Optional, Type, Set, Tuple
 
 from model_calling.adapter import ModelAdapter
 from model_calling.ollama_adapter import OllamaAdapter
@@ -579,85 +579,6 @@ class ModelRegistry:
                 # Also remove capabilities
                 if model_name in self.model_capabilities:
                     del self.model_capabilities[model_name]
-
-    async def list_available_models(self) -> List[Dict[str, Any]]:
-        """List available models from all adapters"""
-        models = []
-
-        # Add local models first
-        try:
-            # List Ollama models
-            ollama_url = self.default_configs["ollama"]["base_url"]
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{ollama_url}/api/tags", timeout=10.0)
-                if response.status_code == 200:
-                    for model in response.json().get("models", []):
-                        model_name = model.get("name")
-                        model_entry = {"id": f"ollama/{model_name}", "object": "model"}
-
-                        # Add capability data if available in cache
-                        cache_key = f"ollama/{model_name}"
-                        cached_data = capability_cache.get_capability(cache_key)
-                        if cached_data:
-                            model_entry["capabilities"] = {
-                                "function_calling": cached_data.get(
-                                    "supports_function_call", False
-                                ),
-                                "vision": cached_data.get("supports_vision", False),
-                                "verified": cached_data.get("verified", False),
-                            }
-                            # Add when it was last tested
-                            if "last_tested" in cached_data:
-                                model_entry["last_tested"] = cached_data["last_tested"]
-
-                        models.append(model_entry)
-
-                        # Pre-cache any missing capabilities for quicker access later
-                        if not cached_data or not capability_cache.is_cache_valid(cache_key):
-                            # We don't want to block the model listing, so just schedule the task
-                            task_name = f"pretest_{model_name.replace('/', '_')}"
-                            verification_task = asyncio.create_task(
-                                self.verify_capabilities(f"ollama/{model_name}")
-                            )
-                            verification_task.set_name(task_name)
-        except Exception as e:
-            logger.warning(f"Failed to list Ollama models: {e}")
-
-        try:
-            # List vLLM models
-            vllm_config = self.default_configs["vllm"]
-            vllm_url = vllm_config["base_url"]
-            api_key = vllm_config.get("api_key")
-            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{vllm_url}/models", headers=headers, timeout=10.0)
-                if response.status_code == 200:
-                    for model in response.json().get("data", []):
-                        model_id = model.get("id")
-                        models.append({"id": f"vllm/{model_id}", "object": "model"})
-        except Exception as e:
-            logger.warning(f"Failed to list vLLM models: {e}")
-
-        # Add OpenAI models
-        models.extend(
-            [
-                {"id": "openai/gpt-4o", "object": "model"},
-                {"id": "openai/gpt-4-turbo", "object": "model"},
-                {"id": "openai/gpt-4", "object": "model"},
-                {"id": "openai/gpt-3.5-turbo", "object": "model"},
-            ]
-        )
-
-        # Add Cohere models
-        models.extend(
-            [
-                {"id": "cohere/command", "object": "model"},
-                {"id": "cohere/command-r", "object": "model"},
-                {"id": "cohere/command-r-plus", "object": "model"},
-            ]
-        )
-
-        return models
 
 
 # Singleton instance

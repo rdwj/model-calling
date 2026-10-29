@@ -312,10 +312,13 @@ async def test_broken_callback_does_not_change_outcome(backend):
     ids=["error_as_first_line", "refused"],
 )
 async def test_gateway_stream_failing_before_first_event_is_http_error(handler, status):
-    body = {"model": "ollama/m", "messages": [{"role": "user", "content": "x"}], "stream": True}
+    from model_calling.aliases import parse
+
+    aliases = parse({"models": {"m": {"backend": "ollama", "model": "m"}}})
+    body = {"model": "m", "messages": [{"role": "user", "content": "x"}], "stream": True}
     config = {"ollama": {"transport": httpx.MockTransport(handler)}}
     async with Client(config=config) as client:
-        resp = await chat_completions(client, body, drop_params=True)
+        resp = await chat_completions(client, body, aliases, drop_params=True)
     assert resp.status_code == status
     assert "error" in json.loads(resp.body)
 

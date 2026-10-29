@@ -57,12 +57,12 @@ import openai
 
 client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 response = client.chat.completions.create(
-    model="ollama/qwen3:4b",
+    model="chat",  # an alias from the gateway's model-calling.yaml
     messages=[{"role": "user", "content": "Hello"}],
 )
 ```
 
-The gateway does not check client keys. It uses backend keys from its own environment.
+The gateway does not check client keys. It uses backend keys from its own environment. Gateway clients name models by alias (see [below](#gateway-clients-name-models-by-alias)); the in-process `Client` still takes `prefix/model` names.
 
 ### Update vLLM base_url
 
@@ -139,6 +139,17 @@ The gateway's `POST /v1/messages` endpoint requires `max_tokens` in the request 
 ### The config endpoint needs an admin token
 
 `POST /v1/config/update` can point a backend, and the key the gateway holds for it, at another host. In 0.1.x anyone who could reach the gateway could call it. Now it returns 404 unless the gateway starts with `MODEL_CALLING_ADMIN_TOKEN` set, and with the token set, a request without `Authorization: Bearer <token>` gets 403. The legacy `ModelCallingClient` and `SyncModelCallingClient` take the token as `admin_token`. Most deployments no longer need the endpoint, since the gateway now reads backend URLs from its environment (see [Environment Variables](advanced.md#environment-variables)).
+
+### Gateway clients name models by alias
+
+In 0.1.x a gateway client named the backend in the model string (`ollama/qwen3:4b`), so an app changed when its backend did. Now the gateway serves only the aliases defined in its YAML file (`MODEL_CALLING_CONFIG`, default `model-calling.yaml`), and any other name gets 404, including every `prefix/model` name. To migrate, write an alias for each model your apps use. The alias can keep the old string as its name if changing apps is not practical:
+
+```yaml
+models:
+  "ollama/qwen3:4b": {backend: ollama, model: qwen3:4b}
+```
+
+Responses carry the alias in `model`, `GET /v1/models` lists the aliases (it no longer queries Ollama or vLLM, or lists fixed OpenAI and Cohere names), and unprefixed names no longer default to Ollama. Cohere models are not reachable through the gateway until the Cohere backend moves to the provider interface. See [Model Aliases](advanced.md#model-aliases).
 
 ## From Local Development to Production
 
@@ -256,7 +267,7 @@ client.close()
 
 ### Using the gateway
 
-A gateway serves many applications. Each app points the `openai` or `anthropic` SDK at the gateway, and the gateway holds the backend configurations and keys. It reads backend URLs (`VLLM_BASE_URL`, `OLLAMA_BASE_URL`) and keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `VLLM_API_KEY`) from its environment. In OpenShift, mount the keys from Secrets:
+A gateway serves many applications. Each app points the `openai` or `anthropic` SDK at the gateway and names models by alias, and the gateway holds the backend configurations and keys. Its alias file maps each alias to a backend (see [Model Aliases](advanced.md#model-aliases)); for backends the file gives no URL, it reads URLs (`VLLM_BASE_URL`, `OLLAMA_BASE_URL`) and keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `VLLM_API_KEY`) from its environment. In OpenShift, mount the keys from Secrets:
 
 ```yaml
 apiVersion: v1
@@ -297,7 +308,7 @@ client = openai.OpenAI(
     api_key="unused",
 )
 response = client.chat.completions.create(
-    model="openrouter/mistralai/mistral-nemo",
+    model="chat",  # served from whichever backend the alias file names
     messages=[{"role": "user", "content": "Hello"}],
 )
 ```

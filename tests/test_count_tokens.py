@@ -82,37 +82,54 @@ def test_estimate_counts(extra, at_least):
     assert estimate({**BASE, **extra}) - estimate(BASE) >= at_least
 
 
+@pytest.fixture
+def served(gateway):
+    """A request body naming MODEL by the alias the gateway serves it under."""
+    return {**BASE, "model": gateway.alias(MODEL)}
+
+
 @pytest.mark.parametrize("extra, at_least", ADDITIONS.values(), ids=ADDITIONS.keys())
-async def test_endpoint_answers_with_the_estimate(gateway, extra, at_least):
-    body = {**BASE, **extra}
+async def test_endpoint_answers_with_the_estimate(gateway, served, extra, at_least):
+    body = {**served, **extra}
     resp = await gateway.client.post(COUNT_TOKENS_PATH, json=body)
     assert resp.status_code == 200, resp.text
     assert MessageTokensCount.model_validate(resp.json()).input_tokens == estimate(body)
 
 
-async def test_endpoint_calls_no_backend(gateway):
+async def test_endpoint_calls_no_backend(gateway, served):
     # Replays nothing: the gateway fixture fails at teardown on any backend request.
     replay = gateway.use("ollama", "text")
-    resp = await gateway.client.post(COUNT_TOKENS_PATH, json=BASE)
+    resp = await gateway.client.post(COUNT_TOKENS_PATH, json=served)
     assert resp.status_code == 200
     assert replay.requests == []
     gateway.replays.remove(replay)
 
 
 BAD_BODIES = {
-    "not_an_object": ([BASE], "must be a JSON object"),
-    "no_model": ({"messages": BASE["messages"]}, "model is required"),
-    "unported_prefix": ({**BASE, "model": "cohere/command-a"}, "no provider for"),
-    "no_messages": ({"model": MODEL}, "invalid Anthropic request"),
-    "messages_not_a_list": ({**BASE, "messages": "hi"}, "invalid Anthropic request"),
-    "system_image": ({**BASE, "system": [IMAGE_BLOCK]}, "only text blocks"),
+    "not_an_object": (lambda served: [served], "must be a JSON object"),
+    "no_model": (lambda served: {"messages": BASE["messages"]}, "model is required"),
+    "no_messages": (lambda served: {"model": served["model"]}, "invalid Anthropic request"),
+    "messages_not_a_list": (
+        lambda served: {**served, "messages": "hi"},
+        "invalid Anthropic request",
+    ),
+    "system_image": (lambda served: {**served, "system": [IMAGE_BLOCK]}, "only text blocks"),
 }
 
 
-@pytest.mark.parametrize("body, message", BAD_BODIES.values(), ids=BAD_BODIES.keys())
-async def test_endpoint_rejects(gateway, body, message):
-    resp = await gateway.client.post(COUNT_TOKENS_PATH, json=body)
+@pytest.mark.parametrize("make_body, message", BAD_BODIES.values(), ids=BAD_BODIES.keys())
+async def test_endpoint_rejects(gateway, served, make_body, message):
+    resp = await gateway.client.post(COUNT_TOKENS_PATH, json=make_body(served))
     assert resp.status_code == 400, resp.text
     error = validate_anthropic_error(resp.json()).error
     assert error.type == "invalid_request_error"
     assert message in error.message
+
+
+@pytest.mark.parametrize("name", [MODEL, "cohere/command-a", "no-such-alias"])
+async def test_endpoint_refuses_a_name_that_is_not_an_alias(gateway, served, name):
+    resp = await gateway.client.post(COUNT_TOKENS_PATH, json={**served, "model": name})
+    assert resp.status_code == 404, resp.text
+    error = validate_anthropic_error(resp.json()).error
+    assert error.type == "not_found_error"
+    assert repr(name) in error.message

@@ -20,7 +20,7 @@ from tests.harness.checks import (
     FINAL_MESSAGE_CHECKS,
     MESSAGE_CHECKS,
 )
-from tests.harness.gateway import GATEWAY_BASE_URL
+from tests.harness.gateway import GATEWAY_BASE_URL, grid_alias
 from tests.harness.grid import SDK_INGRESSES, Cell, grid
 from tests.harness.replay import Exchange
 from tests.harness.scenarios import BACKENDS, SCENARIOS, fixture_for, refused_params
@@ -70,7 +70,8 @@ async def openai_sdk(http):
 
 
 def model(cell: Cell) -> str:
-    return BACKENDS[cell.backend].model_for(SCENARIOS[cell.scenario])
+    """The alias the gateway serves the cell's model under (see `Gateway.use`)."""
+    return grid_alias(BACKENDS[cell.backend].model_for(SCENARIOS[cell.scenario]))
 
 
 def recorded_status(cell: Cell) -> int:
@@ -122,8 +123,9 @@ NOT_COUNTED = ("max_tokens", "stream", "metadata", "stop_sequences")
 
 
 @pytest.mark.parametrize("scenario", ["system_blocks", "tool_error", "image", "thinking"])
-async def test_count_tokens(sdk, scenario):
-    body = SCENARIOS[scenario].messages_body(BACKENDS["ollama"].model_for(SCENARIOS[scenario]))
+async def test_count_tokens(gateway, sdk, scenario):
+    alias = gateway.alias(BACKENDS["ollama"].model_for(SCENARIOS[scenario]))
+    body = SCENARIOS[scenario].messages_body(alias)
     counted = await sdk.messages.count_tokens(
         **{k: v for k, v in body.items() if k not in NOT_COUNTED}
     )

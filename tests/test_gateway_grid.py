@@ -19,6 +19,7 @@ from tests.harness.grid import (
     grid,
 )
 from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
+from tests.harness.gateway import grid_alias
 from tests.harness.replay import Exchange, ReplayTransport
 from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, fixture_for, refused_params
 from tests.harness.sdk import (
@@ -57,18 +58,20 @@ VOLATILE_FIELDS = ("id", "created")
 
 
 def model(cell: Cell) -> str:
+    """The library's name for the cell's model."""
     return ALL_BACKENDS[cell.backend].model_for(ALL_SCENARIOS[cell.scenario])
 
 
-def request_body(cell: Cell) -> dict:
+def request_body(cell: Cell, model_name: str | None = None) -> dict:
     scenario = ALL_SCENARIOS[cell.scenario]
     _, body, _ = INGRESS_CALLS[cell.ingress]
-    return body(scenario, model(cell))
+    return body(scenario, model_name or model(cell))
 
 
 async def post(gateway, cell: Cell):
+    """Send the cell to the gateway, naming its model by alias."""
     path = INGRESS_CALLS[cell.ingress][0]
-    return await gateway.client.post(path, json=request_body(cell))
+    return await gateway.client.post(path, json=request_body(cell, grid_alias(model(cell))))
 
 
 async def post_chat_completions(gateway, cell: Cell):
@@ -93,7 +96,7 @@ async def check_chat_completions(gateway, cell, replay):
         result = validate_chat_completion_chunks(events[:-1])
     else:
         result = validate_chat_completion(resp.json())
-    COMPLETION_CHECKS[cell.scenario](result, model(cell))
+    COMPLETION_CHECKS[cell.scenario](result, grid_alias(model(cell)))
 
 
 async def check_chat_completions_backend_error(gateway, cell, replay):
@@ -125,7 +128,7 @@ async def check_messages(gateway, cell, replay):
         result = validate_anthropic_stream([data for _, data in blocks])
     else:
         result = validate_anthropic_message(resp.json())
-    MESSAGE_CHECKS[cell.scenario](result, model(cell))
+    MESSAGE_CHECKS[cell.scenario](result, grid_alias(model(cell)))
 
 
 async def check_messages_backend_error(gateway, cell, replay):
@@ -142,7 +145,7 @@ async def check_messages_backend_error(gateway, cell, replay):
 async def check_embeddings(gateway, cell, replay):
     resp = await post(gateway, cell)
     assert resp.status_code == 200, resp.text
-    validate_embedding_response(resp.json())
+    assert validate_embedding_response(resp.json()).model == grid_alias(model(cell))
 
 
 async def check_embeddings_error(gateway, cell, replay):
@@ -202,6 +205,19 @@ def stable(value):
     return value
 
 
+def as_served(value, library_model: str, alias: str):
+    """The library's answer with its model name replaced by the alias the
+    gateway answers with; nothing else may differ."""
+    if isinstance(value, dict):
+        return {
+            k: alias if k == "model" and v == library_model else as_served(v, library_model, alias)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [as_served(v, library_model, alias) for v in value]
+    return value
+
+
 async def library_answer(library, cell: Cell):
     """What the library returns for the cell, as the gateway would send it:
     a body, a list of stream payloads, or (status, error) for a failure."""
@@ -238,4 +254,5 @@ def gateway_answer(resp, cell: Cell):
 async def test_gateway_body_matches_library(gateway, library, cell: Cell):
     gateway.use(cell.backend, cell.scenario, cell.form)
     served = gateway_answer(await post(gateway, cell), cell)
-    assert stable(served) == stable(await library_answer(library, cell))
+    expected = as_served(await library_answer(library, cell), model(cell), grid_alias(model(cell)))
+    assert stable(served) == stable(expected)

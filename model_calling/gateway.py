@@ -2,12 +2,18 @@
 Serve one ingress request through the library `Client`: Chat Completions,
 Anthropic Messages, or Embeddings.
 
+Clients name models by alias (`model_calling.aliases`); the gateway resolves
+the alias to a backend once per request and answers with the alias in
+`model`, so no backend name crosses the wire in either direction.
+
 Backend errors become HTTP errors with an error body in the client's format.
 The library raises the backend's real status; `client_status` decides what
 the gateway's own client sees. A streaming call returns once the backend has
 accepted the request, so a refusal still produces a proper status code.
 """
 
+import base64
+import binascii
 import json
 import logging
 from collections.abc import AsyncIterator, Callable
@@ -15,6 +21,7 @@ from typing import Any
 
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from model_calling.aliases import CONFIG_ENV, AliasConfig, AliasConfigError, Target
 from model_calling.errors import (
     APIError,
     APITimeoutError,
@@ -28,12 +35,12 @@ from model_calling.errors import (
 from model_calling.formats import TranslationError, anthropic
 from model_calling.formats import chat_completions as chat
 from model_calling.library import Client
-from model_calling.providers import PROVIDERS, split_model
 from model_calling.token_estimate import estimate_input_tokens
 
 logger = logging.getLogger(__name__)
 
 BAD_REQUEST = 400
+NOT_FOUND = 404
 INTERNAL_ERROR = 500
 BAD_GATEWAY = 502
 GATEWAY_TIMEOUT = 504
@@ -75,67 +82,87 @@ def client_status(error: APIError) -> int:
 # --- the three ingresses ------------------------------------------------------
 
 
-async def chat_completions(client: Client, body: Any, *, drop_params: bool):
-    async def call(model, params):
+async def chat_completions(client: Client, body: Any, aliases: AliasConfig, *, drop_params: bool):
+    async def call(target: Target, params):
         messages = params.pop("messages", None)
-        return await client.acompletion(model, messages, drop_params=drop_params, **params)
+        return await client.acompletion(
+            target.model, messages, drop_params=drop_params, **_backend(target), **params
+        )
 
-    return await _serve(body, call, chat.error_body, _sse, _sse(chat.SSE_DONE))
+    return await _serve(body, aliases, call, chat.error_body, _sse, _sse(chat.SSE_DONE))
 
 
-async def messages(client: Client, body: Any, *, drop_params: bool):
-    async def call(model, params):
+async def messages(client: Client, body: Any, aliases: AliasConfig, *, drop_params: bool):
+    async def call(target: Target, params):
         messages, max_tokens = params.pop("messages", None), params.pop("max_tokens", None)
         return await client.amessages(
-            model, messages, max_tokens=max_tokens, drop_params=drop_params, **params
+            target.model,
+            messages,
+            max_tokens=max_tokens,
+            drop_params=drop_params,
+            **_backend(target),
+            **params,
         )
 
-    return await _serve(body, call, anthropic.error_body, _anthropic_event, None)
+    return await _serve(body, aliases, call, anthropic.error_body, _anthropic_event, None)
 
 
-async def embeddings(client: Client, body: Any, *, drop_params: bool):
-    async def call(model, params):
+async def embeddings(client: Client, body: Any, aliases: AliasConfig, *, drop_params: bool):
+    async def call(target: Target, params):
         return await client.aembedding(
-            model, params.pop("input", None), drop_params=drop_params, **params
+            target.model,
+            params.pop("input", None),
+            drop_params=drop_params,
+            **_backend(target),
+            **params,
         )
 
-    return await _serve(body, call, chat.error_body, encode=None, end=None)
+    return await _serve(
+        body, aliases, call, chat.error_body, encode=None, end=None, check=_check_dimensions
+    )
 
 
-def count_tokens(body: Any):
+def count_tokens(body: Any, aliases: AliasConfig):
     """`POST /v1/messages/count_tokens`, answered locally with an estimate.
 
     The body is validated as `/v1/messages` validates it, without a backend call.
     """
 
-    def error(message: str) -> JSONResponse:
-        return JSONResponse(anthropic.error_body(BAD_REQUEST, message), status_code=BAD_REQUEST)
+    def error(status: int, message: str) -> JSONResponse:
+        return JSONResponse(anthropic.error_body(status, message), status_code=status)
 
     if not isinstance(body, dict):
-        return error("the request body must be a JSON object")
+        return error(BAD_REQUEST, "the request body must be a JSON object")
     model = body.get("model")
     if not isinstance(model, str) or not model:
-        return error("model is required")
-    if split_model(model)[0] not in PROVIDERS:
-        return error(
-            f"no provider for {model!r}: the gateway supports the prefixes "
-            f"{', '.join(sorted(PROVIDERS))}"
-        )
+        return error(BAD_REQUEST, "model is required")
+    if model not in aliases.models:
+        return error(NOT_FOUND, unknown_model(model, aliases))
     try:
         request = anthropic.request_to_internal(body)
     except TranslationError as e:
-        return error(str(e))
+        return error(BAD_REQUEST, str(e))
     return {"input_tokens": estimate_input_tokens(request)}
+
+
+def unknown_model(model: str, aliases: AliasConfig) -> str:
+    if not aliases.models:
+        return f"model {model!r} not found: no models are configured (set {CONFIG_ENV})"
+    return f"model {model!r} not found; this gateway serves {', '.join(aliases.aliases)}"
 
 
 # --- plumbing -----------------------------------------------------------------
 
 
-async def _serve(body, call, error_body: ErrorBody, encode, end: str | None):
-    """Validate the envelope, make the call, and answer in the ingress's format.
+async def _serve(
+    body, aliases: AliasConfig, call, error_body: ErrorBody, encode, end: str | None, check=None
+):
+    """Validate the envelope, resolve the alias, make the call, and answer
+    in the ingress's format.
 
     `encode` turns one streamed item into SSE text, or is None for an
-    ingress that never streams; `end` closes a stream.
+    ingress that never streams; `end` closes a stream. `check` may refuse a
+    response: it returns an error message, or None.
     """
 
     def error(status: int, message: str) -> JSONResponse:
@@ -151,19 +178,78 @@ async def _serve(body, call, error_body: ErrorBody, encode, end: str | None):
     if reserved:
         return error(BAD_REQUEST, f"the gateway does not accept {', '.join(reserved)}")
     try:
-        result = await call(model, params)
+        target = aliases.resolve(model)
+    except AliasConfigError as e:
+        logger.error("model %r is misconfigured: %s", model, e)
+        return error(BAD_GATEWAY, f"model {model!r} is misconfigured on the gateway")
+    if target is None:
+        return error(NOT_FOUND, unknown_model(model, aliases))
+    try:
+        result = await call(target, params)
     except UnsupportedParamsError as e:
         # Strict mode. The library's hint (drop_params) isn't the gateway client's to use.
         return error(BAD_REQUEST, f"{e.provider} cannot honor {', '.join(e.params)}")
     except APIError as e:
         return error(client_status(e), e.message)
     except Exception as e:
-        provider = split_model(model)[0]
-        logger.exception("request to %s failed", provider)
-        return error(BAD_GATEWAY, f"request to {provider} failed: {e}")
+        logger.exception("request to %s failed", target.provider)
+        return error(BAD_GATEWAY, f"request for {model!r} failed: {e}")
     if encode is None or not params.get("stream"):
-        return result.to_dict()
-    return StreamingResponse(_stream(result, encode, error_body, end), media_type=SSE_MEDIA_TYPE)
+        response = _with_alias(result.to_dict(), model)
+        problem = check(response, target) if check else None
+        if problem:
+            logger.error(problem)
+            return error(BAD_GATEWAY, problem)
+        return response
+
+    def encode_with_alias(payload: dict) -> str:
+        return encode(_with_alias(payload, model))
+
+    return StreamingResponse(
+        _stream(result, encode_with_alias, error_body, end), media_type=SSE_MEDIA_TYPE
+    )
+
+
+def _backend(target: Target) -> dict:
+    """The per-call overrides a target's backend sets."""
+    return {k: v for k, v in (("api_base", target.api_base), ("api_key", target.api_key)) if v}
+
+
+def _with_alias(payload: dict, alias: str) -> dict:
+    """Show the alias, not the backend's model, wherever a response names it:
+    the body or chunk's `model`, or a Messages stream's `message_start`."""
+    if "model" in payload:
+        payload["model"] = alias
+    message = payload.get("message")
+    if isinstance(message, dict) and "model" in message:
+        message["model"] = alias
+    return payload
+
+
+def _check_dimensions(response: dict, target: Target) -> str | None:
+    """Refuse embeddings of another size than the alias declares, so a
+    backend swap can't put mismatched vectors into an index."""
+    if target.dimensions is None:
+        return None
+    for item in response.get("data", ()):
+        size = _vector_size(item.get("embedding"))
+        if size is not None and size != target.dimensions:
+            return (
+                f"model {target.alias!r} is declared with {target.dimensions} dimensions, "
+                f"but its backend returned {size}"
+            )
+    return None
+
+
+def _vector_size(embedding) -> int | None:
+    if isinstance(embedding, list):
+        return len(embedding)
+    if isinstance(embedding, str):  # encoding_format=base64: packed float32s
+        try:
+            return len(base64.b64decode(embedding, validate=True)) // 4
+        except (binascii.Error, ValueError):
+            return None
+    return None
 
 
 async def _stream(

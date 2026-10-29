@@ -6,6 +6,7 @@ import pytest
 
 from model_calling.callbacks import Callback
 from model_calling.core import MessageStart, MessageStop
+from tests.harness.gateway import grid_alias
 from tests.harness.replay import fixture_path
 from tests.harness.scenarios import BACKENDS, SCENARIOS
 
@@ -35,7 +36,7 @@ async def test_backend_error_returns_exact_status_and_error_body(gateway):
     gateway.use("ollama", "backend_error")
 
     body = SCENARIOS["backend_error"].chat_completions_body(
-        BACKENDS["ollama"].model_for(SCENARIOS["backend_error"])
+        gateway.alias(BACKENDS["ollama"].model_for(SCENARIOS["backend_error"]))
     )
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
@@ -56,7 +57,9 @@ async def test_callbacks_run_on_ollama_text(gateway):
     gateway.registry.default_configs["ollama"]["callbacks"] = [callback]
     gateway.use("ollama", "text")
 
-    body = SCENARIOS["text"].chat_completions_body(BACKENDS["ollama"].model_for(SCENARIOS["text"]))
+    body = SCENARIOS["text"].chat_completions_body(
+        gateway.alias(BACKENDS["ollama"].model_for(SCENARIOS["text"]))
+    )
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
     assert resp.status_code == 200
@@ -81,7 +84,7 @@ async def test_callbacks_run_on_backend_error(gateway):
     gateway.use("ollama", "backend_error")
 
     body = SCENARIOS["backend_error"].chat_completions_body(
-        BACKENDS["ollama"].model_for(SCENARIOS["backend_error"])
+        gateway.alias(BACKENDS["ollama"].model_for(SCENARIOS["backend_error"]))
     )
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
@@ -104,7 +107,7 @@ async def test_callbacks_run_on_stream(gateway):
     gateway.use("ollama", "stream")
 
     body = SCENARIOS["stream"].chat_completions_body(
-        BACKENDS["ollama"].model_for(SCENARIOS["stream"])
+        gateway.alias(BACKENDS["ollama"].model_for(SCENARIOS["stream"]))
     )
     resp = await gateway.client.post("/v1/chat/completions", json=body)
 
@@ -121,7 +124,9 @@ async def test_invalid_request_returns_400_with_error_body(gateway):
     """Invalid requests (e.g. n=2) should return 400 with OpenAI error body."""
     replay = gateway.use("ollama", "text")
 
-    body = SCENARIOS["text"].chat_completions_body(BACKENDS["ollama"].model_for(SCENARIOS["text"]))
+    body = SCENARIOS["text"].chat_completions_body(
+        gateway.alias(BACKENDS["ollama"].model_for(SCENARIOS["text"]))
+    )
     body["n"] = 2  # Not supported
 
     resp = await gateway.client.post("/v1/chat/completions", json=body)
@@ -137,17 +142,38 @@ async def test_invalid_request_returns_400_with_error_body(gateway):
     assert data["error"]["type"] == "invalid_request_error"
 
 
-async def test_streaming_unported_backend_is_501_naming_phase_6(gateway):
-    """Cohere streaming went through a legacy bypass that sent no auth and hit
-    the wrong URL. Until Phase 6 ports it, it is refused outright."""
-    body = {
-        "model": "cohere/command-a",
-        "messages": [{"role": "user", "content": "hi"}],
-        "stream": True,
-    }
-    resp = await gateway.client.post("/v1/chat/completions", json=body)
-    assert resp.status_code == 501, resp.text
-    assert "Phase 6" in resp.json()["error"]["message"]
+# Bodies whose only flaw is the model name, per ingress, and the error type
+# each ingress reports a missing model with.
+NAME_ONLY = {
+    "chat": ("/v1/chat/completions", {"messages": [{"role": "user", "content": "hi"}]}),
+    "messages": (
+        "/v1/messages",
+        {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 8},
+    ),
+    "embeddings": ("/v1/embeddings", {"input": "hi"}),
+}
+NOT_FOUND_TYPES = {"/v1/messages": "not_found_error"}
+
+
+@pytest.mark.parametrize("path, fields", NAME_ONLY.values(), ids=NAME_ONLY)
+@pytest.mark.parametrize("name", ["ollama/qwen3:4b", "vllm/gpt-oss-20b", "cohere/command-a", "x"])
+async def test_a_name_that_is_not_an_alias_is_404(gateway, path, fields, name):
+    """Backend names never cross the gateway's wire, even for a backend the
+    alias file uses; and Cohere, not yet ported, has no route at all."""
+    gateway.alias("ollama/qwen3:4b")
+    resp = await gateway.client.post(path, json={"model": name, **fields})
+    assert resp.status_code == 404, resp.text
+    error = resp.json()["error"]
+    assert error["type"] == NOT_FOUND_TYPES.get(path, "invalid_request_error")
+    assert error["message"] == (
+        f"model {name!r} not found; this gateway serves {grid_alias('ollama/qwen3:4b')}"
+    )
+
+
+async def test_with_no_alias_file_every_name_is_404_naming_the_setting(gateway):
+    resp = await gateway.client.post("/v1/chat/completions", json={"model": "chat"})
+    assert resp.status_code == 404, resp.text
+    assert "MODEL_CALLING_CONFIG" in resp.json()["error"]["message"]
 
 
 ENVELOPE_ERRORS = {
@@ -156,7 +182,6 @@ ENVELOPE_ERRORS = {
     "embeddings_reserved": ("/v1/embeddings", {"api_base": "http://evil.test"}, "api_base"),
     "messages_not_object": ("/v1/messages", [], "JSON object"),
     "messages_no_model": ("/v1/messages", {"model": None}, "model is required"),
-    "messages_unported": ("/v1/messages", {"model": "cohere/command-a"}, "no provider"),
     "messages_no_max_tokens": ("/v1/messages", {"max_tokens": None}, "max_tokens is required"),
     "embeddings_no_input": ("/v1/embeddings", {"input": None}, "input is required"),
 }
@@ -170,7 +195,7 @@ async def test_envelope_errors_are_400_in_the_ingress_format(
     from model_calling import server
 
     monkeypatch.setattr(server, "DROP_PARAMS", False)
-    body = {"model": "ollama/m", "messages": [], "input": "x", "max_tokens": 8}
+    body = {"model": gateway.alias("ollama/m"), "messages": [], "input": "x", "max_tokens": 8}
     body = {**body, **fields} if isinstance(fields, dict) else fields
     resp = await gateway.client.post(path, json=body)
     assert resp.status_code == 400, resp.text
@@ -200,7 +225,8 @@ async def test_a_body_field_named_self_is_just_a_field(gateway):
 
     config = gateway.registry.default_configs["vllm"]
     config.update(transport=httpx.MockTransport(backend))
-    body = {"model": "vllm/m", "messages": [{"role": "user", "content": "x"}], "self": 1}
+    body = {"model": gateway.alias("vllm/m"), "messages": [{"role": "user", "content": "x"}]}
+    body["self"] = 1
     resp = await gateway.client.post("/v1/chat/completions", json=body)
     assert resp.status_code == 200, resp.text
     assert sent[0]["self"] == 1
@@ -214,7 +240,7 @@ async def test_messages_stream_error_after_start_is_an_error_event(gateway):
     recorded.lines = recorded.lines[:2] + [json.dumps({"error": "model crashed"})]
     config = gateway.registry.default_configs["ollama"]
     config.update(BACKENDS["ollama"].gateway_config, transport=ReplayTransport([recorded]))
-    body = SCENARIOS["stream"].messages_body(BACKENDS["ollama"].gateway_model)
+    body = SCENARIOS["stream"].messages_body(gateway.alias(BACKENDS["ollama"].gateway_model))
     resp = await gateway.client.post("/v1/messages", json=body)
     assert resp.status_code == 200
     last = resp.text.strip().split("\n\n")[-1]
@@ -238,10 +264,10 @@ FORCED_TOOL = {
 }
 
 
-def forced_tool_body(choice: dict, tools: str) -> dict:
+def forced_tool_body(gateway, choice: dict, tools: str) -> dict:
     scenario = SCENARIOS["tools"]
     return {
-        "model": BACKENDS["ollama"].gateway_model,
+        "model": gateway.alias(BACKENDS["ollama"].gateway_model),
         "messages": scenario.messages(),
         "max_tokens": 16,
         "tools": list(getattr(scenario, tools)),
@@ -256,7 +282,7 @@ async def test_strict_mode_refuses_a_parameter_the_backend_cannot_honor(
     from model_calling import server
 
     monkeypatch.setattr(server, "DROP_PARAMS", False)
-    resp = await gateway.client.post(path, json=forced_tool_body(choice, tools))
+    resp = await gateway.client.post(path, json=forced_tool_body(gateway, choice, tools))
     assert resp.status_code == 400, resp.text
     assert resp.json()["error"]["message"] == "ollama cannot honor tool_choice"
 
@@ -265,7 +291,7 @@ async def test_strict_mode_refuses_a_parameter_the_backend_cannot_honor(
 async def test_default_mode_drops_it_and_sends_the_rest(gateway, path, choice, tools):
     """Without tool_choice the body is exactly the recorded tools request."""
     gateway.use("ollama", "tools")
-    body = {**forced_tool_body(choice, tools), "max_tokens": SCENARIOS["tools"].max_tokens}
+    body = {**forced_tool_body(gateway, choice, tools), "max_tokens": SCENARIOS["tools"].max_tokens}
     resp = await gateway.client.post(path, json=body)
     assert resp.status_code == 200, resp.text
 

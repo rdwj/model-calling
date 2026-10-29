@@ -10,7 +10,7 @@ import sys
 
 import pytest
 
-SERVER_MODULES = ("fastapi", "starlette", "uvicorn", "dotenv")
+SERVER_MODULES = ("fastapi", "starlette", "uvicorn", "dotenv", "yaml")
 
 _IMPORT_CORE = f"""
 import sys
@@ -38,7 +38,7 @@ def test_importing_the_library_loads_no_server_modules():
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("name", ["uvicorn", "fastapi", "dotenv"])
+@pytest.mark.parametrize("name", ["uvicorn", "fastapi", "dotenv", "yaml"])
 def test_gateway_without_the_server_extra_prints_an_install_hint(name):
     result = run(_RUN_WITHOUT.format(name=name))
     assert result.returncode == 1
@@ -105,3 +105,19 @@ def test_the_entry_point_ignores_dotenv_in_parent_directories(dotenv_dir):
     result = run_in(start, _RUN_MAIN.format(expr=f"os.environ.get({DOTENV_VAR!r})"))
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "None", result.stdout
+
+
+def test_the_entry_point_refuses_an_invalid_alias_file(tmp_path):
+    (tmp_path / "model-calling.yaml").write_text("models:\n  chat: {backend: nowhere}\n")
+    result = run_in(tmp_path, _RUN_MAIN.format(expr="'started'"))
+    assert result.returncode == 1
+    assert "models.chat" in result.stderr and "started" not in result.stdout
+
+
+def test_the_entry_point_logs_the_models_it_serves(tmp_path):
+    (tmp_path / "model-calling.yaml").write_text(
+        "models:\n  chat: {backend: ollama, model: qwen3:4b}\n"
+    )
+    result = run_in(tmp_path, _RUN_MAIN.format(expr="'started'"))
+    assert result.returncode == 0, result.stderr
+    assert "Serving chat from model-calling.yaml" in result.stderr
