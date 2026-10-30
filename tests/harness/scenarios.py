@@ -549,6 +549,7 @@ class Backend:
             and scenario.name not in self.refuses
             and (self.only_scenarios is None or scenario.name in self.only_scenarios)
             and (scenario.only_backends is None or self.name in scenario.only_backends)
+            and (self.speaks != RESPONSES or scenario.responses_form)
         )
 
     def unsupported(self, scenario: Scenario) -> Optional[str]:
@@ -695,6 +696,9 @@ BACKENDS = {
             capability_models={
                 VISION: OPENROUTER_VISION_MODEL,
                 REASONING: OPENROUTER_REASONING_MODEL,
+            },
+            refuses={
+                "parallel_tools_off": ("parallel_tool_calls",),
             },
         ),
         Backend(
