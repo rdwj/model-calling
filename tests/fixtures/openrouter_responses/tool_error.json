@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "tool_error",
-    "recorded_at": "2026-10-29T23:39:32+00:00",
+    "recorded_at": "2026-10-30T00:03:56+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -12,7 +12,6 @@
       "model": "mistralai/mistral-nemo",
       "input": [
         {
-          "type": "message",
           "role": "user",
           "content": "Use the get_weather tool to look up the weather in Paris."
         },
@@ -44,11 +43,11 @@
             "required": [
               "location"
             ]
-          }
+          },
+          "strict": null
         }
       ],
       "max_output_tokens": 256,
-      "store": false,
       "stream": false
     }
   },
@@ -56,22 +55,22 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793317171-dICG2YZV3ScA465y8RBg",
+      "id": "gen-1793318634-oJ821NwgaXVVHBj1N6G5",
       "object": "response",
-      "created_at": 1793317171,
+      "created_at": 1793318634,
       "model": "mistralai/mistral-nemo",
       "status": "completed",
-      "completed_at": 1793317172,
+      "completed_at": 1793318636,
       "output": [
         {
-          "id": "msg_tmp_6hufot4tkkl",
+          "id": "msg_tmp_j5d6cpwxfps",
           "type": "message",
           "role": "assistant",
           "status": "completed",
           "content": [
             {
               "type": "output_text",
-              "text": " Sorry, I was unable to retrieve the weather information because the weather service is currently unavailable. Please try again later.",
+              "text": " I'm sorry, but it seems that the weather service is currently unavailable. Please try again later.",
               "annotations": [],
               "logprobs": []
             }
@@ -85,6 +84,7 @@
           "type": "function",
           "name": "get_weather",
           "description": "Get the current weather for a city",
+          "strict": null,
           "parameters": {
             "type": "object",
             "properties": {
@@ -96,8 +96,7 @@
             "required": [
               "location"
             ]
-          },
-          "strict": null
+          }
         }
       ],
       "tool_choice": "auto",
@@ -130,17 +129,17 @@
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 24,
+        "output_tokens": 21,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 176,
-        "cost": 5.128e-06,
+        "total_tokens": 173,
+        "cost": 5.038e-06,
         "is_byok": false,
         "cost_details": {
-          "upstream_inference_cost": 5.128e-06,
+          "upstream_inference_cost": 5.038e-06,
           "upstream_inference_input_cost": 4.408e-06,
-          "upstream_inference_output_cost": 7.2e-07
+          "upstream_inference_output_cost": 6.3e-07
         }
       }
     }

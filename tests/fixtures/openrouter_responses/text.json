@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "text",
-    "recorded_at": "2026-10-29T23:39:28+00:00",
+    "recorded_at": "2026-10-30T00:03:54+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -10,15 +10,8 @@
     "url": "https://openrouter.ai/api/v1/responses",
     "json": {
       "model": "mistralai/mistral-nemo",
-      "input": [
-        {
-          "type": "message",
-          "role": "user",
-          "content": "Reply with exactly one word: pong"
-        }
-      ],
+      "input": "Reply with exactly one word: pong",
       "max_output_tokens": 256,
-      "store": false,
       "stream": false
     }
   },
@@ -26,15 +19,15 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793317166-InW5u3t1LRnUyHCIYAmQ",
+      "id": "gen-1793318633-LdhsVL2pRBsNBjvvTOPa",
       "object": "response",
-      "created_at": 1793317166,
+      "created_at": 1793318633,
       "model": "mistralai/mistral-nemo",
       "status": "completed",
-      "completed_at": 1793317168,
+      "completed_at": 1793318634,
       "output": [
         {
-          "id": "msg_tmp_xrcwgtfqbr",
+          "id": "msg_tmp_ezfjtafxucv",
           "type": "message",
           "role": "assistant",
           "status": "completed",

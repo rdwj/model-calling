@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "backend_error",
-    "recorded_at": "2026-10-29T23:39:46+00:00",
+    "recorded_at": "2026-10-30T00:03:46+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -10,15 +10,8 @@
     "url": "https://openrouter.ai/api/v1/responses",
     "json": {
       "model": "model-calling/does-not-exist",
-      "input": [
-        {
-          "type": "message",
-          "role": "user",
-          "content": "Reply with exactly one word: pong"
-        }
-      ],
+      "input": "Reply with exactly one word: pong",
       "max_output_tokens": 256,
-      "store": false,
       "stream": false
     }
   },

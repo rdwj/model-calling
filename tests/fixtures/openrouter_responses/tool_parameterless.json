@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "tool_parameterless",
-    "recorded_at": "2026-10-29T23:39:45+00:00",
+    "recorded_at": "2026-10-30T00:03:57+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -10,13 +10,7 @@
     "url": "https://openrouter.ai/api/v1/responses",
     "json": {
       "model": "mistralai/mistral-nemo",
-      "input": [
-        {
-          "type": "message",
-          "role": "user",
-          "content": "Use the get_time tool to look up the current time."
-        }
-      ],
+      "input": "Use the get_time tool to look up the current time.",
       "tools": [
         {
           "type": "function",
@@ -33,20 +27,18 @@
             "required": [
               "location"
             ]
-          }
+          },
+          "strict": null
         },
         {
           "type": "function",
           "name": "get_time",
           "description": "Get the current UTC time",
-          "parameters": {
-            "type": "object",
-            "properties": {}
-          }
+          "parameters": null,
+          "strict": null
         }
       ],
       "max_output_tokens": 1024,
-      "store": false,
       "stream": false
     }
   },
@@ -54,18 +46,18 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793317185-HVkBOY6tYpxfT8FJhxQD",
+      "id": "gen-1793318636-kPWvvwKQLv8JUC12Who6",
       "object": "response",
-      "created_at": 1793317185,
+      "created_at": 1793318636,
       "model": "mistralai/mistral-nemo",
       "status": "completed",
-      "completed_at": 1793317185,
+      "completed_at": 1793318637,
       "output": [
         {
-          "id": "fc_tmp_xh2e1layts9",
+          "id": "fc_tmp_jykeg90orro",
           "type": "function_call",
           "status": "completed",
-          "call_id": "xa6zCdVoz",
+          "call_id": "D6xKx2sMp",
           "name": "get_time",
           "arguments": "{}"
         }
@@ -77,6 +69,7 @@
           "type": "function",
           "name": "get_weather",
           "description": "Get the current weather for a city",
+          "strict": null,
           "parameters": {
             "type": "object",
             "properties": {
@@ -88,18 +81,14 @@
             "required": [
               "location"
             ]
-          },
-          "strict": null
+          }
         },
         {
           "type": "function",
           "name": "get_time",
           "description": "Get the current UTC time",
-          "parameters": {
-            "type": "object",
-            "properties": {}
-          },
-          "strict": null
+          "strict": null,
+          "parameters": null
         }
       ],
       "tool_choice": "auto",
@@ -128,7 +117,7 @@
       "prompt_cache_key": null,
       "prompt_cache_options": null,
       "usage": {
-        "input_tokens": 125,
+        "input_tokens": 116,
         "input_tokens_details": {
           "cached_tokens": 64
         },
@@ -136,12 +125,12 @@
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 141,
-        "cost": 2.04696e-06,
+        "total_tokens": 132,
+        "cost": 1.89792e-06,
         "is_byok": false,
         "cost_details": {
-          "upstream_inference_cost": 2.04696e-06,
-          "upstream_inference_input_cost": 1.70136e-06,
+          "upstream_inference_cost": 1.89792e-06,
+          "upstream_inference_input_cost": 1.55232e-06,
           "upstream_inference_output_cost": 3.456e-07
         }
       }

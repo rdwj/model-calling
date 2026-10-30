@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "tool_named",
-    "recorded_at": "2026-10-29T23:39:41+00:00",
+    "recorded_at": "2026-10-30T00:03:56+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -10,13 +10,7 @@
     "url": "https://openrouter.ai/api/v1/responses",
     "json": {
       "model": "mistralai/mistral-nemo",
-      "input": [
-        {
-          "type": "message",
-          "role": "user",
-          "content": "Use the get_weather tool to look up the weather in Paris."
-        }
-      ],
+      "input": "Use the get_weather tool to look up the weather in Paris.",
       "tools": [
         {
           "type": "function",
@@ -33,16 +27,15 @@
             "required": [
               "location"
             ]
-          }
+          },
+          "strict": null
         },
         {
           "type": "function",
           "name": "get_time",
           "description": "Get the current UTC time",
-          "parameters": {
-            "type": "object",
-            "properties": {}
-          }
+          "parameters": null,
+          "strict": null
         }
       ],
       "tool_choice": {
@@ -50,7 +43,6 @@
         "name": "get_weather"
       },
       "max_output_tokens": 256,
-      "store": false,
       "stream": false
     }
   },
@@ -58,18 +50,18 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793317180-aIiOHG0M2YzGYjaaajys",
+      "id": "gen-1793318636-2gDcr8KuhxeO86GrT15b",
       "object": "response",
-      "created_at": 1793317180,
+      "created_at": 1793318636,
       "model": "mistralai/mistral-nemo",
       "status": "completed",
-      "completed_at": 1793317181,
+      "completed_at": 1793318636,
       "output": [
         {
-          "id": "fc_tmp_u1w1175cmz",
+          "id": "fc_tmp_k6n51wb1h0f",
           "type": "function_call",
           "status": "completed",
-          "call_id": "uZhYh5qub",
+          "call_id": "T4q60z7F1",
           "name": "get_weather",
           "arguments": "{ \"location\": \"Paris\" }"
         }
@@ -81,6 +73,7 @@
           "type": "function",
           "name": "get_weather",
           "description": "Get the current weather for a city",
+          "strict": null,
           "parameters": {
             "type": "object",
             "properties": {
@@ -92,18 +85,14 @@
             "required": [
               "location"
             ]
-          },
-          "strict": null
+          }
         },
         {
           "type": "function",
           "name": "get_time",
           "description": "Get the current UTC time",
-          "parameters": {
-            "type": "object",
-            "properties": {}
-          },
-          "strict": null
+          "strict": null,
+          "parameters": null
         }
       ],
       "tool_choice": {
@@ -135,7 +124,7 @@
       "prompt_cache_key": null,
       "prompt_cache_options": null,
       "usage": {
-        "input_tokens": 127,
+        "input_tokens": 118,
         "input_tokens_details": {
           "cached_tokens": 64
         },
@@ -143,12 +132,12 @@
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 136,
-        "cost": 1.92888e-06,
+        "total_tokens": 127,
+        "cost": 1.77984e-06,
         "is_byok": false,
         "cost_details": {
-          "upstream_inference_cost": 1.92888e-06,
-          "upstream_inference_input_cost": 1.73448e-06,
+          "upstream_inference_cost": 1.77984e-06,
+          "upstream_inference_input_cost": 1.58544e-06,
           "upstream_inference_output_cost": 1.944e-07
         }
       }

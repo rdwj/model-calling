@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "tool_required",
-    "recorded_at": "2026-10-29T23:39:40+00:00",
+    "recorded_at": "2026-10-30T00:03:58+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -10,60 +10,7 @@
     "url": "https://openrouter.ai/api/v1/responses",
     "json": {
       "model": "mistralai/mistral-nemo",
-      "input": [
-        {
-          "type": "message",
-          "role": "user",
-          "content": "Use the get_weather tool to look up the weather in Paris."
-        }
-      ],
-      "tools": [
-        {
-          "type": "function",
-          "name": "get_weather",
-          "description": "Get the current weather for a city",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "location": {
-                "type": "string",
-                "description": "City name"
-              }
-            },
-            "required": [
-              "location"
-            ]
-          }
-        }
-      ],
-      "tool_choice": "required",
-      "max_output_tokens": 256,
-      "store": false,
-      "stream": false
-    }
-  },
-  "response": {
-    "status": 200,
-    "content_type": "application/json",
-    "json": {
-      "id": "gen-1793317179-ls0fcG0ywQYK7SKU2cOK",
-      "object": "response",
-      "created_at": 1793317179,
-      "model": "mistralai/mistral-nemo",
-      "status": "completed",
-      "completed_at": 1793317180,
-      "output": [
-        {
-          "id": "fc_tmp_1f5egzp0mrjj",
-          "type": "function_call",
-          "status": "completed",
-          "call_id": "chatcmpl-tool-a34d59a71bb2fefb",
-          "name": "get_weather",
-          "arguments": "{\"location\": \"Paris\"}"
-        }
-      ],
-      "error": null,
-      "incomplete_details": null,
+      "input": "Use the get_weather tool to look up the weather in Paris.",
       "tools": [
         {
           "type": "function",
@@ -82,6 +29,53 @@
             ]
           },
           "strict": null
+        }
+      ],
+      "tool_choice": "required",
+      "max_output_tokens": 256,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "gen-1793318637-gpOGOG39e680OuKzRO8X",
+      "object": "response",
+      "created_at": 1793318637,
+      "model": "mistralai/mistral-nemo",
+      "status": "completed",
+      "completed_at": 1793318638,
+      "output": [
+        {
+          "id": "fc_tmp_3saqcqojbyh",
+          "type": "function_call",
+          "status": "completed",
+          "call_id": "chatcmpl-tool-9668a44960095fe4",
+          "name": "get_weather",
+          "arguments": "{\"location\": \"Paris\"}"
+        }
+      ],
+      "error": null,
+      "incomplete_details": null,
+      "tools": [
+        {
+          "type": "function",
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "strict": null,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          }
         }
       ],
       "tool_choice": "required",
@@ -112,18 +106,18 @@
       "usage": {
         "input_tokens": 86,
         "input_tokens_details": {
-          "cached_tokens": 16
+          "cached_tokens": 80
         },
         "output_tokens": 20,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
         "total_tokens": 106,
-        "cost": 1.764e-06,
+        "cost": 1.39536e-06,
         "is_byok": false,
         "cost_details": {
-          "upstream_inference_cost": 1.764e-06,
-          "upstream_inference_input_cost": 1.332e-06,
+          "upstream_inference_cost": 1.39536e-06,
+          "upstream_inference_input_cost": 9.6336e-07,
           "upstream_inference_output_cost": 4.32e-07
         }
       }

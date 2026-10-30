@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "image",
-    "recorded_at": "2026-10-29T23:39:35+00:00",
+    "recorded_at": "2026-10-30T00:03:47+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -12,7 +12,6 @@
       "model": "google/gemma-3-4b-it",
       "input": [
         {
-          "type": "message",
           "role": "user",
           "content": [
             {
@@ -27,7 +26,6 @@
         }
       ],
       "max_output_tokens": 256,
-      "store": false,
       "stream": false
     }
   },
@@ -35,15 +33,15 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793317174-OXnDmnddkseJ3XdQwM6W",
+      "id": "gen-1793318626-utELgrIUyOfNHDrPheZK",
       "object": "response",
-      "created_at": 1793317174,
+      "created_at": 1793318626,
       "model": "google/gemma-3-4b-it",
       "status": "completed",
-      "completed_at": 1793317175,
+      "completed_at": 1793318627,
       "output": [
         {
-          "id": "msg_tmp_knjptallk2c",
+          "id": "msg_tmp_oeblkuqy81c",
           "type": "message",
           "role": "assistant",
           "status": "completed",

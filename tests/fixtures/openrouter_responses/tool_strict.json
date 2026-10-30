@@ -2,7 +2,7 @@
   "meta": {
     "backend": "openrouter_responses",
     "scenario": "tool_strict",
-    "recorded_at": "2026-10-29T23:39:44+00:00",
+    "recorded_at": "2026-10-30T00:03:59+00:00",
     "recorder": "tests/harness/record.py"
   },
   "request": {
@@ -10,13 +10,7 @@
     "url": "https://openrouter.ai/api/v1/responses",
     "json": {
       "model": "mistralai/mistral-nemo",
-      "input": [
-        {
-          "type": "message",
-          "role": "user",
-          "content": "Use the get_weather tool to look up the weather in Paris."
-        }
-      ],
+      "input": "Use the get_weather tool to look up the weather in Paris.",
       "tools": [
         {
           "type": "function",
@@ -39,7 +33,6 @@
         }
       ],
       "max_output_tokens": 1024,
-      "store": false,
       "stream": false
     }
   },
@@ -47,18 +40,18 @@
     "status": 200,
     "content_type": "application/json",
     "json": {
-      "id": "gen-1793317183-0Vxo28YVuNKpTn6mhpQ0",
+      "id": "gen-1793318638-NQvFq0T6wHHeKdzid8pA",
       "object": "response",
-      "created_at": 1793317183,
+      "created_at": 1793318638,
       "model": "mistralai/mistral-nemo",
       "status": "completed",
-      "completed_at": 1793317185,
+      "completed_at": 1793318639,
       "output": [
         {
-          "id": "fc_tmp_fjl4t429lj4",
+          "id": "fc_tmp_0m1mp7eh0azh",
           "type": "function_call",
           "status": "completed",
-          "call_id": "QBSGkGeVI",
+          "call_id": "Ni0MABkLF",
           "name": "get_weather",
           "arguments": "{\"location\": \"Paris\"}"
         }
