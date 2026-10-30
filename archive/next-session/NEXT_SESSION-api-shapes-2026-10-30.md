@@ -1,5 +1,8 @@
 # Next Session — api-shapes
 
+> **Archived 2026-10-30.** Epic closed with 0.3.1; retro in
+> `retrospectives/2026-10-30_api-shapes-epic/`. Next epic: router features.
+
 > **2026-10-29: cut for release.** 0.2.0 ships from `main` (library and
 > gateway as they stand). The remaining work is tracked on GitHub:
 > epic issue #8, issues #1–#7, milestone 0.3.0, project

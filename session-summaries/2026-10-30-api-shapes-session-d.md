@@ -62,7 +62,8 @@ then 6.
   404, which the new #10 message made obvious.
 
 ## Backlog delta
-Closed #10, #11, #6, #8 · Filed none · Memory none · CLAUDE.md: reviewer-trailer lesson.
+Closed #10, #11, #6, #8 · Filed #13–#17 (Session B carries, TLS settings) · Memory none ·
+CLAUDE.md: reviewer-trailer lesson.
 
 ## Risks / watch-fors
 - pip missed 0.3.1 on the first try right after publishing and got it on the retry.
@@ -70,3 +71,10 @@ Closed #10, #11, #6, #8 · Filed none · Memory none · CLAUDE.md: reviewer-trai
   does (in the release notes).
 - The vLLM LLMInferenceService reports `GatewayPreconditionNotMet` and has no external URL;
   any future live vLLM test needs a route or a port-forward.
+
+## After the release
+- Retro: `retrospectives/2026-10-30_api-shapes-epic/RETRO.md`; its follow-ups are #13–#17, all
+  kept open at close (each needs live checks, spec research, or design).
+- `/plan-epics`: api-shapes archived to `archive/next-session/`; router features chosen next.
+- `/plan-epic router-features`: four phases (retries on by default, fallbacks, cooldown,
+  memory-hub pilot and 0.4.0) in `NEXT_SESSION-router-features.md`, decisions recorded there.
