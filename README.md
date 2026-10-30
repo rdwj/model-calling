@@ -17,7 +17,7 @@ The library depends on httpx and pydantic, pinned exactly (`httpx==0.28.1`, `pyd
 
 ## Status
 
-0.3.0 covers Chat Completions, Messages, and the stateless OpenAI Responses API, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, Anthropic, and Cohere v2, plus the alias-routed gateway. Responses also works as a backend, through OpenRouter. Cohere has no live coverage: its tests replay fixtures written by hand from Cohere's API reference. Not yet available: retries and fallbacks. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
+0.3.0 covers Chat Completions, Messages, and the stateless OpenAI Responses API, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, Anthropic, and Cohere v2, plus the alias-routed gateway. Responses also works as a backend, through OpenRouter. Cohere has no live coverage: its tests replay fixtures written by hand from Cohere's API reference. Not yet available: retries and fallbacks. Coming from LiteLLM, or upgrading from 0.1.x (which involves breaking changes)? See the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
 
 ## Quick start
 
@@ -228,7 +228,7 @@ The offline suite runs the gateway in-process against recorded backend fixtures 
 
 ## Documentation
 
-The [documentation](https://github.com/rdwj/model-calling/blob/main/docs/README.md) covers the library API, the gateway, model aliases, and migrating from 0.1.x.
+The [documentation](https://github.com/rdwj/model-calling/blob/main/docs/README.md) covers the library API, the gateway, model aliases, and migrating from LiteLLM or from 0.1.x.
 
 ## License
 

@@ -42,4 +42,4 @@ client.close()
 - [API Reference](api-reference.md): Comprehensive API documentation
 - [Examples](examples.md): Code examples for common use cases
 - [Advanced Topics](advanced.md): In-depth information
-- [Migration Guide](migration-guide.md): Migrating from 0.1.x
+- [Migrating from LiteLLM](migration-guide.md): Differences for LiteLLM users, and upgrading from 0.1.x
