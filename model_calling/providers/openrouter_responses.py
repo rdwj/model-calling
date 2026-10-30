@@ -117,6 +117,9 @@ class OpenRouterResponsesProvider(Provider):
         if thinking is not None and thinking.budget_tokens is not None and thinking.effort is None:
             # Responses takes reasoning.effort; a token budget has no equivalent.
             names.append("thinking.budget_tokens")
+        # OpenRouter Responses doesn't honor parallel_tool_calls: false.
+        if request.tool_choice is not None and request.tool_choice.parallel is False:
+            names.append("parallel_tool_calls")
         return names
 
     def build_request(self, request: Request) -> dict:
@@ -133,15 +136,9 @@ class OpenRouterResponsesProvider(Provider):
                 _check_part(block)
 
             if msg.role == "system":
-                # Inline system messages become message items.
+                # Inline system messages become message items (type: message is the default).
                 content = _content_out([b for b in msg.content if isinstance(b, Text)])
-                input_items.append(
-                    {
-                        "type": "message",
-                        "role": "system",
-                        "content": content,
-                    }
-                )
+                input_items.append({"role": "system", "content": content})
             elif msg.role == "user":
                 # Tool results first, then the rest as a user message.
                 results = [b for b in msg.content if isinstance(b, ToolResult)]
@@ -161,13 +158,7 @@ class OpenRouterResponsesProvider(Provider):
 
                 rest = [b for b in msg.content if not isinstance(b, ToolResult)]
                 if rest:
-                    input_items.append(
-                        {
-                            "type": "message",
-                            "role": "user",
-                            "content": _content_out(rest),
-                        }
-                    )
+                    input_items.append({"role": "user", "content": _content_out(rest)})
             elif msg.role == "assistant":
                 # Reasoning, then tool calls, then text.
                 input_items.extend(_reasoning_out(msg.content))
@@ -176,20 +167,24 @@ class OpenRouterResponsesProvider(Provider):
                     if isinstance(block, ToolCall):
                         input_items.append(_tool_call_out(block))
                     elif isinstance(block, Text):
-                        input_items.append(
-                            {
-                                "type": "message",
-                                "role": "assistant",
-                                "content": block.text,
-                            }
-                        )
+                        input_items.append({"role": "assistant", "content": block.text})
                     elif isinstance(block, Opaque) and "id" in block.data:
                         input_items.append(block.data)
+
+        # Simplify input to a string when it's a single user message with text content.
+        input_value: str | list = input_items
+        if (
+            len(input_items) == 1
+            and input_items[0].get("role") == "user"
+            and "type" not in input_items[0]
+            and isinstance(input_items[0].get("content"), str)
+        ):
+            input_value = input_items[0]["content"]
 
         body: dict[str, Any] = {
             k: v for k, v in request.extras_for(FORMAT).items() if k not in _MANAGED_FIELDS
         }
-        body.update(model=self.model, input=input_items)
+        body.update(model=self.model, input=input_value)
 
         if instructions is not None:
             body["instructions"] = instructions
@@ -209,8 +204,9 @@ class OpenRouterResponsesProvider(Provider):
         }
         body.update({k: v for k, v in params.items() if v is not None})
 
-        # Store is always false (stateless).
-        body["store"] = False
+        # Store is always false (stateless); only include it when requested.
+        if "store" in request.extras_for(FORMAT):
+            body["store"] = False
 
         return body
 
@@ -227,10 +223,14 @@ class OpenRouterResponsesProvider(Provider):
         }
         if tool.description is not None:
             out["description"] = tool.description
-        out["parameters"] = tool.input_schema
+        # Preserve None for parameterless tools; the ingress normalizes to empty schema.
+        schema = tool.input_schema
+        if schema == {"type": "object", "properties": {}}:
+            schema = None
+        out["parameters"] = schema
         out.update(tool.extras_for(FORMAT))
-        if tool.strict is not None:
-            out["strict"] = tool.strict
+        # strict is required in Responses; null leaves it to the backend.
+        out["strict"] = tool.strict
         return out
 
     @staticmethod
