@@ -40,11 +40,10 @@ print(response.choices[0].message.content)
 | Errors | One hierarchy rooted at `model_calling.APIError`, named after the `openai` SDK's exceptions. |
 | Timeout | 300 seconds by default, a stalled stream included. Set it per call or per prefix. |
 | API formats | `messages()` (Anthropic Messages) and `responses()` (OpenAI Responses, stateless) sit alongside `completion()`, over every backend. |
-| Configuration | The library reads only backend API keys and the OpenAI organization ID from the environment, and never reads `.env`. |
+| Configuration | The library reads only backend API keys, the OpenAI organization ID, and any key variables an alias file names from the environment, and never reads `.env`. |
 | Gateway | Clients name models by alias, never by backend. Bodies may not carry `api_base`, `api_key`, or `drop_params`. JSON keys follow the SDK types' order. |
-| Not provided | Retries, fallbacks, load balancing, and cost tracking. |
 
-The sections below take these one at a time.
+The sections below take these one at a time. Separately, model-calling has no retries, fallbacks, load balancing, or cost tracking; see [Not provided](#not-provided).
 
 ### Strict by default
 
@@ -93,7 +92,7 @@ The string splits at the first `/`, so OpenRouter names keep their own slash. A 
 
 A response's `model` field carries the prefixed backend name, such as `ollama/qwen3:4b`.
 
-The library can also read the gateway's alias file: with `Client(models="model-calling.yaml")`, a name the file defines is called on its target, and any other name is routed by prefix (see [Model Aliases](advanced.md#model-aliases)). A response to an alias call carries the backend name in `model`, not the alias.
+The library can also read the gateway's alias file: with `Client(models="model-calling.yaml")`, a name the file defines is called on its target, and any other name is routed by prefix (see [Model Aliases](advanced.md#model-aliases)). Reading the file needs PyYAML, which the `model-calling[server]` extra installs; without it, `Client(models=...)` raises `ImportError`. A response to an alias call carries the backend name in `model`, not the alias.
 
 ### Typed responses
 
@@ -110,7 +109,7 @@ with Client() as client:
     wire = response.to_dict()  # a plain dict, shaped as on the wire
 ```
 
-Fields a backend adds beyond the SDK type, such as vLLM's `reasoning`, are kept and readable as attributes. Content blocks from a `messages()` response can go straight back into the next call's `messages`, with no conversion.
+The library builds each response from its own internal form, so it carries only the fields that form holds. One field goes beyond the SDK type: when the model thought, a `completion()` message (or stream delta) carries the thinking text in `reasoning`, from any backend that returns thinking, such as Ollama, `anthropic/`, or vLLM. Other backend-specific fields, such as `system_fingerprint` or OpenRouter's `provider`, are not passed through. Content blocks from a `messages()` response can go straight back into the next call's `messages`, with no conversion.
 
 ### Errors
 
@@ -183,7 +182,7 @@ With `stream=True`, `acompletion()` (and the other async methods) must still be 
 
 ### Configuration and environment
 
-The library reads backend API keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`) and the OpenAI organization ID (`OPENAI_ORG_ID`) from the environment, and nothing else. Backend URLs come from built-in defaults, the `config` dict passed to `Client`, or per-call `api_base`. Importing the library never reads a `.env` file; the gateway's `model-calling` command does, at startup.
+The library reads backend API keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`) and the OpenAI organization ID (`OPENAI_ORG_ID`) from the environment. With `Client(models=...)`, alias resolution also reads the variable a backend in the alias file names in `api_key_env`. The library reads no other variables. Backend URLs come from built-in defaults, the `config` dict passed to `Client`, or per-call `api_base`. Importing the library never reads a `.env` file; the gateway's `model-calling` command does, at startup.
 
 ```python
 from model_calling import Client
@@ -340,7 +339,7 @@ client.close()
 
 ### Using the gateway
 
-A gateway serves many applications. Each app points the `openai` or `anthropic` SDK at the gateway and names models by alias, and the gateway holds the backend configurations and keys. Its alias file maps each alias to a backend (see [Model Aliases](advanced.md#model-aliases)); for backends the file gives no URL, it reads URLs (`VLLM_BASE_URL`, `OLLAMA_BASE_URL`) and keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `VLLM_API_KEY`) from its environment. In OpenShift, mount the keys from Secrets:
+A gateway serves many applications. Each app points the `openai` or `anthropic` SDK at the gateway and names models by alias, and the gateway holds the backend configurations and keys. Its alias file maps each alias to a backend (see [Model Aliases](advanced.md#model-aliases)); for backends the file gives no URL, it reads URLs (`VLLM_BASE_URL`, `OLLAMA_BASE_URL`, `MODEL_CALLING_ANTHROPIC_BASE_URL`) and keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `VLLM_API_KEY`) from its environment. In OpenShift, mount the keys from Secrets:
 
 ```yaml
 apiVersion: v1
