@@ -160,7 +160,7 @@ NOT_FOUND_TYPES = {"/v1/messages": "not_found_error"}
 @pytest.mark.parametrize("name", ["ollama/qwen3:4b", "vllm/gpt-oss-20b", "cohere/command-a", "x"])
 async def test_a_name_that_is_not_an_alias_is_404(gateway, path, fields, name):
     """Backend names never cross the gateway's wire, even for a backend the
-    alias file uses; and Cohere, not yet ported, has no route at all."""
+    alias file uses, or one it doesn't (Cohere here)."""
     gateway.alias("ollama/qwen3:4b")
     resp = await gateway.client.post(path, json={"model": name, **fields})
     assert resp.status_code == 404, resp.text

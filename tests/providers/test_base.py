@@ -374,8 +374,8 @@ def test_provider_for_empty_api_key_sends_no_auth():
     assert provider_for("openai/gpt-5", configs).headers() == {}
 
 
-def test_provider_for_unported_prefix_is_none():
-    assert provider_for("cohere/command-a", {"cohere": {"base_url": "x"}}) is None
+def test_provider_for_unknown_prefix_is_none():
+    assert provider_for("bogus/command-a", {"bogus": {"base_url": "x"}}) is None
 
 
 def test_config_headers_go_on_every_request():
