@@ -61,6 +61,11 @@ def response_reasoning(resp, model: str):
     assert resp.output[0].summary[0].text.strip(), "no reasoning returned"
 
 
+def response_thinking_unsupported(resp, model: str):
+    """Reasoning asked of a model that can't think: the drop path answers without it."""
+    _response_text(resp, model, EXPECTED_PRODUCT)
+
+
 def response_json_schema(resp, model: str):
     _valid(resp, model)
     _capital(_text(resp))
@@ -160,6 +165,7 @@ RESPONSE_CHECKS = {
     "stream": response_stream,
     "stream_tools": response_stream_tools,
     "reasoning_effort": response_reasoning,
+    "thinking_unsupported": response_thinking_unsupported,
     "tool_required": response_tools,
     "tool_named": response_tools,
     "tool_strict": response_tools,

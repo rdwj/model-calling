@@ -52,6 +52,9 @@ async def messages(library, cell: Cell):
 
 async def responses(library, cell: Cell):
     body = SCENARIOS[cell.scenario].responses_body(model(cell))
+    # thinking_unsupported tests the drop path (Phase 12 item 3).
+    if "thinking_unsupported" in cell.scenario:
+        body["drop_params"] = True
     return await library.client.aresponses(**body)
 
 
