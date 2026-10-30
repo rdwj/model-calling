@@ -6,8 +6,8 @@
 > https://github.com/users/rdwj/projects/11. Phase-to-issue map: Phase 8 =
 > #1, Phase 12 = #2, Phase 7 = #3 and #4, Phase 6 slice 2 = #5, Phase 9
 > follow-ups = #6, pilot = #7. Update the issues as work lands; this file
-> keeps the detailed arc. #1 (Phase 8) closed 2026-10-29; #2–#5 merged to
-> `batch/0.3.0` (PR #9) the same evening.
+> keeps the detailed arc. #1 (Phase 8) closed 2026-10-29; #2–#5 closed the
+> same evening when PR #9 merged to `main` (`f9806bb`).
 
 ## Next: Release 0.3.0 and migrate sanicode off LiteLLM (#7)
 
@@ -15,10 +15,11 @@ The epic's end-state proof: sanicode's LLM client runs on model-calling
 0.3.0 with LiteLLM gone from its dependencies and its test suite green.
 The session starts by publishing 0.3.0 from Session B's merged work.
 
-1. **Merge PR #9 and release 0.3.0** (needs rdwj at the publish step).
-   PR #9 (`batch/0.3.0`) carries #2–#5; merging it to `main` closes them.
-   Bump `model_calling/__init__.py` `__version__` to `0.3.0`, check README
-   line 20 and the migration guide name what 0.3.0 adds, then create the
+1. **Release 0.3.0** (needs rdwj at the publish step). PR #9 is already
+   merged (`f9806bb`, closing #2–#5), so `main` holds everything 0.3.0
+   ships. Bump `model_calling/__init__.py` `__version__` to `0.3.0`,
+   check README line 20 and the migration guide name what 0.3.0 adds,
+   then create the
    GitHub release `v0.3.0`; `.github/workflows/workflow.yml` publishes to
    PyPI on release (trusted publishing). Confirm `pip install
    model-calling==0.3.0` in a fresh 3.11 venv runs an `acompletion` and an
@@ -56,16 +57,17 @@ The session starts by publishing 0.3.0 from Session B's merged work.
   update user-facing text along with the code.
 
 **Session start protocol:**
-- Premise checks (report before acting): PR #9 still open and green, or
-  already merged by rdwj; `main` = `origin/main`; no `v0.3.0` tag or PyPI
-  0.3.0 yet; offline suite on the merged `main` shows 2494 passed,
+- Premise checks (report before acting): `main` = `origin/main` at or
+  after `f9806bb`, "Test Package" green on it; no `v0.3.0` tag or PyPI
+  0.3.0 yet; offline suite on `main` shows 2494 passed,
   35 xfailed; sanicode clean on `main` at or after `f425bbd` (v0.12.3), and
   its suite green before any change (record the count).
 - Rules with history:
   - Implementers this epic decided things their brief didn't cover (a
     spend cap, a backend refusal). Anything not decided above stops and
     asks.
-  - Never push to either repo's `main`; sanicode lands by PR.
+  - sanicode lands by PR, never on its `main`; in model-calling, push the
+    version bump to `main` only after rdwj says go.
 - Stop-and-ask before: creating the `v0.3.0` release (publishes to PyPI;
   irreversible); dropping any sanicode provider beyond azure and bedrock;
   any change to sanicode's public CLI flags or config file format.
@@ -90,8 +92,7 @@ tool-using task through the gateway. 0.2.0 shipped the library and gateway
 without Responses, Cohere, or the Claude Code proof; the epic ends with
 0.3.0 and sanicode migrated off LiteLLM.
 
-Done: Phases 1–8, 10, 11, and 12; 6 slice 2, 7, and 12 are on
-`batch/0.3.0`, pending PR #9 (see the "What landed" ledger and
+Done: Phases 1–8, 10, 11, and 12 (see the "What landed" ledger and
 `session-summaries/`). Phase numbers stay stable because code comments,
 xfail reasons, and summaries cite them, so the order below is not numeric.
 Re-planned 2026-10-29 after the first reconciliation
@@ -280,7 +281,8 @@ suite passes with LiteLLM removed from its dependencies.
 
 ## What landed last session (2026-10-29): Session B, Phases 6 slice 2, 7, and 12
 
-All four streams merged onto `batch/0.3.0` (draft PR #9), `2d38568..0dc76fa`;
+All four streams merged onto `batch/0.3.0` and reached `main` through PR #9
+(`f9806bb`), closing #2–#5;
 offline 2494 passed, 35 xfailed. The unattended Workflow merged the
 Responses ingress; Phase 12, the Responses backend, and Cohere stopped
 under their rules and were finished interactively (Cohere redone by a
