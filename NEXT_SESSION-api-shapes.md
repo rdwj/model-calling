@@ -8,6 +8,9 @@
 > follow-ups = #6, pilot = #7. Update the issues as work lands; this file
 > keeps the detailed arc. #1 (Phase 8) closed 2026-10-29; #2–#5 closed the
 > same evening when PR #9 merged to `main` (`f9806bb`).
+> 0.3.0 released to PyPI 2026-10-29 (`9c46d41`); the sanicode pilot is
+> rdwj/sanicode#243, awaiting merge; friction filed as #10 and #11. Record:
+> `session-summaries/2026-10-29-api-shapes-session-c.md`.
 
 ## Next: Release 0.3.0 and migrate sanicode off LiteLLM (#7)
 
