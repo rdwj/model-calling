@@ -1,9 +1,59 @@
 # Next Session — router-features
 
-## Next: <to be planned via /plan-next-session>
+## Next: Phase 1, retries
 
-(No next-session focus selected yet. Run `/plan-next-session router-features` to
-pick the first slice from the phases below.)
+Make the library retry transient backend failures by default, with backoff and
+`Retry-After`, settable per prefix, per call, and per alias backend. Phase 1 of
+the arc below is the spec; the decisions here add to it.
+
+1. **Retry core in `model_calling/providers/base.py`** (judgment: shutdown, streams)
+   Wrap `Provider._post_json` and the pre-first-event part of `Provider.stream`
+   (embeddings too). Retryable: 408, 409, 429, 5xx, `APIConnectionError`,
+   `APITimeoutError`. Backoff after the pinned openai SDK's defaults (0.5 s
+   initial, 8 s cap, jitter); `Retry-After` in seconds or as an HTTP date,
+   honored up to 60 s, beyond that the error surfaces. Clock and sleep are
+   injected so tests never wait. A call sleeping between attempts cancels
+   cleanly on `Client.close` (`model_calling/library/_sync.py`).
+2. **Settings and the hook**
+   `max_retries`: library default 2, per prefix in `config`, per call on every
+   method (sync, async, module-level). **Gateway default 0** (decided
+   2026-10-30: SDK clients already retry twice, so backend retries would
+   multiply attempts); `MODEL_CALLING_MAX_RETRIES` and an alias backend's
+   `max_retries` key turn them on. `on_retry` callback (attempt, error, delay).
+3. **Grid and tests**
+   Retry cells per retryable status and no-retry cells for 400, 401, 404, and
+   a mid-stream failure; fake-clock tests for backoff, jitter bounds, the cap,
+   both `Retry-After` forms, and the 60 s ceiling; a gateway cell with an alias
+   backend `max_retries: 1` turning a 503-then-200 into a 200; `max_retries=0`
+   gives 0.3 behavior.
+4. **Docs**
+   Replace the retry loop in `docs/advanced.md` "Not Provided"; API reference;
+   a migration-guide entry (retries now on by default in the library, off in
+   the gateway).
+
+**Sequencing.** 1, then 2 and 3 together, then 4. One Opus implementer for
+1–3, then a fresh reviewer given this section and the diff (state the
+expected trailer, `Assisted-by: Claude Code (Opus 5.5)`, in the brief).
+
+**Constraints for the session:**
+- Interactive (decided 2026-10-30): rdwj answers design questions as they come.
+- Offline only; live budget for the epic is $1 and Phase 1 needs none.
+- Don't take #17 in the same session; both add alias backend keys.
+- No new dependency for backoff.
+
+**Session start protocol:**
+- Premise checks (report before acting): `main` = `origin/main` at or after
+  the commit that wrote this plan, Test Package green; offline suite 2598
+  passed, 35 xfailed; still no retry code (`grep -rn "retr" model_calling`
+  finds only the Granite Guardian `from_pretrained` lines); #17 not merged
+  in the meantime (if it is, add `max_retries` next to its keys).
+- Rules with history:
+  - Tests must not sleep: an offline suite over ~15 s means a real wait slipped in.
+  - Keep the `Client.close` regression tests in `tests/library/test_client.py`
+    green; review found three shutdown hangs there in api-shapes.
+- Stop-and-ask before: any live spend, pushing to `main` (work on a branch,
+  PR to `main`), changing the gateway's default away from 0.
+- Close ritual: session summary; check off Phase 1 in this file's ledger.
 
 ## Remaining epic phases
 
@@ -17,7 +67,8 @@ and 0.4.0 ships it. Weighted load balancing is not in this epic.
 Decided with rdwj 2026-10-30: cooldown only, no weighted spreading; retries on
 by default; memory-hub is the pilot; a fallback triggers on the retryable set
 after retries are exhausted, plus 401, 403, and 404, never 400; in strict mode
-every target's params are checked before the first call.
+every target's params are checked before the first call. Later the same day: the gateway
+defaults to 0 backend retries (its SDK clients retry), and the epic's live budget is $1.
 
 ### Phase 1: Retries
 
@@ -28,8 +79,8 @@ Retry transient failures in the library, so the gateway gets them through
 1. Retryable: 408, 409, 429, any 5xx, `APIConnectionError`, `APITimeoutError`
    (the set the openai SDK documents). Everything else surfaces at once.
 2. `max_retries` (default 2) per prefix in `config`, per call, and per backend
-   in the alias file (`max_retries` key), with an environment default for the
-   gateway.
+   in the alias file (`max_retries` key). The gateway defaults to 0, settable by
+   `MODEL_CALLING_MAX_RETRIES` or the alias key.
 3. Exponential backoff with jitter, capped; honor `Retry-After` (seconds or
    HTTP date) up to the cap. The timeout applies to each attempt.
 4. A stream retries only before its first event; a mid-stream failure surfaces
@@ -164,8 +215,8 @@ day; see `retrospectives/2026-10-30_api-shapes-epic/RETRO.md`.)
   in the offline suite's ~10 s.
 - **Retries change default behavior** for 0.3 users; the migration guide and
   release notes must say so.
-- **Live budget:** not yet set for this epic; set it in the first
-  `/plan-next-session`. The ledger is `tests/live/spend.jsonl`.
+- **Live budget: $1 for the epic** (decided 2026-10-30), enforced from
+  `tests/live/spend.jsonl`. Retries and fallbacks are proven offline.
 
 ## If blocked
 
