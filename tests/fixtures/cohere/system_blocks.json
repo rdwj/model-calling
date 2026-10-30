@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "backend": "cohere",
+    "scenario": "system_blocks",
+    "hand_built_from": "https://docs.cohere.com/reference/chat",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/chat",
+    "json": {
+      "model": "command-a-03-2025",
+      "messages": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "text",
+              "text": "You are a terse assistant."
+            },
+            {
+              "type": "text",
+              "text": "Always answer in lowercase."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "Reply with exactly one word: pong"
+        }
+      ],
+      "max_tokens": 256,
+      "stop_sequences": [
+        "###"
+      ],
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "a3f6d2c1-8b4e-4f7a-b9d0-1e2c3f4a5b6d",
+      "finish_reason": "COMPLETE",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "pong"
+          }
+        ]
+      },
+      "usage": {
+        "billed_units": {
+          "input_tokens": 18,
+          "output_tokens": 2
+        },
+        "tokens": {
+          "input_tokens": 509,
+          "output_tokens": 2
+        }
+      }
+    }
+  }
+}

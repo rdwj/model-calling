@@ -29,12 +29,14 @@ GOOD = {
             "base_url": "https://vllm.example/v1",
             "api_key_env": KEY_ENV,
         },
+        "hosted": {"provider": "cohere", "api_key_env": KEY_ENV},
     },
     "models": {
         "chat": {"backend": "prod", "model": "gpt-oss-20b"},
         "embed": {"backend": "local", "model": "nomic-embed-text", "dimensions": 768},
         # A provider works as a backend with the gateway's defaults.
         "small": {"backend": "ollama", "model": "qwen3:4b"},
+        "command": {"backend": "hosted", "model": "command-a-03-2025"},
         # Aliases are free-form, so an app can keep the name vLLM serves.
         "openai/gpt-oss-20b": {"backend": "prod", "model": "gpt-oss-20b"},
     },
@@ -55,6 +57,11 @@ GOOD = {
             Target("embed", "ollama/nomic-embed-text", "http://ollama:11434", None, 768),
         ),
         ("small", {}, Target("small", "ollama/qwen3:4b", None, None, None)),
+        (
+            "command",
+            {KEY_ENV: "k"},
+            Target("command", "cohere/command-a-03-2025", None, "k", None),
+        ),
         (
             "openai/gpt-oss-20b",
             {KEY_ENV: "k"},
@@ -98,10 +105,6 @@ INVALID = {
         with_model(backend="nowhere", model="m"),
         "models.chat.backend: unknown backend 'nowhere'",
     ),
-    "cohere_not_ported": (
-        with_model(backend="cohere", model="command-a"),
-        "models.chat.backend: unknown backend 'cohere'",
-    ),
     "empty_model": (with_model(backend="ollama", model=" "), "models.chat.model must be"),
     "dimensions_zero": (
         with_model(backend="ollama", model="m", dimensions=0),
@@ -112,8 +115,8 @@ INVALID = {
         "models.chat.dimensions must be a positive integer",
     ),
     "unknown_provider": (
-        {"backends": {"b": {"provider": "cohere"}}},
-        "backends.b.provider: unknown provider 'cohere'",
+        {"backends": {"b": {"provider": "cohere_v1"}}},
+        "backends.b.provider: unknown provider 'cohere_v1'",
     ),
     "key_literal": (
         {"backends": {"b": {"provider": "vllm", "api_key": "sk-123"}}},

@@ -19,7 +19,7 @@ client = Client(
 
 ### Constructor arguments
 
-**`config`**: dict mapping model prefix (`ollama`, `vllm`, `openai`, `openrouter`) to settings. Each prefix accepts:
+**`config`**: dict mapping model prefix (`ollama`, `vllm`, `openai`, `openrouter`, `anthropic`, `cohere`) to settings. Each prefix accepts:
 
 - `base_url` (str): API endpoint for this backend
 - `api_key` (str): authentication key
@@ -298,14 +298,15 @@ Model names are `prefix/name`. Unprefixed names default to `ollama`.
 | `vllm` | `http://localhost:8000/v1` | `api_key` in config if the server requires one |
 | `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` (env), optional `OPENAI_ORG_ID` (env) |
 | `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` (env) |
+| `cohere` | `https://api.cohere.com/v2` | `COHERE_API_KEY` (env) |
 
 The library reads only these environment variables. It never reads `.env` files. The gateway (with the `server` extra) does read `.env` at startup.
 
-Base URLs for Anthropic, vLLM, OpenAI, and OpenRouter include `/v1`, matching the openai SDK convention. (The `anthropic` SDK's base URL leaves it out.)
+Base URLs for Anthropic, vLLM, OpenAI, and OpenRouter include `/v1`, matching the openai SDK convention, and Cohere's includes `/v2`. (The `anthropic` SDK's base URL leaves it out.)
 
 The `anthropic` prefix sends Anthropic Messages to `{base_url}/messages`, so it also reaches OpenRouter's and vLLM's Messages endpoints when `base_url` points there. It authenticates with `Authorization: Bearer`, as the `anthropic` 2.x SDK does, and sends `anthropic-version: 2026-10-21`. Messages requests pass through unchanged. Chat Completions requests are translated: a missing `max_tokens` becomes 4096, `reasoning_effort` becomes adaptive thinking at that effort (OpenAI's `minimal`, which Messages lacks, sends no thinking and is reported as unsupported `thinking.effort`), `parallel_tool_calls` without tools is not sent, and `seed`, `presence_penalty`, `frequency_penalty`, and a `json_object` response format are unsupported. Thinking blocks without a signature (from another backend) are dropped from assistant turns, since Anthropic rejects them, and a turn left empty goes with them. Thinking signed by another server, such as vLLM, is sent as is and Anthropic will reject it.
 
-The Cohere backend is not available in the library yet (planned). Passing `cohere/...` raises `BadRequestError` with message "no provider for ...".
+The `cohere` prefix sends Cohere v2 chat requests to `{base_url}/chat` and embeddings to `{base_url}/embed`, authenticated with `Authorization: Bearer`. It has no live coverage; its tests replay fixtures written by hand from the [v2 API reference](https://docs.cohere.com/reference/chat). The system prompt becomes a `system` message, `top_p` and `top_k` become `p` and `k`, `stop` becomes `stop_sequences` (more than five raises `BadRequestError`), and thinking becomes `{type: enabled|disabled, token_budget}`. Reasoning comes back as thinking blocks, and the plan Cohere writes before its tool calls (`tool_plan`) as text. These are unsupported: a named `tool_choice`, `parallel_tool_calls: false`, `strict` on some tools but not all (Cohere's `strict_tools` covers every tool), a thinking effort without a token budget, and a response format together with tools. A finish reason of `ERROR` or `TIMEOUT` raises `APIError`. Embeddings take an `input_type` extra field (default `search_document`) and send `dimensions` as `output_dimension`, which only embed-v4 and newer accept.
 
 ## Strictness and drop_params
 

@@ -128,7 +128,7 @@ The legacy `/generate` endpoint and the `openai_compatible` adapter switch are r
 
 ### Embeddings changes
 
-The `/v1/embeddings` response returns the full model id (as `ollama/nomic-embed-text`) instead of the short name, and includes the backend's token count in the `usage` object when the backend reports one. Ollama embeddings are batched through `/api/embed` rather than sent one at a time to `/api/embeddings`. The gateway's in-memory embedding cache now applies only to Cohere (the last unported backend that reaches it).
+The `/v1/embeddings` response returns the full model id (as `ollama/nomic-embed-text`) instead of the short name, and includes the backend's token count in the `usage` object when the backend reports one. Ollama embeddings are batched through `/api/embed` rather than sent one at a time to `/api/embeddings`. The gateway's in-memory embedding cache applied only to Cohere in 0.2.0, which no route reached; the Cohere v2 backend added in 0.3.0 doesn't use it.
 
 ### Stream error mapping
 
@@ -159,11 +159,11 @@ models:
   "ollama/qwen3:4b": {backend: ollama, model: qwen3:4b}
 ```
 
-Responses carry the alias in `model`, `GET /v1/models` lists the aliases (it no longer queries Ollama or vLLM, or lists fixed OpenAI and Cohere names), and unprefixed names no longer default to Ollama. Cohere models are not reachable through the gateway until the Cohere backend moves to the provider interface. See [Model Aliases](advanced.md#model-aliases).
+Responses carry the alias in `model`, `GET /v1/models` lists the aliases (it no longer queries Ollama or vLLM, or lists fixed OpenAI and Cohere names), and unprefixed names no longer default to Ollama. Cohere models were not reachable in 0.2.0; from 0.3.0 an alias reaches them through `provider: cohere`, the Cohere v2 backend. See [Model Aliases](advanced.md#model-aliases).
 
 ### POST /v1/models/refresh is removed
 
-The gateway no longer probes model capabilities, so `POST /v1/models/refresh` is gone. The 0.1.x Cohere adapters are removed with it; Cohere returns when a Cohere v2 backend joins the provider interface.
+The gateway no longer probes model capabilities, so `POST /v1/models/refresh` is gone. The 0.1.x Cohere adapters are removed with it; Cohere returns in 0.3.0 as a Cohere v2 backend on the provider interface, with no live coverage.
 
 ## From Local Development to Production
 
@@ -331,7 +331,7 @@ The same gateway serves Chat Completions (`POST /v1/chat/completions`), Anthropi
 
 ### Anthropic Messages over any backend
 
-The `messages` method translates Anthropic Messages requests to the backend's format. This works over Ollama, vLLM, OpenAI, and OpenRouter. The Anthropic and Cohere backends are not in the library yet (planned).
+The `messages` method translates Anthropic Messages requests to the backend's format. This works over Ollama, vLLM, OpenAI, OpenRouter, Anthropic, and (from 0.3.0) Cohere.
 
 ```python
 from model_calling import Client

@@ -23,6 +23,7 @@ from typing import Any, ClassVar, Mapping, Optional, Tuple
 from model_calling.formats import anthropic, chat_completions, embeddings, responses
 from model_calling.providers import (
     AnthropicProvider,
+    CohereProvider,
     OllamaProvider,
     OpenRouterProvider,
     OpenRouterResponsesProvider,
@@ -111,6 +112,8 @@ NO_THINKING = "no_thinking"
 CHAT_COMPLETIONS = "chat_completions"
 MESSAGES = "messages"
 RESPONSES = "responses"
+# Cohere v2: a format of its own, which no ingress speaks.
+COHERE = "cohere"
 
 
 # A scenario only OpenAI Responses can express.
@@ -536,9 +539,12 @@ class Backend:
     gateway_config: dict = field(default_factory=dict)
     # Fixture recording needs an OpenRouter key.
     needs_openrouter_key: bool = False
-    # The wire format the backend speaks. A Messages backend's native body
-    # depends on the ingress form; see the module docstring.
+    # The wire format the backend speaks. A Messages or Responses backend's
+    # native body depends on the ingress form; see the module docstring.
     speaks: str = CHAT_COMPLETIONS
+    # True for a backend whose fixtures are written by hand from its API
+    # reference, because there is no key to record with. The recorder skips it.
+    hand_built: bool = False
     # False for a backend recorded only as a reference, because no provider
     # can reach it yet. Its fixtures are validated but stay off the grid.
     in_grid: bool = True
@@ -650,6 +656,12 @@ MODEL_INFO_FIXTURE_PREFIX = "model_info-"
 OPENROUTER_VISION_MODEL = "google/gemma-3-4b-it"
 OPENROUTER_REASONING_MODEL = "openai/gpt-oss-20b"
 VLLM_NO_VISION = "vLLM serves gpt-oss-20b, which takes no image input"
+# Cohere's v2 API root. Its fixtures are hand-built (see fixtures/README.md).
+COHERE_URL = "https://api.cohere.com/v2"
+COHERE_MODEL = "command-a-03-2025"
+COHERE_VISION_MODEL = "command-a-vision-07-2025"
+COHERE_REASONING_MODEL = "command-a-reasoning-08-2025"
+COHERE_EMBED_MODEL = "embed-v4.0"
 
 BACKENDS = {
     b.name: b
@@ -739,6 +751,26 @@ BACKENDS = {
             # Messages has no seed.
             refuses={"max_completion_tokens": ("seed",)},
         ),
+        Backend(
+            name="cohere",
+            gateway_model=f"cohere/{COHERE_MODEL}",
+            native_model=COHERE_MODEL,
+            missing_native_model="model-calling-missing",
+            endpoint=f"{COHERE_URL}/chat",
+            config_prefix="cohere",
+            gateway_config={"base_url": COHERE_URL, "api_key": REPLAY_API_KEY},
+            provider=CohereProvider,
+            speaks=COHERE,
+            hand_built=True,
+            capability_models={VISION: COHERE_VISION_MODEL, REASONING: COHERE_REASONING_MODEL},
+            # v2's tool_choice is REQUIRED or NONE, it has no parallel switch,
+            # and its thinking takes a token budget but no effort level.
+            refuses={
+                "tool_named": ("tool_choice",),
+                "parallel_tools_off": ("parallel_tool_calls",),
+                "reasoning_effort": ("thinking.effort",),
+            },
+        ),
     )
 }
 
@@ -792,6 +824,7 @@ class EmbeddingBackend:
     provider: type[Provider]
     gateway_config: dict = field(default_factory=dict)
     needs_openrouter_key: bool = False
+    hand_built: bool = False
 
     def native_model_for(self, scenario: EmbeddingScenario) -> str:
         return self.missing_native_model if scenario.missing_model else self.native_model
@@ -830,6 +863,17 @@ EMBEDDING_BACKENDS = {
             config_prefix="vllm",
             gateway_config={"base_url": f"{OLLAMA_URL}/v1", "api_key": REPLAY_API_KEY},
             provider=VLLMProvider,
+        ),
+        EmbeddingBackend(
+            name="cohere_embed",
+            gateway_model=f"cohere/{COHERE_EMBED_MODEL}",
+            native_model=COHERE_EMBED_MODEL,
+            missing_native_model="model-calling-missing",
+            endpoint=f"{COHERE_URL}/embed",
+            config_prefix="cohere",
+            gateway_config={"base_url": COHERE_URL, "api_key": REPLAY_API_KEY},
+            provider=CohereProvider,
+            hand_built=True,
         ),
     )
 }

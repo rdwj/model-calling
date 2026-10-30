@@ -17,7 +17,7 @@ The library depends on httpx and pydantic, pinned exactly (`httpx==0.28.1`, `pyd
 
 ## Status
 
-0.2.0 is the first release of the rewritten library. It covers Chat Completions and Messages, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, and Anthropic, plus the alias-routed gateway. Not yet available: the OpenAI Responses API, the Cohere backend, retries and fallbacks. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
+0.2.0 is the first release of the rewritten library. It covers Chat Completions and Messages, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, and Anthropic, plus the alias-routed gateway. Not yet available: the OpenAI Responses API, retries and fallbacks. The Cohere v2 backend has no live coverage: its tests replay fixtures written by hand from Cohere's API reference. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
 
 ## Quick start
 
@@ -115,12 +115,13 @@ Model routing uses `prefix/name`. Unprefixed names go to Ollama.
 | `vllm` | `http://localhost:8000/v1` | `api_key` in config if needed |
 | `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY`, optional `OPENAI_ORG_ID` |
 | `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
+| `cohere` | `https://api.cohere.com/v2` | `COHERE_API_KEY` |
 
 The library reads only those environment variables. Override per call with `api_base=` / `api_key=`, or per client via `config`.
 
 The `anthropic` prefix speaks Anthropic Messages to any server that serves it at `{base_url}/messages`: Anthropic, OpenRouter (`https://openrouter.ai/api/v1`), or vLLM (`http://localhost:8000/v1`). A `messages()` call reaches it unchanged. A `completion()` call is translated, and since Messages requires `max_tokens`, one sent without it gets 4096.
 
-The Cohere backend is planned and not available yet, in the library or the gateway.
+The `cohere` prefix speaks Cohere's v2 chat and embed APIs. It has no live coverage: the project has no Cohere API key, so its tests replay fixtures written by hand from the [v2 API reference](https://docs.cohere.com/reference/chat) rather than recorded. Requests v2 can't express are refused: a named `tool_choice` (v2 has only required and none), `parallel_tool_calls: false`, `strict` on some tools but not all, a thinking effort without a token budget, and a response format alongside tools. Embeddings send `input_type: search_document` unless the request names another `input_type`.
 
 Both formats work over every backend. You can call `client.messages()` against Ollama, vLLM, OpenAI, or OpenRouter; the library translates to their Chat Completions APIs. Likewise for `client.completion()` against an Anthropic backend.
 

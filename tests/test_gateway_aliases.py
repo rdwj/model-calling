@@ -17,6 +17,8 @@ from tests.harness.scenarios import (
     ALL_BACKENDS,
     ALL_SCENARIOS,
     CHAT_COMPLETIONS,
+    COHERE_EMBED_MODEL,
+    COHERE_MODEL,
     EMBEDDING_SCENARIOS,
     VLLM_URL,
     exchanges_for,
@@ -29,6 +31,7 @@ TEXT = ALL_SCENARIOS["text"]
 VLLM_MODEL = ALL_BACKENDS["vllm"].model_for(TEXT).split("/", 1)[1]
 OLLAMA_MODEL = ALL_BACKENDS["ollama"].model_for(TEXT).split("/", 1)[1]
 EMBED_DIMENSIONS = 768  # nomic-embed-text, as recorded in fixtures/ollama_embed
+COHERE_DIMENSIONS = 1536  # embed-v4.0's default, as in fixtures/cohere_embed
 
 
 def chat_to(backend: str, model: str, **backend_settings) -> dict:
@@ -96,6 +99,40 @@ async def test_a_named_backend_sets_the_url_and_key(gateway, monkeypatch):
     )
     await ask_for_chat(gateway)
     assert replay.requests[0].headers["authorization"] == "Bearer prod-key"
+
+
+async def test_a_cohere_backend_serves_chat_and_embeddings(gateway, monkeypatch):
+    """`provider: cohere` in the file: both aliases load, and chat and
+    embeddings reach Cohere v2 with the key the file names."""
+    monkeypatch.setenv("COHERE_PROD_KEY", "cohere-key")
+    replay = use_replay(
+        gateway,
+        "cohere",
+        exchanges_for("cohere", "text", CHAT_COMPLETIONS)
+        + exchanges_for("cohere_embed", "embedding"),
+    )
+    gateway.write_config(
+        {
+            "backends": {"hosted": {"provider": "cohere", "api_key_env": "COHERE_PROD_KEY"}},
+            "models": {
+                "chat": {"backend": "hosted", "model": COHERE_MODEL},
+                "embed": {
+                    "backend": "hosted",
+                    "model": COHERE_EMBED_MODEL,
+                    "dimensions": COHERE_DIMENSIONS,
+                },
+            },
+        }
+    )
+    await ask_for_chat(gateway)
+    body = EMBEDDING_SCENARIOS["embedding"].body("embed")
+    resp = await gateway.client.post("/v1/embeddings", json=body)
+    assert resp.status_code == 200, resp.text
+    embeddings = validate_embedding_response(resp.json())
+    assert embeddings.model == "embed"
+    assert {len(d.embedding) for d in embeddings.data} == {COHERE_DIMENSIONS}
+    assert [r.url.path for r in replay.requests] == ["/v2/chat", "/v2/embed"]
+    assert {r.headers["authorization"] for r in replay.requests} == {"Bearer cohere-key"}
 
 
 async def test_a_backend_whose_key_variable_is_unset_is_502_without_details(gateway, caplog):

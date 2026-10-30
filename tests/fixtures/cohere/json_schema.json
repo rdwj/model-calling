@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "backend": "cohere",
+    "scenario": "json_schema",
+    "hand_built_from": "https://docs.cohere.com/reference/chat",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/chat",
+    "json": {
+      "model": "command-a-03-2025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the capital of France? Answer as JSON."
+        }
+      ],
+      "max_tokens": 1024,
+      "response_format": {
+        "type": "json_object",
+        "json_schema": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            },
+            "country": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city",
+            "country"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "6c5b4a39-2817-4f6e-9d8c-7b6a5f4e3d2c",
+      "finish_reason": "COMPLETE",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"city\": \"Paris\", \"country\": \"France\"}"
+          }
+        ]
+      },
+      "usage": {
+        "billed_units": {
+          "input_tokens": 12,
+          "output_tokens": 13
+        },
+        "tokens": {
+          "input_tokens": 503,
+          "output_tokens": 13
+        }
+      }
+    }
+  }
+}

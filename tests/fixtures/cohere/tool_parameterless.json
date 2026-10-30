@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "backend": "cohere",
+    "scenario": "tool_parameterless",
+    "hand_built_from": "https://docs.cohere.com/reference/chat",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/chat",
+    "json": {
+      "model": "command-a-03-2025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_time tool to look up the current time."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            },
+            "description": "Get the current weather for a city"
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "get_time",
+            "parameters": {
+              "type": "object",
+              "properties": {}
+            },
+            "description": "Get the current UTC time"
+          }
+        }
+      ],
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "9b5c2e7a-4d1f-4e8b-b6a3-7c0d1e2f3a4b",
+      "finish_reason": "TOOL_CALL",
+      "message": {
+        "role": "assistant",
+        "tool_plan": "I will look up the current time.",
+        "tool_calls": [
+          {
+            "id": "get_time_m2p8z4k6s1d9",
+            "type": "function",
+            "function": {
+              "name": "get_time",
+              "arguments": "{}"
+            }
+          }
+        ]
+      },
+      "usage": {
+        "billed_units": {
+          "input_tokens": 51,
+          "output_tokens": 15
+        },
+        "tokens": {
+          "input_tokens": 1071,
+          "output_tokens": 31
+        }
+      }
+    }
+  }
+}

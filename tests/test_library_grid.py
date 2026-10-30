@@ -101,7 +101,11 @@ async def embed(library, cell: Cell):
 
 def recorded_vectors(cell: Cell) -> list:
     body = Exchange.load(fixture_path(cell.backend, cell.scenario)).response_json
-    return body["embeddings"] if "embeddings" in body else [d["embedding"] for d in body["data"]]
+    if "data" in body:
+        return [d["embedding"] for d in body["data"]]
+    embeddings = body["embeddings"]
+    # Cohere v2 keys its vectors by embedding type.
+    return embeddings["float"] if isinstance(embeddings, dict) else embeddings
 
 
 async def check_embedding(library, cell):

@@ -71,9 +71,9 @@ def mock(handler) -> httpx.MockTransport:
 
 @pytest.mark.parametrize(
     "model, match",
-    [("cohere/x", "no provider for 'cohere/x'"), ("bogus/x", "no provider")],
+    [("cohere_v1/x", "no provider for 'cohere_v1/x'"), ("bogus/x", "no provider")],
 )
-async def test_unported_prefix_is_bad_request(model, match):
+async def test_unknown_prefix_is_bad_request(model, match):
     async with Client() as client:
         with pytest.raises(BadRequestError, match=match) as err:
             await client.acompletion(model, USER)

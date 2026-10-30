@@ -1,7 +1,5 @@
 """
 Backends behind the provider interface in `providers.base`.
-
-Cohere is not ported yet; it returns as a Cohere v2 provider.
 """
 
 import os
@@ -9,6 +7,7 @@ from collections.abc import Mapping
 
 from model_calling.providers.anthropic import AnthropicProvider
 from model_calling.providers.base import DEFAULT_TIMEOUT, HttpClients, Provider, StreamParser
+from model_calling.providers.cohere import CohereProvider
 from model_calling.providers.ollama import OllamaProvider
 from model_calling.providers.openai_compat import (
     OpenAICompatProvider,
@@ -21,6 +20,7 @@ from model_calling.providers.openrouter_responses import OpenRouterResponsesProv
 # Model-name prefix -> provider. Unprefixed names default to Ollama.
 PROVIDERS: dict[str, type[Provider]] = {
     "anthropic": AnthropicProvider,
+    "cohere": CohereProvider,
     "ollama": OllamaProvider,
     "openai": OpenAIProvider,
     "openrouter": OpenRouterProvider,
@@ -41,6 +41,10 @@ def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
         "anthropic": {
             "base_url": "https://api.anthropic.com/v1",
             "api_key": environ.get("ANTHROPIC_API_KEY", ""),
+        },
+        "cohere": {
+            "base_url": "https://api.cohere.com/v2",
+            "api_key": environ.get("COHERE_API_KEY", ""),
         },
         "ollama": {"base_url": "http://localhost:11434"},
         # OpenAI-compatible base URLs are the API root, /v1 included.
@@ -100,6 +104,7 @@ def provider_for(
 
 __all__ = [
     "AnthropicProvider",
+    "CohereProvider",
     "HttpClients",
     "OllamaProvider",
     "OpenAICompatProvider",
