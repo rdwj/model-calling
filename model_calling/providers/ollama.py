@@ -38,6 +38,7 @@ from model_calling.core import (
     Usage,
 )
 from model_calling.core.embeddings import EmbeddingRequest, EmbeddingResponse
+from model_calling.errors import BadRequestError
 from model_calling.formats import TranslationError
 from model_calling.formats.embeddings import FORMAT as EMBEDDINGS_FORMAT
 from model_calling.providers.base import (
@@ -53,6 +54,10 @@ CHAT_PATH = "/api/chat"
 EMBED_PATH = "/api/embed"
 # Model metadata: whether the model thinks, and which `think` values it takes.
 SHOW_PATH = "/api/show"
+# Where Ollama serves its OpenAI-compatible API, which this provider doesn't speak.
+OPENAI_COMPAT_PATH = "/v1"
+# Ollama's usual address, for the error that refuses a /v1 base URL.
+EXAMPLE_ROOT = "http://localhost:11434"
 # The /api/show capability a model that can think lists.
 THINKING_CAPABILITY = "thinking"
 # Ollama has no tool_choice, so it can't make the model call a tool.
@@ -127,6 +132,16 @@ class OllamaProvider(Provider):
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.model_info = ModelInfo()
+        if self.base_url.endswith(OPENAI_COMPAT_PATH):
+            # Refused before any call: appending /api/chat to a /v1 URL gets
+            # a bare "404 page not found" from Ollama (issue #10).
+            raise BadRequestError(
+                f"the ollama base URL {self.base_url} ends in {OPENAI_COMPAT_PATH}, but the "
+                f"ollama prefix speaks Ollama's native API at the server root (for example "
+                f"{EXAMPLE_ROOT}); use the openai/ prefix for Ollama's OpenAI-compatible "
+                f"{OPENAI_COMPAT_PATH} endpoint",
+                provider=self.name,
+            )
 
     @property
     def think_levels(self) -> tuple[str, ...]:

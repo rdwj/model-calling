@@ -87,7 +87,10 @@ async def test_explicit_api_base_overrides_alias_base_url(aliases):
     """Explicit api_base on the call beats the alias's base_url."""
     alias_path = aliases.write_alias({"chat": {"backend": "local", "model": "qwen3:4b"}})
 
+    urls = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
         return httpx.Response(
             200, json={"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
         )
@@ -96,8 +99,8 @@ async def test_explicit_api_base_overrides_alias_base_url(aliases):
     async with Client(models=alias_path, config={"ollama": {"transport": transport}}) as client:
         request_body = body("text")
         request_body["model"] = "chat"
-        await client.acompletion(**request_body, api_base="http://other:9999/v1")
-    # If the URL override worked, no error is raised (the mock accepts any URL)
+        await client.acompletion(**request_body, api_base="http://other:9999")
+    assert urls == ["http://other:9999/api/chat"]
 
 
 async def test_prefixed_name_works_with_models_set(aliases):
