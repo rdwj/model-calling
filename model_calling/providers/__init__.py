@@ -8,7 +8,7 @@ import os
 from collections.abc import Mapping
 
 from model_calling.providers.anthropic import AnthropicProvider
-from model_calling.providers.base import HttpClients, Provider, StreamParser
+from model_calling.providers.base import DEFAULT_TIMEOUT, HttpClients, Provider, StreamParser
 from model_calling.providers.ollama import OllamaProvider
 from model_calling.providers.openai_compat import (
     OpenAICompatProvider,
@@ -75,7 +75,7 @@ def provider_for(
     """The provider for `model_name`, or None if its prefix isn't ported yet.
 
     `configs` maps each prefix to its settings (`base_url`, `api_key`,
-    `callbacks`, and optionally `headers` and `transport`), as in
+    `callbacks`, and optionally `headers`, `transport`, and `timeout`), as in
     `Client.config`. With `clients`, the provider shares its
     prefix's pooled HTTP client instead of opening one per call.
     """
@@ -91,6 +91,7 @@ def provider_for(
         base_url=config["base_url"],
         api_key=config.get("api_key") or None,
         callbacks=config.get("callbacks", ()),
+        timeout=config.get("timeout", DEFAULT_TIMEOUT),
         http_client=clients.get(prefix, config) if clients is not None else None,
         extra_headers=config.get("headers"),
         model_info_cache=clients.model_info if clients is not None else None,

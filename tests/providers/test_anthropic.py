@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from anthropic.types import Message as SDKMessage
 
 from model_calling.core import (
     CacheControl,
@@ -240,6 +241,24 @@ def test_unsupported_params(provider, param, value, in_unsupported):
     assert (param in unsupported) == in_unsupported
 
 
+def test_unsupported_chat_completions_extras(provider):
+    """Chat Completions extras that Anthropic doesn't support: logprobs,
+    logit_bias, and user (Phase 12 item 1)."""
+    chat_req = chat_completions.request_to_internal(
+        {
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "logprobs": True,
+            "logit_bias": {"123": 10},
+            "user": "user123",
+        }
+    )
+    unsupported = provider.unsupported_params(chat_req)
+    assert "logprobs" in unsupported
+    assert "logit_bias" in unsupported
+    assert "user" in unsupported
+
+
 def test_build_request_opaque_tool_raises(provider):
     opaque = Opaque(format="openai_chat", data={"type": "code_interpreter"})
     with pytest.raises(TranslationError, match="cannot send a 'openai_chat' block"):
@@ -270,6 +289,20 @@ def test_parse_response_tools_fixture(provider):
     assert call.name == "get_weather"
     assert call.input == {"location": "Paris"}
     assert resp.stop_reason == "tool_use"
+
+
+def test_parse_response_stop_details_and_container_reach_messages_egress(provider):
+    stop_details = {"type": "refusal", "category": "cyber", "explanation": "Declined."}
+    container = {"id": "container_1", "expires_at": "2026-10-30T00:00:00Z", "skills": None}
+    body = {
+        **load_fixture("vllm_messages", "text")["response"]["json"],
+        "stop_details": stop_details,
+        "container": container,
+    }
+    out = anthropic.response_from_internal(provider.parse_response(body))
+    assert (out["stop_details"], out["container"]) == (stop_details, container)
+    sdk = SDKMessage.model_validate(out)
+    assert (sdk.stop_details.category, sdk.container.id) == ("cyber", "container_1")
 
 
 def test_parse_response_usage_with_cache(provider):

@@ -59,6 +59,11 @@ def completion_reasoning(resp, model: str):
     assert (resp.choices[0].message.reasoning or "").strip(), "no reasoning returned"
 
 
+def completion_thinking_unsupported(resp, model: str):
+    """thinking_unsupported uses THINKING_PROMPT and expects EXPECTED_PRODUCT."""
+    _completion_text(resp, model, EXPECTED_PRODUCT)
+
+
 def completion_json_schema(resp, model: str):
     validate_chat_completion(resp.to_dict())
     choice = resp.choices[0]
@@ -120,6 +125,19 @@ def completion_stream(chunks, model: str):
     _completion_stream(chunks, model)
 
 
+def completion_stream_thinking_unsupported(chunks, model: str):
+    """Streaming thinking_unsupported expects EXPECTED_PRODUCT."""
+    validate_chat_completion_chunks([c.to_dict() for c in chunks])
+    finish = [
+        c.choices[0].finish_reason for c in chunks if c.choices and c.choices[0].finish_reason
+    ]
+    assert finish == ["stop"], finish
+    assert len({c.id for c in chunks}) == 1, "chunks of one stream must share an id"
+    assert {c.model for c in chunks} == {model}
+    text = "".join(c.choices[0].delta.content or "" for c in chunks if c.choices)
+    assert EXPECTED_PRODUCT in text.lower()
+
+
 def completion_stream_tools(chunks, model: str):
     validate_chat_completion_chunks([c.to_dict() for c in chunks])
     finish = [
@@ -154,6 +172,14 @@ def completion_assembled_text(resp, model: str):
     assert resp.model == model
 
 
+def completion_assembled_thinking_unsupported(resp, model: str):
+    """stream_thinking_unsupported assembled, expects EXPECTED_PRODUCT."""
+    validate_chat_completion(resp.to_dict())
+    assert EXPECTED_PRODUCT in (resp.choices[0].message.content or "").lower()
+    assert resp.choices[0].finish_reason == "stop"
+    assert resp.model == model
+
+
 COMPLETION_CHECKS = {
     "text": completion_text,
     "system_blocks": completion_text,
@@ -172,6 +198,8 @@ COMPLETION_CHECKS = {
     "tool_parameterless": completion_parameterless_tool,
     "parallel_tools_off": completion_parallel_tools_off,
     "max_completion_tokens": completion_text,
+    "thinking_unsupported": completion_thinking_unsupported,
+    "stream_thinking_unsupported": completion_stream_thinking_unsupported,
 }
 
 
@@ -180,6 +208,7 @@ FINAL_COMPLETION_CHECKS = {
     "stream": completion_assembled_text,
     "stream_tools": completion_tools,
     "stream_usage": completion_text,
+    "stream_thinking_unsupported": completion_assembled_thinking_unsupported,
 }
 
 
@@ -208,6 +237,11 @@ def message_thinking(msg, model: str):
     kinds = [b.type for b in msg.content]
     assert kinds[0] == "thinking", kinds
     assert msg.content[0].thinking.strip()
+
+
+def message_thinking_unsupported(msg, model: str):
+    """thinking_unsupported uses THINKING_PROMPT but doesn't return thinking blocks."""
+    _message_text(msg, model, EXPECTED_PRODUCT)
 
 
 def message_json_schema(msg, model: str):
@@ -284,6 +318,18 @@ def message_stream(events, model: str):
     _message_stream(events, model)
 
 
+def message_stream_thinking_unsupported(events, model: str):
+    """Streaming thinking_unsupported expects EXPECTED_PRODUCT."""
+    _message_stream_structure(events, model)
+    text = "".join(
+        e.delta.text
+        for e in events
+        if e.type == "content_block_delta" and e.delta.type == "text_delta"
+    )
+    assert EXPECTED_PRODUCT in text.lower()
+    assert events[-2].delta.stop_reason == "end_turn"
+
+
 def message_stream_tools(events, model: str):
     _message_stream_structure(events, model)
     starts = {
@@ -327,6 +373,8 @@ MESSAGE_CHECKS = {
     "tool_strict": message_tools,
     "tool_parameterless": message_parameterless_tool,
     "parallel_tools_off": message_parallel_tools_off,
+    "thinking_unsupported": message_thinking_unsupported,
+    "stream_thinking_unsupported": message_stream_thinking_unsupported,
 }
 
 # What the SDK's stream helper must assemble from each stream scenario.
@@ -334,4 +382,5 @@ FINAL_MESSAGE_CHECKS = {
     "stream": message_text,
     "stream_tools": message_tools,
     "stream_usage": message_text,
+    "stream_thinking_unsupported": message_thinking_unsupported,
 }

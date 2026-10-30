@@ -395,6 +395,17 @@ SCENARIOS = {
             needs=NO_THINKING,
             only_backends=("ollama",),
         ),
+        # Streaming version of thinking_unsupported, to test Provider.prepare
+        # on the streaming path (Phase 12 item 3).
+        Scenario(
+            "stream_thinking_unsupported",
+            THINKING_PROMPT,
+            stream=True,
+            chat_extra={"reasoning_effort": "high"},
+            messages_extra={"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}},
+            needs=NO_THINKING,
+            only_backends=("ollama",),
+        ),
         # Structured output. "response" is the name providers give a schema
         # that arrives without one, as from Messages.
         Scenario(
@@ -657,10 +668,10 @@ BACKENDS = {
                 REASONING: OLLAMA_REASONING_MODEL,
                 NO_THINKING: OLLAMA_NO_THINKING_MODEL,
             },
-            # Ollama has no tool_choice, parallel switch, or strict tools,
-            # and refuses `think` for a model that can't think.
+            # Ollama has no tool_choice, parallel switch, or strict tools.
+            # thinking_unsupported is refused via unsupported_params(), not here,
+            # so it can have fixtures for the drop path (Phase 12 item 3).
             refuses={
-                "thinking_unsupported": ("thinking",),
                 "tool_required": ("tool_choice",),
                 "tool_named": ("tool_choice",),
                 "parallel_tools_off": ("parallel_tool_calls",),

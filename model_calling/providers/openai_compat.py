@@ -16,6 +16,7 @@ from typing import Any, ClassVar
 
 from model_calling.core import (
     Base64Source,
+    Document,
     FileSource,
     Image,
     Message,
@@ -57,6 +58,8 @@ def _text(blocks: list, sep: str = "") -> str:
 
 
 def _check_part(block: Any, provider: str) -> None:
+    if isinstance(block, Document):
+        raise TranslationError(f"{provider} cannot accept document blocks")
     if isinstance(block, Opaque) and block.format != FORMAT:
         raise TranslationError(
             f"{provider} cannot accept a {block.format} {block.data.get('type')!r} block"

@@ -103,7 +103,9 @@ class HttpClients:
             client = clients.get(prefix)
             if client is None or client.is_closed:
                 client = clients[prefix] = httpx.AsyncClient(
-                    timeout=DEFAULT_TIMEOUT, limits=POOL_LIMITS, transport=config.get("transport")
+                    timeout=config.get("timeout", DEFAULT_TIMEOUT),
+                    limits=POOL_LIMITS,
+                    transport=config.get("transport"),
                 )
             return client
 

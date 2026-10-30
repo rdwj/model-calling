@@ -10,6 +10,7 @@ import copy
 import pytest
 
 from model_calling.core import (
+    Document,
     Image,
     Opaque,
     RedactedThinking,
@@ -151,7 +152,7 @@ def test_request_decodes_to_typed_blocks():
     assistant, results = req.messages[1].content, req.messages[2].content
     assert [type(b) for b in assistant] == [Thinking, RedactedThinking, ToolCall, ToolCall]
     assert assistant[0].signature == "sig-abc"
-    assert [type(b) for b in results] == [ToolResult, ToolResult, Image, Opaque, Text]
+    assert [type(b) for b in results] == [ToolResult, ToolResult, Image, Document, Text]
     assert (results[0].content_shorthand, results[0].is_error) == (True, None)
     assert (results[1].is_error, results[1].cache_control.ttl) == (True, None)
     assert results[4].cache_control is not None

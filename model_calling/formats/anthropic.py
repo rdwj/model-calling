@@ -17,6 +17,7 @@ from typing import Any, Callable, TypeVar
 from model_calling.core import (
     Base64Source,
     CacheControl,
+    Document,
     FileSource,
     Image,
     Message,
@@ -162,6 +163,7 @@ _BLOCK_IN = {
         thinking=r.pop("thinking"), signature=_take(r, "signature") or None
     ),
     "redacted_thinking": lambda r: RedactedThinking(data=r.pop("data")),
+    "document": lambda r: Document(data=dict(r)),
 }
 
 
@@ -200,6 +202,9 @@ def _block_out(block: Any) -> dict:
         }
     elif isinstance(block, RedactedThinking):
         fields |= {"type": "redacted_thinking", "data": block.data}
+    elif isinstance(block, Document):
+        # Document blocks pass through verbatim.
+        return _out(block, {"type": "document", **block.data})
     else:
         raise TranslationError(f"no Anthropic encoding for {type(block).__name__}")
     return _out(block, fields)
@@ -515,6 +520,8 @@ def response_from_internal(resp: Response) -> dict:
             "stop_reason": stop_reason_from_internal(resp.stop_reason),
             "stop_sequence": resp.stop_sequence,
             "usage": None if resp.usage is None else usage_from_internal(resp.usage),
+            "stop_details": resp.stop_details,
+            "container": resp.container,
         },
     )
     # The API always sends both, null when unset.

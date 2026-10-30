@@ -77,6 +77,17 @@ class RedactedThinking(Block):
     data: str
 
 
+class Document(Block):
+    """A document provided as context, containing structured source material.
+
+    Supported by Anthropic and vLLM Messages backends; others refuse it.
+    The source and other fields are kept as a dict since they're format-specific.
+    """
+
+    type: Literal["document"] = "document"
+    data: dict[str, Any]
+
+
 class Opaque(Block):
     """A block type the internal format doesn't model, kept verbatim.
 
@@ -102,6 +113,6 @@ class ToolResult(Block):
 
 
 ContentBlock = Annotated[
-    Text | Image | ToolCall | ToolResult | Thinking | RedactedThinking | Opaque,
+    Text | Image | ToolCall | ToolResult | Thinking | RedactedThinking | Document | Opaque,
     Field(discriminator="type"),
 ]
