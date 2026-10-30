@@ -41,7 +41,7 @@ print(response.choices[0].message.content)
 | Timeout | 300 seconds by default, a stalled stream included. Set it per call or per prefix. |
 | API formats | `messages()` (Anthropic Messages) and `responses()` (OpenAI Responses, stateless) sit alongside `completion()`, over every backend. |
 | Configuration | The library reads only backend API keys, the OpenAI organization ID, and any key variables an alias file names from the environment, and never reads `.env`. |
-| Gateway | Clients name models by alias, never by backend. Bodies may not carry `api_base`, `api_key`, or `drop_params`. JSON keys follow the SDK types' order. |
+| Gateway | Clients name models by alias, never by backend. Bodies may not carry `api_base`, `api_key`, `extra_headers`, or `drop_params`. JSON keys follow the SDK types' order. |
 
 The sections below take these one at a time. Separately, model-calling has no retries, fallbacks, load balancing, or cost tracking; see [Not provided](#not-provided).
 
@@ -88,7 +88,7 @@ The prefix picks the backend, and the rest of the string is the backend's own mo
 | `cohere/` | Cohere v2 | `cohere/command-a` |
 | `openrouter_responses/` | OpenRouter's Responses API | `openrouter_responses/mistralai/mistral-nemo` |
 
-The string splits at the first `/`, so OpenRouter names keep their own slash. A name with no prefix goes to Ollama. Any other prefix raises `BadRequestError` naming the supported ones, before a request is sent. There is no catch-all prefix for other OpenAI-compatible servers; use `openai/` or `vllm/` with `api_base` pointed at the server. OpenAI-compatible base URLs include `/v1`, as the `openai` SDK's do.
+The string splits at the first `/`, so OpenRouter names keep their own slash. A name with no prefix goes to Ollama. Any other prefix raises `BadRequestError` naming the supported ones, before a request is sent. There is no catch-all prefix for other OpenAI-compatible servers; use `openai/` or `vllm/` with `api_base` pointed at the server. OpenAI-compatible base URLs include `/v1`, as the `openai` SDK's do. The `ollama/` base URL is the server root, such as `http://localhost:11434`; one ending in `/v1` raises `BadRequestError`, because that path is Ollama's OpenAI-compatible API, which `openai/` serves.
 
 A response's `model` field carries the prefixed backend name, such as `ollama/qwen3:4b`.
 
@@ -184,6 +184,8 @@ With `stream=True`, `acompletion()` (and the other async methods) must still be 
 
 The library reads backend API keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`) and the OpenAI organization ID (`OPENAI_ORG_ID`) from the environment. With `Client(models=...)`, alias resolution also reads the variable a backend in the alias file names in `api_key_env`. The library reads no other variables. Backend URLs come from built-in defaults, the `config` dict passed to `Client`, or per-call `api_base`. Importing the library never reads a `.env` file; the gateway's `model-calling` command does, at startup.
 
+Every call method takes `extra_headers`, merged last over the auth header and the prefix's configured `headers`. The `OpenAI-Organization` header from `OPENAI_ORG_ID` goes only to calls on the `openai` prefix's configured base URL, so a call with `api_base` pointed at another OpenAI-compatible server doesn't send it. See [The organization header](api-reference.md#the-organization-header).
+
 ```python
 from model_calling import Client
 
@@ -209,7 +211,7 @@ models:
   chat: {backend: ollama, model: qwen3:4b}
 ```
 
-**Some body fields are refused.** A request body containing `api_base`, `api_key`, or `drop_params` gets a 400 naming the fields. Honoring them would let a client send the gateway's credentials to another host or override its parameter policy.
+**Some body fields are refused.** A request body containing `api_base`, `api_key`, `extra_headers`, or `drop_params` gets a 400 naming the fields. Honoring them would let a client send the gateway's credentials to another host or override its parameter policy.
 
 **Unsupported parameters are dropped by default.** Set `MODEL_CALLING_STRICT_PARAMS=true` for strict mode (see [above](#strict-by-default)).
 
