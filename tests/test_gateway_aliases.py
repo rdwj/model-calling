@@ -210,6 +210,11 @@ def test_dimension_check_reads_both_encodings(embedding, declared, refused):
             "the backend returned HTTP 404: The model `chat` does not exist.",
         ),
         (
+            "vllm returned HTTP 404 for POST http://vllm.internal:8000/v1/chat/completions: "
+            "The model `gpt-oss-20b` does not exist.",
+            "the backend returned HTTP 404 for POST the backend: The model `chat` does not exist.",
+        ),
+        (
             "cannot reach vllm at http://vllm.internal:8000/v1/chat/completions: refused",
             "cannot reach the backend at the backend: refused",
         ),

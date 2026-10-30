@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 300.0
 # The status a mid-stream StreamError maps to at the gateway.
 BAD_GATEWAY = 502
+# The status whose error message names the request URL.
+NOT_FOUND = 404
 # Long-lived streams hold their connections, so a pooled client must not cap
 # them; per-call clients never did. Idle connections are still reused.
 POOL_LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
@@ -311,7 +313,7 @@ class Provider(ABC):
                 client.post(url, json=body, headers=self.headers(), timeout=self.timeout), url
             )
             if resp.status_code >= 400:
-                raise self._backend_error(resp.status_code, _json_or_text(resp.content))
+                raise self._backend_error(resp.status_code, _json_or_text(resp.content), url)
             try:
                 return resp.json()
             except ValueError as e:
@@ -338,14 +340,15 @@ class Provider(ABC):
         last_event: StreamEvent | None = None
         try:
             async with self._client() as client:
+                url = self.endpoint()
                 req = client.build_request(
-                    "POST", self.endpoint(), json=body, headers=self.headers(), timeout=self.timeout
+                    "POST", url, json=body, headers=self.headers(), timeout=self.timeout
                 )
-                resp = await self._send(client.send(req, stream=True), self.endpoint())
+                resp = await self._send(client.send(req, stream=True), url)
                 try:
                     if resp.status_code >= 400:
                         raw = await resp.aread()
-                        raise self._backend_error(resp.status_code, _json_or_text(raw))
+                        raise self._backend_error(resp.status_code, _json_or_text(raw), url)
                     parser = self.stream_parser()
                     async for line in self._lines(resp):
                         events = self._unreadable_as_backend_error(lambda: parser.feed(line))
@@ -418,8 +421,13 @@ class Provider(ABC):
                 f"cannot reach {self.name} at {url}: {e}", provider=self.name
             ) from e
 
-    def _backend_error(self, status: int, body: Any) -> APIError:
-        message = f"{self.name} returned HTTP {status}: {self.error_message(body)}"
+    def _backend_error(self, status: int, body: Any, url: str) -> APIError:
+        """A 404 names the URL: the backend's own message (Ollama's is a bare
+        "404 page not found") rarely says whether the model or the path is
+        wrong. URLs carry no credentials; every provider sends its key in a
+        header. The gateway hides the URL from its clients."""
+        where = f" for POST {url}" if status == NOT_FOUND else ""
+        message = f"{self.name} returned HTTP {status}{where}: {self.error_message(body)}"
         logger.warning(message)
         return error_for_status(status, message, provider=self.name, body=body)
 

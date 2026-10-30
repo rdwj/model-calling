@@ -12,6 +12,7 @@ import pytest
 
 from model_calling.callbacks import Callback
 from model_calling.core import Message, MessageStart, Request, StreamError, Text
+from model_calling.core.embeddings import EmbeddingRequest
 from model_calling.errors import (
     APIConnectionError,
     APIError,
@@ -424,3 +425,60 @@ def test_default_configs_read_only_the_given_environment(environ, prefix, expect
 
     config = default_configs(environ)[prefix]
     assert expected.items() <= config.items()
+
+
+# Every prefix, with a base URL whose 404 message must name the request URL.
+NOT_FOUND_KEY = "key-that-must-not-leak"
+NOT_FOUND_CONFIGS = {
+    "anthropic": {"base_url": "https://anthropic.test/v1", "api_key": NOT_FOUND_KEY},
+    "cohere": {"base_url": "https://cohere.test/v2", "api_key": NOT_FOUND_KEY},
+    "ollama": {"base_url": "http://ollama.test"},
+    "openai": {"base_url": "https://openai.test/v1", "api_key": NOT_FOUND_KEY},
+    "openrouter": {"base_url": "https://openrouter.test/api/v1", "api_key": NOT_FOUND_KEY},
+    "openrouter_responses": {
+        "base_url": "https://openrouter.test/api/v1",
+        "api_key": NOT_FOUND_KEY,
+    },
+    "vllm": {"base_url": "http://vllm.test/v1"},
+}
+EMBEDDING_PREFIXES = ("cohere", "ollama", "openai", "vllm")
+
+
+def not_found_provider(prefix: str):
+    """A `prefix` provider whose backend answers every request with a bare 404."""
+    transport = httpx.MockTransport(lambda req: httpx.Response(404, text="404 page not found"))
+    config = {**NOT_FOUND_CONFIGS[prefix], "transport": transport}
+    return provider_for(f"{prefix}/m", {prefix: config}, HttpClients())
+
+
+async def drain(events):
+    return [e async for e in events]
+
+
+@pytest.mark.parametrize(
+    "prefix, call",
+    [(prefix, call) for prefix in sorted(NOT_FOUND_CONFIGS) for call in ("complete", "stream")]
+    + [(prefix, "embed") for prefix in EMBEDDING_PREFIXES],
+)
+async def test_a_404_names_the_request_url(prefix, call):
+    provider = not_found_provider(prefix)
+    if call == "embed":
+        url = provider.embedding_endpoint()
+        pending = provider.embed(EmbeddingRequest(model=f"{prefix}/m", input=["x"]))
+    else:
+        url = provider.endpoint()
+        req = request(stream=call == "stream")
+        req = req.model_copy(update={"model": f"{prefix}/m", "max_tokens": 8})
+        pending = provider.complete(req) if call == "complete" else drain(provider.stream(req))
+    with pytest.raises(NotFoundError) as err:
+        await pending
+    assert err.value.message == f"{prefix} returned HTTP 404 for POST {url}: 404 page not found"
+    # Keys travel in headers, so naming the URL can't leak one.
+    assert NOT_FOUND_KEY not in err.value.message
+
+
+async def test_other_statuses_leave_the_url_out(backend):
+    backend["handler"] = lambda req: httpx.Response(500, json={"error": "boom"})
+    with pytest.raises(InternalServerError) as err:
+        await make_provider(backend).complete(request())
+    assert err.value.message == "ollama returned HTTP 500: boom"

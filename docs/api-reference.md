@@ -389,6 +389,8 @@ Every `APIError` carries:
 - `status` (int | None): HTTP status code from the backend, or `None` if no usable response arrived
 - `body` (Any): the backend's raw error body, if one was received
 
+A `NotFoundError` from a backend names the request URL, as `ollama returned HTTP 404 for POST http://localhost:11434/api/chat: 404 page not found`, since a wrong base URL and a missing model can both produce a 404. URLs never carry credentials; every provider sends its key in a header. The gateway replaces the URL, like any backend address, before an error reaches its clients.
+
 When `status` is `None`, no backend response arrived. This happens for connection failures, timeouts, requests the library refuses before sending (strict mode rejections, malformed requests), and errors a backend reports inside a stream.
 
 ### UnsupportedParamsError

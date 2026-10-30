@@ -29,6 +29,8 @@ from tests.harness.responses_checks import RESPONSE_CHECKS
 from tests.harness.responses_scenarios import rejected_name
 from tests.harness.sdk import validate_embedding_response
 
+NOT_FOUND = 404
+
 
 def model(cell: Cell) -> str:
     return BACKENDS[cell.backend].model_for(SCENARIOS[cell.scenario])
@@ -64,6 +66,9 @@ async def check_backend_error(call, library, cell):
         await call(library, cell)
     assert err.value.status == recorded.status
     assert err.value.body == recorded.response_json
+    # A 404 names the URL, since a wrong path and a wrong model look alike.
+    if recorded.status == NOT_FOUND:
+        assert f"POST {recorded.url}" in err.value.message, err.value.message
 
 
 async def check_refused(call, library, cell):
