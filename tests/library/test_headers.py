@@ -9,6 +9,7 @@ import json
 
 import httpx
 import pytest
+import yaml
 
 import model_calling.library as library_module
 from model_calling.library import Client
@@ -17,6 +18,7 @@ from model_calling.providers import ORGANIZATION_HEADER
 ORG = "org-from-env"
 OPENAI_BASE = "https://api.openai.com/v1"
 ELSEWHERE = "https://api.elsewhere.test/openai/v1"
+GROQ = "https://api.groq.com/openai/v1"
 USER = [{"role": "user", "content": "x"}]
 
 COMPLETION = {
@@ -122,6 +124,36 @@ async def test_organization_follows_a_configured_base_url(backend):
     async with client_for(backend, base_url=ELSEWHERE) as client:
         await simple_call(client)
     assert backend.headers[ORGANIZATION_HEADER] == ORG
+
+
+@pytest.mark.parametrize(
+    "configured, alias_base, sends_org",
+    [
+        (None, OPENAI_BASE, True),
+        (ELSEWHERE, ELSEWHERE, True),
+        (None, GROQ, False),
+        (ELSEWHERE, GROQ, False),
+    ],
+    ids=["default_base", "configured_base", "elsewhere", "elsewhere_from_configured"],
+)
+async def test_alias_base_url_counts_as_a_per_call_api_base(
+    backend, tmp_path, configured, alias_base, sends_org
+):
+    """An alias target's `base_url` reaches the call as its `api_base`, so the
+    organization goes only where the prefix's configured base would send it."""
+    path = tmp_path / "models.yaml"
+    document = {
+        "backends": {"remote": {"provider": "openai", "base_url": alias_base}},
+        "models": {"chat": {"backend": "remote", "model": "m"}},
+    }
+    path.write_text(yaml.safe_dump(document))
+    openai = {"api_key": "k", "transport": backend.transport}
+    if configured is not None:
+        openai["base_url"] = configured
+    async with Client(models=path, config={"openai": openai}) as client:
+        await call(client, "completion", True, ("chat", USER), {})
+    assert str(backend.requests[0].url).startswith(alias_base)
+    assert backend.headers.get(ORGANIZATION_HEADER) == (ORG if sends_org else None)
 
 
 async def test_configured_headers_still_go_to_any_api_base(backend):
