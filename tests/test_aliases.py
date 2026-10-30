@@ -127,7 +127,34 @@ INVALID = {
         "backends.b.api_key_env must name an environment variable",
     ),
     "backend_not_mapping": ({"backends": {"b": "vllm"}}, "backends.b: expected a mapping"),
+    **{
+        f"ollama_openai_path_{name}": (
+            {"backends": {"b": {"provider": "ollama", "base_url": url}}},
+            "backends.b.base_url ends in /v1, but the ollama provider wants the server root; "
+            "use provider openai",
+        )
+        for name, url in [("bare", "http://ollama:11434/v1"), ("slash", "http://ollama:11434/v1/")]
+    },
 }
+
+
+@pytest.mark.parametrize(
+    "provider, base_url",
+    [
+        ("ollama", "http://ollama:11434"),
+        ("ollama", "http://ollama:11434/"),
+        ("vllm", "https://vllm.example/v1"),
+        ("openai", "http://ollama:11434/v1/"),
+    ],
+)
+def test_parse_accepts_each_providers_base_url(provider, base_url):
+    config = parse(
+        {
+            "backends": {"b": {"provider": provider, "base_url": base_url}},
+            "models": {"chat": {"backend": "b", "model": "m"}},
+        }
+    )
+    assert config.resolve("chat").api_base == base_url.rstrip("/")
 
 
 @pytest.mark.parametrize("document, message", INVALID.values(), ids=INVALID)
@@ -236,6 +263,17 @@ def test_store_keeps_the_last_good_config_and_logs_once(edits, caplog):
     edits(models("b"))
     assert target_model(store) == "ollama/b"
     assert store.error is None
+
+
+def test_store_keeps_the_config_through_a_reload_with_an_ollama_v1_url(edits):
+    store = AliasStore(str(edits.path))
+    edits(models("a"))
+    store.current()
+    edits(
+        {**models("b"), "backends": {"ollama": {"provider": "ollama", "base_url": "http://o/v1"}}}
+    )
+    assert target_model(store) == "ollama/a"
+    assert "backends.ollama.base_url ends in /v1" in store.error
 
 
 def test_store_keeps_the_config_when_the_file_disappears(edits):
