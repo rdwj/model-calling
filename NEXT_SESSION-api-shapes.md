@@ -6,108 +6,72 @@
 > https://github.com/users/rdwj/projects/11. Phase-to-issue map: Phase 8 =
 > #1, Phase 12 = #2, Phase 7 = #3 and #4, Phase 6 slice 2 = #5, Phase 9
 > follow-ups = #6, pilot = #7. Update the issues as work lands; this file
-> keeps the detailed arc. #1 (Phase 8) closed 2026-10-29.
+> keeps the detailed arc. #1 (Phase 8) closed 2026-10-29; #2–#5 merged to
+> `batch/0.3.0` (PR #9) the same evening.
 
-## Next: Session B, the overnight workflow (#2, #3, #4, #5)
+## Next: Release 0.3.0 and migrate sanicode off LiteLLM (#7)
 
-One unattended Workflow run that lands Phase 12, Phase 7 slices 1 and 2,
-and Phase 6 slice 2 on branch `batch/0.3.0` and opens a draft PR for rdwj
-to review in the morning. All judgment was settled with rdwj on
-2026-10-29 (the design below, plus the four calls after it); an agent that
-meets a question not answered here stops its stream and records the
-question instead of deciding it.
+The epic's end-state proof: sanicode's LLM client runs on model-calling
+0.3.0 with LiteLLM gone from its dependencies and its test suite green.
+The session starts by publishing 0.3.0 from Session B's merged work.
 
-Run with the Workflow tool; rdwj opts in by starting the session ("run
-the workflow"). Report the premise checks in "Session start protocol"
-below before launching.
+1. **Merge PR #9 and release 0.3.0** (needs rdwj at the publish step).
+   PR #9 (`batch/0.3.0`) carries #2–#5; merging it to `main` closes them.
+   Bump `model_calling/__init__.py` `__version__` to `0.3.0`, check README
+   line 20 and the migration guide name what 0.3.0 adds, then create the
+   GitHub release `v0.3.0`; `.github/workflows/workflow.yml` publishes to
+   PyPI on release (trusted publishing). Confirm `pip install
+   model-calling==0.3.0` in a fresh 3.11 venv runs an `acompletion` and an
+   `amessages` smoke call.
 
-**Streams** (each in its own git worktree off `main`, one implementer,
-then an independent reviewer that sees the code and the brief, not the
-implementer's conclusions):
+2. **#7: sanicode off LiteLLM** (rdwj/sanicode, private, checked out at
+   `~/Developer/sanicode`; work on a branch there, never its `main`).
+   LiteLLM lives in `src/sanicode/llm/client.py` (two `litellm.completion`
+   calls, lines ~245 and ~369), `src/sanicode/llm/providers.py`
+   (`ProviderInfo.litellm_prefix`), and tests `test_llm_client.py`,
+   `test_providers.py`, `test_metrics.py` (they patch
+   `sanicode.llm.client.litellm.completion`). Replace with
+   `model_calling.completion` / a `Client`, rename `litellm_prefix` to the
+   model-calling prefix, and swap `litellm>=1.83.0` for
+   `model-calling>=0.3.0,<0.4` (sanicode's own range style). Decided with
+   rdwj 2026-10-29:
+   - gemini, mistral, groq, together_ai route through model-calling's
+     `openai/` prefix at each one's OpenAI-compatible base URL;
+   - azure and bedrock are dropped from sanicode's registry (api-version
+     and SigV4 auth), with a note in sanicode's changelog/README;
+   - anthropic, openai, cohere, ollama, vllm, openshift_ai map to native
+     prefixes.
+   Any model-calling friction found becomes a model-calling issue (and a
+   0.3.x fix if small), recorded on #7.
 
-1. **Phase 6 slice 2, Cohere v2** (#5). Sonnet implements; Opus reviews,
-   checking the hand-built fixtures against the Cohere v2 API reference
-   independently (maker ≠ checker: the implementer wrote the fixtures).
-2. **Phase 12, offline leftovers** (#2). Two Sonnet implementers in
-   sequence within the stream (Anthropic provider items 1–2 and 4, then
-   the grid cells, timeout, and A's leftovers), one Sonnet reviewer.
-3. **Phase 7 slice 1, Responses ingress** (#3). Opus implements (the
-   mapping is the hard part); Sonnet reviews against the pinned `openai`
-   SDK types.
-4. **Phase 7 slice 2, Responses backend** (#4). Starts after stream 3
-   merges. Sonnet implements, Sonnet reviews. The only stream with live
-   spend.
+**Sequencing.** 1 before 2: sanicode pins the published release.
 
-**Per-item verifier:** the stream's grid cells and tests pass; full
-offline suite green with exactly 35 xfails plus any new strict xfail
-naming a later phase; flake8 (CI selection) 0; black clean. A reviewer's
-"must fix" findings go back to the implementer once; still failing after
-that, the stream stops.
-
-**Merge (sequential, deterministic code, not an agent's judgment):** onto
-branch `batch/0.3.0` in the order 1, 2, 3, then 4. Rebase each stream on
-the branch, run the full offline suite, and merge only if green. A
-conflict or red suite after one rebase-and-fix attempt stops that stream;
-later streams continue. At the end push `batch/0.3.0` and open a draft PR
-summarizing each stream's outcome. Never push to `main` (rdwj, 2026-10-29).
-
-**Budget and breakers:** live spend for the whole run is capped at $0.50
-(stream 4 only: Responses fixtures via OpenRouter with a
-mistral-nemo-class model and the live smoke). Check the ledger before
-each live step; at the cap, stream 4 lands offline-only and says so. No
-stream retries more than twice. About 8–10 agents; stay within that.
-
-**Exit predicate:** every stream either merged into `batch/0.3.0` with
-its issue's definition of done met, or stopped with a written reason; the
-draft PR exists; a session summary records which.
-
-**Morning:** rdwj reviews the draft PR. Issues close when the PR merges
-to `main`, not before.
-
-**Calls made with rdwj after Session A (2026-10-29):**
-- **Phase 12 item 7, strict drops: keep silent.** Chat Completions
-  backends drop Messages-only `context_management`, `metadata`, and
-  `cache_control` without naming them in `unsupported_params`; they're
-  hints with no Chat Completions meaning. Stream 2 adds a test pinning
-  that, for the OpenAI-compatible provider, from a request shaped like
-  Claude Code's (see `tests/acceptance/README.md`; never a captured body).
-- **Recording against host Ollama is allowed** for stream 2's drop-path
-  cells (Phase 12 item 3), via `uv run python -m tests.harness.record`
-  on `localhost:11434`. The first cell is `thinking_unsupported`
-  (qwen3-coder:30b, `tests/harness/scenarios.py`): the gateway's default
-  path must send the request without `think`. If Ollama is down, that
-  cell becomes a strict xfail naming Phase 12, and the stream says so.
-- **Budget = ledger delta.** Read the ledger total
-  (`tests.harness.ledger.total_spend()`) at the start; the cap is that
-  plus $0.50, `$0.05` placeholders counted. At 2026-10-29 close the total
-  was $0.357.
-- #1 is closed; Phase 8 needs nothing more from B.
+**Constraints for the session:**
+- sanicode tests: prefer driving a `model_calling.Client` with an
+  `httpx.MockTransport` (as model-calling's own tests do) over patching
+  `completion`; keep sanicode's existing test style where it has one.
+- Clean room still applies in sanicode: replace LiteLLM calls from
+  model-calling's API, never by reading LiteLLM internals.
+- sanicode's README and config wizard mention LiteLLM model strings;
+  update user-facing text along with the code.
 
 **Session start protocol:**
-- Premise checks (report before launching):
-  `main` matches `origin/main` at or after `4415535`; "Test Package"
-  green on it; `HOME=$(mktemp -d) uv run pytest` shows 1440 passed,
-  35 xfailed; `curl localhost:11434/api/tags` lists `qwen3-coder:30b`
-  (only stream 2 needs it); `OPENROUTER_API_KEY` set (only stream 4);
-  no `batch/0.3.0` branch exists yet locally or on origin (if one does,
-  stop and ask); record the starting ledger total.
-- Phase 12's brief carries Session A's leftovers from
-  `session-summaries/2026-10-29-api-shapes-phase8.md` ("Drift &
-  forward-collisions") and the calls above.
+- Premise checks (report before acting): PR #9 still open and green, or
+  already merged by rdwj; `main` = `origin/main`; no `v0.3.0` tag or PyPI
+  0.3.0 yet; offline suite on the merged `main` shows 2494 passed,
+  35 xfailed; sanicode clean on `main` at or after `f425bbd` (v0.12.3), and
+  its suite green before any change (record the count).
 - Rules with history:
-  - Never push to `main`; never loosen replay matching or a validator.
-    Known-wrong behavior is a strict xfail naming the fixing phase.
-  - The verifier's "exactly 35 xfails" means backend limitations get no
-    cell (`Scenario.only_backends`, as `thinking_unsupported` does), not
-    a new xfail. Only a real bug owned by a later phase may add one.
-  - Diff-review every agent's output against its brief: agents this epic
-    have edited files outside their scope.
-- Stop-and-ask (here: stop the stream and record why) before: any new
-  dependency; live spend past the cap; retiring or renaming an endpoint;
-  touching another stream's files after its merge.
-- Close ritual: the draft PR body lists each stream's outcome; a session
-  summary records the same; then `/plan-next-session` (next is the
-  Later row: #6 and #7, which need rdwj).
+  - Implementers this epic decided things their brief didn't cover (a
+    spend cap, a backend refusal). Anything not decided above stops and
+    asks.
+  - Never push to either repo's `main`; sanicode lands by PR.
+- Stop-and-ask before: creating the `v0.3.0` release (publishes to PyPI;
+  irreversible); dropping any sanicode provider beyond azure and bedrock;
+  any change to sanicode's public CLI flags or config file format.
+- Close ritual: session summary; record sanicode's before/after test
+  counts; update #7 and #8; then `/plan-next-session` (left: #6, which
+  needs a vLLM server, a remote amd64 build, and a cluster).
 
 ## Remaining epic phases
 
@@ -126,7 +90,8 @@ tool-using task through the gateway. 0.2.0 shipped the library and gateway
 without Responses, Cohere, or the Claude Code proof; the epic ends with
 0.3.0 and sanicode migrated off LiteLLM.
 
-Done: Phases 1–5, 6 slice 1, 8, 10, and 11 (see the "What landed" ledger and
+Done: Phases 1–8, 10, 11, and 12; 6 slice 2, 7, and 12 are on
+`batch/0.3.0`, pending PR #9 (see the "What landed" ledger and
 `session-summaries/`). Phase numbers stay stable because code comments,
 xfail reasons, and summaries cite them, so the order below is not numeric.
 Re-planned 2026-10-29 after the first reconciliation
@@ -139,10 +104,12 @@ offline leftovers given an owner as Phase 12.
 | Session | Phases (issues) | Mode |
 |---|---|---|
 | A, evening of 2026-10-29 | 8 (#1) | Interactive; done |
-| B, overnight after A | 12 (#2), 7 slices 1–2 (#3, #4), 6 slice 2 (#5) | Workflow, unattended; the "Next" slice above |
-| Later | 9 follow-ups (#6), pilot (#7), then 0.3.0 | Needs rdwj or outside infrastructure |
+| B, overnight after A | 12 (#2), 7 slices 1–2 (#3, #4), 6 slice 2 (#5) | Workflow, then finished interactively; done |
+| C | 0.3.0 release, pilot (#7) | Interactive; the "Next" slice above |
+| Later | 9 follow-ups (#6) | Needs a vLLM server, a remote build, and a cluster |
 
-A finished, so B is unblocked.
+Order changed 2026-10-29: 0.3.0 releases before the pilot so sanicode pins
+a published version; pilot friction ships as 0.3.x.
 
 ### Phase 8: Claude Code acceptance (done 2026-10-29)
 
@@ -311,7 +278,25 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-29): Phase 8, Claude Code acceptance
+## What landed last session (2026-10-29): Session B, Phases 6 slice 2, 7, and 12
+
+All four streams merged onto `batch/0.3.0` (draft PR #9), `2d38568..0dc76fa`;
+offline 2494 passed, 35 xfailed. The unattended Workflow merged the
+Responses ingress; Phase 12, the Responses backend, and Cohere stopped
+under their rules and were finished interactively (Cohere redone by a
+fresh Opus pass after its first pass failed spec review). Live spend: ledger
+delta $0.5502, $0.55 of it unknown-cost placeholders. rdwj kept Cohere's
+design calls as built. Record:
+`session-summaries/2026-10-29-api-shapes-session-b.md`.
+
+**Carried (no owner yet; pick up in "If blocked"):** Cohere review
+should-fix items (tool results as bare strings, fixture test depth,
+`fn["name"]` KeyError, 96-text embed limit); `openrouter_responses`
+refusing `parallel_tool_calls` from one model's behavior; Responses live
+test cost via `usage.cost`; `library/client.py` and
+`tests/harness/scenarios.py` over the size guideline.
+
+## What landed earlier (2026-10-29): Phase 8, Claude Code acceptance
 
 Phase 8 done, `95e1f34..4415535`: Claude Code completes a tool-using task
 through the gateway on Ollama, Claude via the anthropic provider, and
@@ -495,10 +480,12 @@ of 23 files.
 
 ## If blocked
 
-- The Workflow tool unavailable, or rdwj not opting in: run the streams
-  by hand in the same order, one per session, starting with stream 1
-  (Cohere, offline) or stream 2 (Phase 12, offline).
-- OpenRouter down or the key missing: stream 4 lands offline-only and
-  says so; streams 1–3 need no network.
-- Host Ollama down: stream 2's recorded cell becomes a strict xfail
-  naming Phase 12; everything else in B is unaffected.
+- PyPI or the release workflow fails: fix forward in model-calling
+  (that's the session), or pilot sanicode against
+  `model-calling @ git+https://github.com/rdwj/model-calling@<sha>` and
+  repin once 0.3.0 is out.
+- sanicode blocked: take the Session B carries above, one commit each,
+  offline, starting with Cohere's tool-result shape and the Responses live
+  test's `usage.cost`.
+- Then #6's offline item: the "Migrating from LiteLLM" doc (Phase 9
+  slice 1 item 1).
