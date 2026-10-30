@@ -17,7 +17,7 @@ The library depends on httpx and pydantic, pinned exactly (`httpx==0.28.1`, `pyd
 
 ## Status
 
-0.2.0 is the first release of the rewritten library. It covers Chat Completions and Messages, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, and Anthropic, plus the alias-routed gateway. The next release adds the stateless OpenAI Responses API, as ingress and as an OpenRouter backend, and a Cohere v2 backend. Cohere has no live coverage: its tests replay fixtures written by hand from Cohere's API reference. Not yet available: retries and fallbacks. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
+0.3.0 covers Chat Completions, Messages, and the stateless OpenAI Responses API, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, Anthropic, and Cohere v2, plus the alias-routed gateway. Responses also works as a backend, through OpenRouter. Cohere has no live coverage: its tests replay fixtures written by hand from Cohere's API reference. Not yet available: retries and fallbacks. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
 
 ## Quick start
 
@@ -148,7 +148,7 @@ except model_calling.APIError as e:
     print(e.provider, e.status, e.message)
 ```
 
-Requests time out after 300 seconds, including a stalled stream; 0.2.0 has no setting to change that.
+Requests time out after 300 seconds by default, including a stalled stream. Set `timeout` (in seconds) per prefix in the client's config, or pass it to a single call.
 
 ## Gateway
 

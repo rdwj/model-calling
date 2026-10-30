@@ -24,6 +24,7 @@ client = Client(
 - `base_url` (str): API endpoint for this backend
 - `api_key` (str): authentication key
 - `headers` (dict): additional HTTP headers
+- `timeout` (float): request timeout in seconds, including a stalled stream (default 300)
 - `callbacks` (list): callbacks that run for this prefix only, after the client-wide ones
 - `transport` (httpx transport): mostly for tests
 
@@ -257,6 +258,7 @@ All call methods accept:
 - `api_base`: override the backend URL for this call
 - `api_key`: override the API key for this call
 - `drop_params`: override the client's `drop_params` setting for this call
+- `timeout`: override the request timeout, in seconds, for this call
 
 These take precedence over the client's config.
 
