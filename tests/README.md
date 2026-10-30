@@ -115,6 +115,12 @@ for an endpoint reached through a port-forward. Native request bodies come
 from each backend's provider, so recordings match what the gateway sends.
 Run gitleaks on `tests/fixtures/` before committing new recordings.
 
+Backends marked `hand_built` (`cohere`, `cohere_embed`) have no key to
+record with, so the recorder skips them. Their request bodies still come
+from the provider; their responses are written by hand from the backend's
+API reference, and `tests/test_cohere_fixtures.py` checks both halves
+against the field lists in that reference.
+
 ## Live tests and the spend ledger
 
 Live tests and the recorder append each paid OpenRouter call's cost to

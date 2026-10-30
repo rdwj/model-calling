@@ -18,6 +18,7 @@ from tests.harness.scenarios import (
     EMBEDDING_BACKENDS,
     EMBEDDING_SCENARIOS,
     GRID_BACKENDS,
+    CAPITAL_SCHEMA,
     MESSAGES,
     RESPONSES,
     SCENARIOS,
@@ -232,6 +233,32 @@ NATIVE_FIELDS = [
         ("tools", 1, "input_schema"),
         {"type": "object", "properties": {}},
     ),
+    # And Cohere v2 in its own (https://docs.cohere.com/reference/chat).
+    ("tool_required", ("cohere",), ("tool_choice",), "REQUIRED"),
+    ("tool_strict", ("cohere",), ("strict_tools",), True),
+    (
+        "tool_parameterless",
+        ("cohere",),
+        ("tools", 1, "function", "parameters"),
+        {"type": "object", "properties": {}},
+    ),
+    ("max_completion_tokens", ("cohere",), ("max_tokens",), 256),
+    ("max_completion_tokens", ("cohere",), ("seed",), SEED),
+    ("system_blocks", ("cohere",), ("messages", 0, "role"), "system"),
+    ("system_blocks", ("cohere",), ("stop_sequences",), ["###"]),
+    ("thinking", ("cohere",), ("thinking",), {"type": "enabled", "token_budget": 1024}),
+    (
+        "json_schema",
+        ("cohere",),
+        ("response_format",),
+        {"type": "json_object", "json_schema": CAPITAL_SCHEMA},
+    ),
+    (
+        "tool_error",
+        ("cohere",),
+        ("messages", 1, "tool_calls", 0, "function", "arguments"),
+        '{"location": "Paris"}',
+    ),
 ]
 # Ollama takes sampling settings under `options`.
 OLLAMA_OPTION_FIELDS = {"seed": "seed", "max_tokens": "num_predict"}
@@ -368,3 +395,12 @@ def test_recorder_reads_vllm_base_url_as_the_api_root(monkeypatch, backend, base
     monkeypatch.setenv("VLLM_BASE_URL", base_url)
     monkeypatch.setenv("VLLM_MODEL", "deployed-model")
     assert _target(ALL_BACKENDS[backend]).url == expected
+
+
+def test_recorder_skips_hand_built_backends(capsys):
+    """No key exists for a hand-built backend; the recorder must not send
+    its requests (unauthenticated) and save the refusal as a fixture."""
+    from tests.harness.record import main
+
+    assert main(["--backend", "cohere", "--backend", "cohere_embed", "--force"]) == 0
+    assert capsys.readouterr().out.count("hand-built fixtures") == 2

@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "backend": "cohere",
+    "scenario": "thinking",
+    "hand_built_from": "https://docs.cohere.com/reference/chat",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/chat",
+    "json": {
+      "model": "command-a-reasoning-08-2025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 17 * 23? Reply with just the number."
+        }
+      ],
+      "max_tokens": 2048,
+      "thinking": {
+        "type": "enabled",
+        "token_budget": 1024
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "f1e2d3c4-b5a6-4978-8a9b-0c1d2e3f4a5b",
+      "finish_reason": "COMPLETE",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "17 * 23 = 17 * 20 + 17 * 3 = 340 + 51 = 391."
+          },
+          {
+            "type": "text",
+            "text": "391"
+          }
+        ]
+      },
+      "usage": {
+        "billed_units": {
+          "input_tokens": 14,
+          "output_tokens": 33
+        },
+        "tokens": {
+          "input_tokens": 505,
+          "output_tokens": 33
+        }
+      }
+    }
+  }
+}

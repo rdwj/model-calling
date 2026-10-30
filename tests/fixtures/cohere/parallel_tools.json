@@ -1,0 +1,84 @@
+{
+  "meta": {
+    "backend": "cohere",
+    "scenario": "parallel_tools",
+    "hand_built_from": "https://docs.cohere.com/reference/chat",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/chat",
+    "json": {
+      "model": "command-a-03-2025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the get_weather tool to look up the weather in Paris and in Tokyo. Call it once for each city, in the same turn."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            },
+            "description": "Get the current weather for a city"
+          }
+        }
+      ],
+      "max_tokens": 1024,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "e2d4f6a8-1b3c-4d5e-9f7a-6b8c0d2e4f61",
+      "finish_reason": "TOOL_CALL",
+      "message": {
+        "role": "assistant",
+        "tool_plan": "I will look up the weather in Paris and in Tokyo.",
+        "tool_calls": [
+          {
+            "id": "get_weather_6hk1v9r2qa3m",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"Paris\"}"
+            }
+          },
+          {
+            "id": "get_weather_t0c8x5n4jw7e",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"Tokyo\"}"
+            }
+          }
+        ]
+      },
+      "usage": {
+        "billed_units": {
+          "input_tokens": 48,
+          "output_tokens": 38
+        },
+        "tokens": {
+          "input_tokens": 1048,
+          "output_tokens": 71
+        }
+      }
+    }
+  }
+}
