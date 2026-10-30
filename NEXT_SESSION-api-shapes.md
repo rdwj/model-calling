@@ -11,11 +11,11 @@
 > 0.3.0 released to PyPI 2026-10-29 (`9c46d41`); the sanicode pilot
 > (rdwj/sanicode#243) merged and #7 closed; friction filed as #10 and #11.
 > Session D (2026-10-30) closed #6, #10, #11, and #8 and released 0.3.1.
-> **The epic is done.** What remains is the `/retro`.
+> **The epic is done**; retro written, follow-ups #13–#17.
 
 ## Next: retro, then pick the next epic
 
-Every epic issue is closed and 0.3.1 is on PyPI. Run `/retro` on the epic, then `/plan-epics`.
+Every epic issue is closed and 0.3.1 is on PyPI. The retro is done (`retrospectives/2026-10-30_api-shapes-epic/`); its follow-ups are #13–#17. Next: `/plan-epics`.
 The out-of-scope list below and the Session B carries ("What landed" below) are the
 candidates. sanicode's follow-up PR (rdwj/sanicode#244) awaits rdwj's merge.
 
