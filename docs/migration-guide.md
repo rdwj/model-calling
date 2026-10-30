@@ -28,7 +28,7 @@ response = model_calling.completion(
 print(response.choices[0].message.content)
 ```
 
-`completion`, `acompletion`, `embedding`, and `aembedding` exist at module level and run on a default `Client` created on first use. For your own configuration, callbacks, or control over when connections close, create a `Client` and call the same methods on it.
+`completion`, `messages`, `responses`, and `embedding`, with their async forms `acompletion`, `amessages`, `aresponses`, and `aembedding`, exist at module level and run on a default `Client` created on first use. For your own configuration, callbacks, or control over when connections close, create a `Client` and call the same methods on it.
 
 ### Differences at a glance
 
@@ -40,7 +40,7 @@ print(response.choices[0].message.content)
 | Errors | One hierarchy rooted at `model_calling.APIError`, named after the `openai` SDK's exceptions. |
 | Timeout | 300 seconds by default, a stalled stream included. Set it per call or per prefix. |
 | API formats | `messages()` (Anthropic Messages) and `responses()` (OpenAI Responses, stateless) sit alongside `completion()`, over every backend. |
-| Configuration | The library reads only backend API keys from the environment and never reads `.env`. |
+| Configuration | The library reads only backend API keys and the OpenAI organization ID from the environment, and never reads `.env`. |
 | Gateway | Clients name models by alias, never by backend. Bodies may not carry `api_base`, `api_key`, or `drop_params`. JSON keys follow the SDK types' order. |
 | Not provided | Retries, fallbacks, load balancing, and cost tracking. |
 
@@ -48,7 +48,7 @@ The sections below take these one at a time.
 
 ### Strict by default
 
-The library refuses a parameter the backend cannot honor. Before anything is sent, the call raises `UnsupportedParamsError`, a subclass of `BadRequestError`, and its `params` attribute names what was refused. Ollama, for example, cannot force a tool call:
+The library refuses a parameter the backend cannot honor. Before the request is sent, the call raises `UnsupportedParamsError`, a subclass of `BadRequestError`, and its `params` attribute names what was refused. Ollama, for example, cannot force a tool call:
 
 ```python
 import model_calling
@@ -71,7 +71,7 @@ except model_calling.UnsupportedParamsError as e:
 
 Pass `drop_params=True` to a single call, or to `Client(drop_params=True)` for every call, and the request goes out without the parameter. A caching hint (`cache_control`) changes no output, so it is always dropped silently, even in strict mode.
 
-Some requests are refused whatever `drop_params` says, because no backend could express them: `n` greater than 1, the deprecated `functions` and `function_call` fields (send `tools`), and `top_k` on `openai/` models. These raise `BadRequestError` with `status=None`.
+Some requests are refused whatever `drop_params` says, because the library or that backend cannot express them: `n` greater than 1, the deprecated `functions` and `function_call` fields (send `tools`), and `top_k` on `openai/` models. These raise `BadRequestError` with `status=None`.
 
 The gateway takes the opposite default. It drops unsupported parameters unless its environment sets `MODEL_CALLING_STRICT_PARAMS=true`, in which case the client gets a 400 naming the parameter.
 
@@ -91,7 +91,9 @@ The prefix picks the backend, and the rest of the string is the backend's own mo
 
 The string splits at the first `/`, so OpenRouter names keep their own slash. A name with no prefix goes to Ollama. Any other prefix raises `BadRequestError` naming the supported ones, before a request is sent. There is no catch-all prefix for other OpenAI-compatible servers; use `openai/` or `vllm/` with `api_base` pointed at the server. OpenAI-compatible base URLs include `/v1`, as the `openai` SDK's do.
 
-A response's `model` field carries the prefixed name you called, such as `ollama/qwen3:4b`.
+A response's `model` field carries the prefixed backend name, such as `ollama/qwen3:4b`.
+
+The library can also read the gateway's alias file: with `Client(models="model-calling.yaml")`, a name the file defines is called on its target, and any other name is routed by prefix (see [Model Aliases](advanced.md#model-aliases)). A response to an alias call carries the backend name in `model`, not the alias.
 
 ### Typed responses
 
@@ -181,7 +183,7 @@ With `stream=True`, `acompletion()` (and the other async methods) must still be 
 
 ### Configuration and environment
 
-The library reads backend API keys from the environment (`OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`) and nothing else. Backend URLs come from built-in defaults, the `config` dict passed to `Client`, or per-call `api_base`. Importing the library never reads a `.env` file; the gateway's `model-calling` command does, at startup.
+The library reads backend API keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`) and the OpenAI organization ID (`OPENAI_ORG_ID`) from the environment, and nothing else. Backend URLs come from built-in defaults, the `config` dict passed to `Client`, or per-call `api_base`. Importing the library never reads a `.env` file; the gateway's `model-calling` command does, at startup.
 
 ```python
 from model_calling import Client
