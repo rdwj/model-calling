@@ -226,7 +226,7 @@ The library does not retry, fall back to another model, balance load, or track c
 
 A typical workflow starts with Ollama for local iteration, moves to a hosted service (OpenAI, OpenRouter) or vLLM on OpenShift for shared testing, and deploys to production with environment-specific model names and authentication.
 
-The library reads only backend API keys (`OPENAI_API_KEY`, `OPENAI_ORG_ID`, `OPENROUTER_API_KEY`) from the environment. It never reads a `.env` file. The gateway loads `.env` with python-dotenv at startup. Both the library and the gateway support per-prefix configuration with `base_url`, `api_key`, and `headers`.
+The library reads from the environment only the variables listed under [Configuration and environment](#configuration-and-environment). It never reads a `.env` file. The gateway loads `.env` with python-dotenv at startup. The library's per-prefix `config` takes `base_url`, `api_key`, `headers`, and `timeout`. The gateway configures a backend through its alias file (`provider`, `base_url`, and `api_key_env`) and a few environment variables, and has no per-backend headers setting.
 
 ### Scenario: Ollama to vLLM on OpenShift
 
@@ -251,7 +251,7 @@ client.close()
 import os
 from model_calling import Client
 
-# Read your app's own config (the library itself only reads API key env vars)
+# Read your app's own config (the library reads only its own few env vars)
 vllm_url = os.environ["VLLM_BASE_URL"]  # e.g. "https://vllm.apps.cluster.example.com/v1"
 vllm_token = os.environ["VLLM_API_KEY"]
 
@@ -303,7 +303,7 @@ response = client.completion(
 
 ### Environment-based configuration
 
-Applications that run in dev, test, and prod can read their own environment variables and build the client config from them. The library itself only reads the provider API key variables listed above.
+Applications that run in dev, test, and prod can read their own environment variables and build the client config from them. The library itself reads only the environment variables listed under [Configuration and environment](#configuration-and-environment).
 
 ```python
 import os
