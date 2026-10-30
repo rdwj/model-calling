@@ -17,7 +17,7 @@ The library depends on httpx and pydantic, pinned exactly (`httpx==0.28.1`, `pyd
 
 ## Status
 
-0.2.0 is the first release of the rewritten library. It covers Chat Completions and Messages, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, and Anthropic, plus the alias-routed gateway. Not yet available: the OpenAI Responses API, retries and fallbacks. The Cohere v2 backend has no live coverage: its tests replay fixtures written by hand from Cohere's API reference. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
+0.2.0 is the first release of the rewritten library. It covers Chat Completions and Messages, sync and async with streaming, over Ollama, vLLM, OpenAI, OpenRouter, and Anthropic, plus the alias-routed gateway. The next release adds the stateless OpenAI Responses API, as ingress and as an OpenRouter backend, and a Cohere v2 backend. Cohere has no live coverage: its tests replay fixtures written by hand from Cohere's API reference. Not yet available: retries and fallbacks. Upgrading from 0.1.x involves breaking changes; see the [migration guide](https://github.com/rdwj/model-calling/blob/main/docs/migration-guide.md). Remaining work is tracked in [#8](https://github.com/rdwj/model-calling/issues/8).
 
 ## Quick start
 
