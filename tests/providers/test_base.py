@@ -28,7 +28,7 @@ from model_calling.errors import (
 )
 from model_calling.gateway import chat_completions, client_status
 from model_calling.library import Client
-from model_calling.providers import HttpClients, OllamaProvider, provider_for
+from model_calling.providers import HttpClients, OllamaProvider, merge_headers, provider_for
 
 DONE_LINE = json.dumps(
     {"model": "m", "message": {"role": "assistant", "content": ""}, "done": True}
@@ -393,6 +393,31 @@ def test_config_headers_go_on_every_request():
     }
 
 
+def test_config_organization_goes_under_config_headers():
+    config = {"base_url": "https://api.openai.test/v1", "organization": "org-1"}
+    assert provider_for("openai/gpt-5", {"openai": config}).headers() == {
+        "OpenAI-Organization": "org-1"
+    }
+    config["headers"] = {"openai-organization": "org-2"}
+    assert provider_for("openai/gpt-5", {"openai": config}).headers() == {
+        "openai-organization": "org-2"
+    }
+
+
+@pytest.mark.parametrize(
+    "layers, expected",
+    [
+        (({"a": "1"}, None, {"b": "2"}), {"a": "1", "b": "2"}),
+        (({"Authorization": "x"}, {"authorization": "y"}), {"authorization": "y"}),
+        (({"A": "1", "B": "2"}, {"a": "3"}), {"a": "3", "B": "2"}),
+        ((), {}),
+    ],
+    ids=["disjoint", "case_insensitive", "keeps_others", "none"],
+)
+def test_merge_headers(layers, expected):
+    assert merge_headers(*layers) == expected
+
+
 def test_http_clients_replace_a_client_from_another_loop():
     import asyncio
 
@@ -416,8 +441,8 @@ async def test_http_clients_reuse_on_the_same_loop():
     [
         ({}, "ollama", {"base_url": "http://localhost:11434"}),
         ({"OPENROUTER_API_KEY": "k"}, "openrouter", {"api_key": "k"}),
-        ({"OPENAI_ORG_ID": "org"}, "openai", {"headers": {"OpenAI-Organization": "org"}}),
-        ({}, "openai", {"api_key": "", "headers": {}}),
+        ({"OPENAI_ORG_ID": "org"}, "openai", {"organization": "org"}),
+        ({}, "openai", {"api_key": "", "organization": ""}),
     ],
 )
 def test_default_configs_read_only_the_given_environment(environ, prefix, expected):

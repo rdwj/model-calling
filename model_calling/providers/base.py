@@ -65,6 +65,17 @@ _STREAM_ERROR_TYPES: dict[str | None, type[APIError]] = {
 }
 
 
+def merge_headers(*layers: Mapping[str, str] | None) -> dict[str, str]:
+    """`layers` merged in order, a later one winning. HTTP header names are
+    case-insensitive, so `Authorization` replaces `authorization` rather than
+    sending both; the later spelling is kept."""
+    merged: dict[str, tuple[str, str]] = {}
+    for layer in layers:
+        for name, value in (layer or {}).items():
+            merged[name.lower()] = (name, value)
+    return dict(merged.values())
+
+
 def new_id(prefix: str = "gen-") -> str:
     """A unique id for a response or tool call the backend didn't name."""
     return f"{prefix}{uuid.uuid4().hex}"
@@ -179,7 +190,7 @@ class Provider(ABC):
 
     def headers(self) -> dict[str, str]:
         auth = {"authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        return {**auth, **self.extra_headers}
+        return merge_headers(auth, self.extra_headers)
 
     @abstractmethod
     def build_request(self, request: Request) -> dict:
