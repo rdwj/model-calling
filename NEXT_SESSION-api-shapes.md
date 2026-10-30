@@ -8,75 +8,104 @@
 > follow-ups = #6, pilot = #7. Update the issues as work lands; this file
 > keeps the detailed arc. #1 (Phase 8) closed 2026-10-29; #2–#5 closed the
 > same evening when PR #9 merged to `main` (`f9806bb`).
-> 0.3.0 released to PyPI 2026-10-29 (`9c46d41`); the sanicode pilot is
-> rdwj/sanicode#243, awaiting merge; friction filed as #10 and #11. Record:
-> `session-summaries/2026-10-29-api-shapes-session-c.md`.
+> 0.3.0 released to PyPI 2026-10-29 (`9c46d41`); the sanicode pilot
+> (rdwj/sanicode#243) merged and #7 closed; friction filed as #10 and #11.
+> Left: #6, #10, #11 (milestone 0.3.0), planned below as Session D.
 
-## Next: Release 0.3.0 and migrate sanicode off LiteLLM (#7)
+## Next: Session D, close the epic (#10, #11, #6) as 0.3.1
 
-The epic's end-state proof: sanicode's LLM client runs on model-calling
-0.3.0 with LiteLLM gone from its dependencies and its test suite green.
-The session starts by publishing 0.3.0 from Session B's merged work.
+Fix the two pilot friction issues and write the LiteLLM migration doc in an
+unattended Workflow, then run #6's cluster checks interactively with rdwj
+and, on his go, release 0.3.1. When this lands, every epic issue is closed.
 
-1. **Release 0.3.0** (needs rdwj at the publish step). PR #9 is already
-   merged (`f9806bb`, closing #2–#5), so `main` holds everything 0.3.0
-   ships. Bump `model_calling/__init__.py` `__version__` to `0.3.0`,
-   check README line 20 and the migration guide name what 0.3.0 adds,
-   then create the
-   GitHub release `v0.3.0`; `.github/workflows/workflow.yml` publishes to
-   PyPI on release (trusted publishing). Confirm `pip install
-   model-calling==0.3.0` in a fresh 3.11 venv runs an `acompletion` and an
-   `amessages` smoke call.
+**Part 1: Workflow (unattended, offline, no live spend).** Three streams off
+`batch/0.3.1` (branched from `main`), each on its own `stream/*` branch in a
+worktree: Opus implements, a separate agent reviews (Sonnet for 1 and 2,
+Opus for 3).
 
-2. **#7: sanicode off LiteLLM** (rdwj/sanicode, private, checked out at
-   `~/Developer/sanicode`; work on a branch there, never its `main`).
-   LiteLLM lives in `src/sanicode/llm/client.py` (two `litellm.completion`
-   calls, lines ~245 and ~369), `src/sanicode/llm/providers.py`
-   (`ProviderInfo.litellm_prefix`), and tests `test_llm_client.py`,
-   `test_providers.py`, `test_metrics.py` (they patch
-   `sanicode.llm.client.litellm.completion`). Replace with
-   `model_calling.completion` / a `Client`, rename `litellm_prefix` to the
-   model-calling prefix, and swap `litellm>=1.83.0` for
-   `model-calling>=0.3.0,<0.4` (sanicode's own range style). Decided with
-   rdwj 2026-10-29:
-   - gemini, mistral, groq, together_ai route through model-calling's
-     `openai/` prefix at each one's OpenAI-compatible base URL;
-   - azure and bedrock are dropped from sanicode's registry (api-version
-     and SigV4 auth), with a note in sanicode's changelog/README;
-   - anthropic, openai, cohere, ollama, vllm, openshift_ai map to native
-     prefixes.
-   Any model-calling friction found becomes a model-calling issue (and a
-   0.3.x fix if small), recorded on #7.
+1. **#10 — Ollama `/v1` base URL fails with a bare 404** (decided 2026-10-29:
+   refuse + URL in 404s). The `ollama` prefix raises `BadRequestError` up
+   front when `base_url` ends in `/v1`, saying the prefix wants the server
+   root and `openai/` serves Ollama's OpenAI-compatible endpoint. Every
+   provider's 404 `APIError` message names the request URL (scrub nothing
+   secret: URLs carry no keys here, but check the gateway's error scrubbing
+   still hides backend URLs from gateway clients). Grid cells or tests for
+   both; API reference updated. `providers/ollama.py`, `providers/base.py`.
+2. **#11 — `OPENAI_ORG_ID` header follows `api_base`** (decided 2026-10-29:
+   both). The default `OpenAI-Organization` header goes only to calls on the
+   prefix's configured base URL, not a per-call `api_base`; and every call
+   method (sync and async: completion, messages, responses, embedding, and
+   the module-level wrappers) takes `extra_headers`, merged last, as the
+   openai SDK names it. Tests assert the wire headers. `library/client.py`
+   is already ~580 lines: move code out (e.g. to `library/_calls.py`) rather
+   than grow it.
+3. **#6 item 1 — "Migrating from LiteLLM" doc.** Fold the "Upgrading from
+   0.1.x" section of `docs/migration-guide.md` into a guide for LiteLLM users
+   listing every intentional difference (strict by default vs drop_params,
+   prefixes, typed SDK responses, error hierarchy, gateway aliases and the
+   body fields it refuses, JSON key order, timeout). Clean room: names and
+   call patterns only, from model-calling's own code and docs; do not read
+   LiteLLM source or docs (CONTRIBUTING "Independent Implementation"). Every
+   claim about model-calling cites code or a test; the reviewer checks each.
+   Prose follows rdwj's house style (`writing-voice` skill).
 
-**Sequencing.** 1 before 2: sanicode pins the published release.
+**Part 2: Interactive (rdwj present).**
+
+4. **#6 items 2–4.** Find the existing vLLM server read-only (`oc get
+   inferenceservice,servingruntime,deploy -A --context=<ctx>` on a context
+   rdwj confirms), check its version serves `/v1/messages`, and run the
+   `anthropic` provider against it (record the result; add a `-m live`-style
+   test only if rdwj wants it). Then, each after asking: remote amd64 build
+   on ec2-dev-2 via the `remote-builder` agent, the compose alias-swap check
+   on that image, and the ConfigMap hot-reload check (`docs/advanced.md`
+   "Model Aliases") in a namespace rdwj names.
+5. **Release 0.3.1** from `main` once `batch/0.3.1` merges: bump, release
+   notes, publish, fresh-venv smoke (pip, not uv, for the first minutes).
+   Then drop sanicode's two workarounds (Ollama `/v1` strip, org header
+   clearing) on a sanicode branch by PR, pinned `model-calling>=0.3.1,<0.4`.
+
+**Sequencing.** Streams 1–3 run in parallel; merge order 2, 1, 3 (2 touches
+the most shared code). Part 2 starts after the draft PR is green.
 
 **Constraints for the session:**
-- sanicode tests: prefer driving a `model_calling.Client` with an
-  `httpx.MockTransport` (as model-calling's own tests do) over patching
-  `completion`; keep sanicode's existing test style where it has one.
-- Clean room still applies in sanicode: replace LiteLLM calls from
-  model-calling's API, never by reading LiteLLM internals.
-- sanicode's README and config wizard mention LiteLLM model strings;
-  update user-facing text along with the code.
+- Offline only in Part 1: no `-m live`, no network beyond package installs.
+- Strict xfails stay the bug list; no new xfails without a named owner.
+- Workflow size: one implementer and one reviewer per stream (6 agents);
+  a stream that fails review gets at most one fix pass (2 more agents).
 
 **Session start protocol:**
-- Premise checks (report before acting): `main` = `origin/main` at or
-  after `f9806bb`, "Test Package" green on it; no `v0.3.0` tag or PyPI
-  0.3.0 yet; offline suite on `main` shows 2494 passed,
-  35 xfailed; sanicode clean on `main` at or after `f425bbd` (v0.12.3), and
-  its suite green before any change (record the count).
+- Premise checks (report before acting): `main` = `origin/main` at or after
+  the Session C summary commit, Test Package green; #10, #11, #6 open and
+  unchanged since 2026-10-30; no `batch/0.3.1` branch; offline suite 2494
+  passed, 35 xfailed; PyPI latest is 0.3.0.
 - Rules with history:
-  - Implementers this epic decided things their brief didn't cover (a
-    spend cap, a backend refusal). Anything not decided above stops and
-    asks.
-  - sanicode lands by PR, never on its `main`; in model-calling, push the
-    version bump to `main` only after rdwj says go.
-- Stop-and-ask before: creating the `v0.3.0` release (publishes to PyPI;
-  irreversible); dropping any sanicode provider beyond azure and bedrock;
-  any change to sanicode's public CLI flags or config file format.
-- Close ritual: session summary; record sanicode's before/after test
-  counts; update #7 and #8; then `/plan-next-session` (left: #6, which
-  needs a vLLM server, a remote amd64 build, and a cluster).
+  - Session B's implementer ran past its spend cap and its Sonnet Cohere pass
+    failed spec review: Part 1 has no live spend, and implementers are Opus.
+  - Anything the decisions above don't cover stops that stream and is
+    reported, not decided by the agent.
+- Stop-and-ask before: the remote build, any cluster write (each namespace,
+  each `oc apply`), deleting anything on a cluster the session didn't
+  create, pushing to `main`, creating the `v0.3.1` release.
+- Close ritual: session summary with per-stream outcomes and suite counts;
+  close #10, #11, #6 (each box's result recorded) and #8; then `/retro` on
+  the epic.
+
+**Loop design (Part 1):**
+- **Exit predicate:** all three streams merged onto `batch/0.3.1` with a
+  review verdict of no must-fix, and the draft PR's Test Package green.
+- **Max iterations:** one fix pass per stream; a stream still failing review
+  stays on its branch as WIP and is reported.
+- **Per-item verifier:** offline suite green with no new xfails, `flake8`
+  (CI selection) and `black --check` clean, gitleaks clean on the diff;
+  stream 3 also needs every model-calling claim mapped to a file or test.
+- **Premise to re-validate each pass:** `batch/0.3.1` still fast-forwards
+  from the stream's base (rebase before merge), and the issue is still open.
+- **Maker ≠ checker:** worktree per stream; the reviewer is a fresh agent
+  given the issue, the decision above, and the diff, not the implementer's
+  summary. Merges run as a shell script (rebase, suite, lint) between
+  agent runs; write it as `scripts/merge-stream.sh` if it isn't committed.
+- **If stuck:** report the stream as WIP with its open findings and go on to
+  Part 2 with what merged.
 
 ## Remaining epic phases
 
@@ -109,8 +138,8 @@ offline leftovers given an owner as Phase 12.
 |---|---|---|
 | A, evening of 2026-10-29 | 8 (#1) | Interactive; done |
 | B, overnight after A | 12 (#2), 7 slices 1–2 (#3, #4), 6 slice 2 (#5) | Workflow, then finished interactively; done |
-| C | 0.3.0 release, pilot (#7) | Interactive; the "Next" slice above |
-| Later | 9 follow-ups (#6) | Needs a vLLM server, a remote build, and a cluster |
+| C, night of 2026-10-29 | 0.3.0 release, pilot (#7) | Interactive; done |
+| D | #10, #11, #6 doc (workflow); #6 cluster checks, 0.3.1 (interactive) | The "Next" slice above |
 
 Order changed 2026-10-29: 0.3.0 releases before the pilot so sanicode pins
 a published version; pilot friction ships as 0.3.x.
@@ -282,7 +311,18 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-29): Session B, Phases 6 slice 2, 7, and 12
+## What landed last session (2026-10-29): Session C, 0.3.0 and the sanicode pilot
+
+`model-calling==0.3.0` is on PyPI (`9c46d41`, release `v0.3.0`); a fresh 3.11
+venv runs `acompletion` and `amessages`. sanicode runs on it with LiteLLM
+removed (rdwj/sanicode#243, merged `224ab70`): 7013 passed before, 7015 after,
+and it now requires Python 3.11. No live spend. Record:
+`session-summaries/2026-10-29-api-shapes-session-c.md`.
+
+**Closed:** #7 — pilot — sanicode PR merged.
+**Follow-ups filed:** #10 (Ollama `/v1` 404), #11 (org header follows `api_base`).
+
+## What landed earlier (2026-10-29): Session B, Phases 6 slice 2, 7, and 12
 
 All four streams merged onto `batch/0.3.0` and reached `main` through PR #9
 (`f9806bb`), closing #2–#5;
@@ -485,12 +525,10 @@ of 23 files.
 
 ## If blocked
 
-- PyPI or the release workflow fails: fix forward in model-calling
-  (that's the session), or pilot sanicode against
-  `model-calling @ git+https://github.com/rdwj/model-calling@<sha>` and
-  repin once 0.3.0 is out.
-- sanicode blocked: take the Session B carries above, one commit each,
-  offline, starting with Cohere's tool-result shape and the Responses live
-  test's `usage.cost`.
-- Then #6's offline item: the "Migrating from LiteLLM" doc (Phase 9
-  slice 1 item 1).
+- No vLLM server found, or the cluster is unavailable: record #6 items 2–4
+  as not run with the reason, release 0.3.1 without them, and leave #6 open
+  with only those boxes.
+- A Part 1 stream stuck as WIP: release 0.3.1 with what merged only if rdwj
+  agrees; otherwise take the Session B carries ("What landed" above), one
+  commit each, offline, starting with Cohere's tool-result shape and the
+  Responses live test's `usage.cost`.
