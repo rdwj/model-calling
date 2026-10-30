@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from model_calling.providers import PROVIDERS
+from model_calling.providers.ollama import OPENAI_COMPAT_PATH, OllamaProvider
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,15 @@ def _backend(name: str, entry: Any) -> Backend:
     if key_env is not None and not _ENV_NAME.match(key_env):
         # Not echoed: a value that isn't a variable name may be the key itself.
         raise AliasConfigError(f"{where}.api_key_env must name an environment variable")
-    return Backend(provider, base_url.rstrip("/") if base_url else None, key_env)
+    base_url = base_url.rstrip("/") if base_url else None
+    if provider == OllamaProvider.name and base_url and base_url.endswith(OPENAI_COMPAT_PATH):
+        # The provider refuses this too, but only per request; it is the
+        # operator's mistake, so catch it when the file loads (issue #10).
+        raise AliasConfigError(
+            f"{where}.base_url ends in {OPENAI_COMPAT_PATH}, but the ollama provider wants "
+            f"the server root; use provider openai for Ollama's {OPENAI_COMPAT_PATH} endpoint"
+        )
+    return Backend(provider, base_url, key_env)
 
 
 def _model(alias: str, entry: Any, backends: Mapping[str, Backend]) -> _Model:

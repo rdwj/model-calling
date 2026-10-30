@@ -16,7 +16,7 @@ from typing import Any
 from model_calling.core import Message, Request, Response, Thinking, ToolCall
 from model_calling.formats import anthropic
 from model_calling.providers.anthropic_stream import AnthropicStreamParser
-from model_calling.providers.base import Provider, StreamParser
+from model_calling.providers.base import Provider, StreamParser, merge_headers
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class AnthropicProvider(Provider):
         return f"{self.base_url}{MESSAGES_PATH}"
 
     def headers(self) -> dict[str, str]:
-        return {"anthropic-version": API_VERSION, **super().headers()}
+        return merge_headers({"anthropic-version": API_VERSION}, super().headers())
 
     # --- request ----------------------------------------------------------
 

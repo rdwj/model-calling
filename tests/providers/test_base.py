@@ -12,6 +12,7 @@ import pytest
 
 from model_calling.callbacks import Callback
 from model_calling.core import Message, MessageStart, Request, StreamError, Text
+from model_calling.core.embeddings import EmbeddingRequest
 from model_calling.errors import (
     APIConnectionError,
     APIError,
@@ -27,7 +28,7 @@ from model_calling.errors import (
 )
 from model_calling.gateway import chat_completions, client_status
 from model_calling.library import Client
-from model_calling.providers import HttpClients, OllamaProvider, provider_for
+from model_calling.providers import HttpClients, OllamaProvider, merge_headers, provider_for
 
 DONE_LINE = json.dumps(
     {"model": "m", "message": {"role": "assistant", "content": ""}, "done": True}
@@ -392,6 +393,31 @@ def test_config_headers_go_on_every_request():
     }
 
 
+def test_config_organization_goes_under_config_headers():
+    config = {"base_url": "https://api.openai.test/v1", "organization": "org-1"}
+    assert provider_for("openai/gpt-5", {"openai": config}).headers() == {
+        "OpenAI-Organization": "org-1"
+    }
+    config["headers"] = {"openai-organization": "org-2"}
+    assert provider_for("openai/gpt-5", {"openai": config}).headers() == {
+        "openai-organization": "org-2"
+    }
+
+
+@pytest.mark.parametrize(
+    "layers, expected",
+    [
+        (({"a": "1"}, None, {"b": "2"}), {"a": "1", "b": "2"}),
+        (({"Authorization": "x"}, {"authorization": "y"}), {"authorization": "y"}),
+        (({"A": "1", "B": "2"}, {"a": "3"}), {"a": "3", "B": "2"}),
+        ((), {}),
+    ],
+    ids=["disjoint", "case_insensitive", "keeps_others", "none"],
+)
+def test_merge_headers(layers, expected):
+    assert merge_headers(*layers) == expected
+
+
 def test_http_clients_replace_a_client_from_another_loop():
     import asyncio
 
@@ -415,8 +441,8 @@ async def test_http_clients_reuse_on_the_same_loop():
     [
         ({}, "ollama", {"base_url": "http://localhost:11434"}),
         ({"OPENROUTER_API_KEY": "k"}, "openrouter", {"api_key": "k"}),
-        ({"OPENAI_ORG_ID": "org"}, "openai", {"headers": {"OpenAI-Organization": "org"}}),
-        ({}, "openai", {"api_key": "", "headers": {}}),
+        ({"OPENAI_ORG_ID": "org"}, "openai", {"organization": "org"}),
+        ({}, "openai", {"api_key": "", "organization": ""}),
     ],
 )
 def test_default_configs_read_only_the_given_environment(environ, prefix, expected):
@@ -424,3 +450,60 @@ def test_default_configs_read_only_the_given_environment(environ, prefix, expect
 
     config = default_configs(environ)[prefix]
     assert expected.items() <= config.items()
+
+
+# Every prefix, with a base URL whose 404 message must name the request URL.
+NOT_FOUND_KEY = "key-that-must-not-leak"
+NOT_FOUND_CONFIGS = {
+    "anthropic": {"base_url": "https://anthropic.test/v1", "api_key": NOT_FOUND_KEY},
+    "cohere": {"base_url": "https://cohere.test/v2", "api_key": NOT_FOUND_KEY},
+    "ollama": {"base_url": "http://ollama.test"},
+    "openai": {"base_url": "https://openai.test/v1", "api_key": NOT_FOUND_KEY},
+    "openrouter": {"base_url": "https://openrouter.test/api/v1", "api_key": NOT_FOUND_KEY},
+    "openrouter_responses": {
+        "base_url": "https://openrouter.test/api/v1",
+        "api_key": NOT_FOUND_KEY,
+    },
+    "vllm": {"base_url": "http://vllm.test/v1"},
+}
+EMBEDDING_PREFIXES = ("cohere", "ollama", "openai", "vllm")
+
+
+def not_found_provider(prefix: str):
+    """A `prefix` provider whose backend answers every request with a bare 404."""
+    transport = httpx.MockTransport(lambda req: httpx.Response(404, text="404 page not found"))
+    config = {**NOT_FOUND_CONFIGS[prefix], "transport": transport}
+    return provider_for(f"{prefix}/m", {prefix: config}, HttpClients())
+
+
+async def drain(events):
+    return [e async for e in events]
+
+
+@pytest.mark.parametrize(
+    "prefix, call",
+    [(prefix, call) for prefix in sorted(NOT_FOUND_CONFIGS) for call in ("complete", "stream")]
+    + [(prefix, "embed") for prefix in EMBEDDING_PREFIXES],
+)
+async def test_a_404_names_the_request_url(prefix, call):
+    provider = not_found_provider(prefix)
+    if call == "embed":
+        url = provider.embedding_endpoint()
+        pending = provider.embed(EmbeddingRequest(model=f"{prefix}/m", input=["x"]))
+    else:
+        url = provider.endpoint()
+        req = request(stream=call == "stream")
+        req = req.model_copy(update={"model": f"{prefix}/m", "max_tokens": 8})
+        pending = provider.complete(req) if call == "complete" else drain(provider.stream(req))
+    with pytest.raises(NotFoundError) as err:
+        await pending
+    assert err.value.message == f"{prefix} returned HTTP 404 for POST {url}: 404 page not found"
+    # Keys travel in headers, so naming the URL can't leak one.
+    assert NOT_FOUND_KEY not in err.value.message
+
+
+async def test_other_statuses_leave_the_url_out(backend):
+    backend["handler"] = lambda req: httpx.Response(500, json={"error": "boom"})
+    with pytest.raises(InternalServerError) as err:
+        await make_provider(backend).complete(request())
+    assert err.value.message == "ollama returned HTTP 500: boom"

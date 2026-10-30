@@ -4,9 +4,16 @@ Backends behind the provider interface in `providers.base`.
 
 import os
 from collections.abc import Mapping
+from typing import Any
 
 from model_calling.providers.anthropic import AnthropicProvider
-from model_calling.providers.base import DEFAULT_TIMEOUT, HttpClients, Provider, StreamParser
+from model_calling.providers.base import (
+    DEFAULT_TIMEOUT,
+    HttpClients,
+    Provider,
+    StreamParser,
+    merge_headers,
+)
 from model_calling.providers.cohere import CohereProvider
 from model_calling.providers.ollama import OllamaProvider
 from model_calling.providers.openai_compat import (
@@ -28,6 +35,8 @@ PROVIDERS: dict[str, type[Provider]] = {
     "vllm": VLLMProvider,
 }
 DEFAULT_PREFIX = "ollama"
+# The header an `organization` setting sends (OpenAI's account selector).
+ORGANIZATION_HEADER = "OpenAI-Organization"
 
 
 def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
@@ -35,8 +44,11 @@ def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
 
     Local backends get their usual local URLs. Hosted backends take their
     keys from the environment; nothing here reads a `.env` file.
+
+    `OPENAI_ORG_ID` becomes the `openai` prefix's `organization`, kept apart
+    from `headers` so the library can leave it off calls whose per-call
+    `api_base` points somewhere else.
     """
-    org = environ.get("OPENAI_ORG_ID")
     return {
         "anthropic": {
             "base_url": "https://api.anthropic.com/v1",
@@ -52,7 +64,7 @@ def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
         "openai": {
             "base_url": "https://api.openai.com/v1",
             "api_key": environ.get("OPENAI_API_KEY", ""),
-            "headers": {"OpenAI-Organization": org} if org else {},
+            "organization": environ.get("OPENAI_ORG_ID", ""),
         },
         "openrouter": {
             "base_url": "https://openrouter.ai/api/v1",
@@ -79,9 +91,11 @@ def provider_for(
     """The provider for `model_name`, or None if its prefix isn't ported yet.
 
     `configs` maps each prefix to its settings (`base_url`, `api_key`,
-    `callbacks`, and optionally `headers`, `transport`, and `timeout`), as in
-    `Client.config`. With `clients`, the provider shares its
-    prefix's pooled HTTP client instead of opening one per call.
+    `callbacks`, and optionally `organization`, `headers`, `transport`, and
+    `timeout`), as in `Client.config`. A non-empty `organization` goes out as
+    the `OpenAI-Organization` header, under `headers`. With `clients`, the
+    provider shares its prefix's pooled HTTP client instead of opening one
+    per call.
     """
     prefix, short_name = split_model(model_name)
     cls = PROVIDERS.get(prefix)
@@ -97,15 +111,21 @@ def provider_for(
         callbacks=config.get("callbacks", ()),
         timeout=config.get("timeout", DEFAULT_TIMEOUT),
         http_client=clients.get(prefix, config) if clients is not None else None,
-        extra_headers=config.get("headers"),
+        extra_headers=merge_headers(_organization(config), config.get("headers")),
         model_info_cache=clients.model_info if clients is not None else None,
     )
+
+
+def _organization(config: Mapping[str, Any]) -> dict[str, str]:
+    org = config.get("organization")
+    return {ORGANIZATION_HEADER: org} if org else {}
 
 
 __all__ = [
     "AnthropicProvider",
     "CohereProvider",
     "HttpClients",
+    "ORGANIZATION_HEADER",
     "OllamaProvider",
     "OpenAICompatProvider",
     "OpenAIProvider",
@@ -116,6 +136,7 @@ __all__ = [
     "StreamParser",
     "VLLMProvider",
     "default_configs",
+    "merge_headers",
     "provider_for",
     "split_model",
 ]

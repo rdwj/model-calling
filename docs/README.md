@@ -7,4 +7,4 @@ Index of model-calling documentation.
 - [api-reference.md](api-reference.md): Comprehensive API documentation
 - [examples.md](examples.md): Code examples for common use cases
 - [advanced.md](advanced.md): In-depth information
-- [migration-guide.md](migration-guide.md): Migrating from 0.1.x
+- [migration-guide.md](migration-guide.md): Migrating from LiteLLM, and upgrading from 0.1.x

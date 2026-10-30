@@ -23,7 +23,8 @@ client = Client(
 
 - `base_url` (str): API endpoint for this backend
 - `api_key` (str): authentication key
-- `headers` (dict): additional HTTP headers
+- `headers` (dict): additional HTTP headers, sent on every call, including calls with a per-call `api_base`
+- `organization` (str, `openai` only by default): sent as the `OpenAI-Organization` header, only on calls to this prefix's configured `base_url` (see [The organization header](#the-organization-header))
 - `timeout` (float): request timeout in seconds, including a stalled stream (default 300)
 - `callbacks` (list): callbacks that run for this prefix only, after the client-wide ones
 - `transport` (httpx transport): mostly for tests
@@ -82,6 +83,8 @@ async def acompletion(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> ChatCompletion | AsyncIterator[ChatCompletionChunk]
 ```
@@ -105,6 +108,8 @@ def completion(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> ChatCompletion | Iterator[ChatCompletionChunk]
 ```
@@ -123,6 +128,8 @@ async def amessages(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> Message | AsyncIterator[MessageStreamEvent]
 ```
@@ -156,6 +163,8 @@ def messages(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> Message | Iterator[MessageStreamEvent]
 ```
@@ -173,6 +182,8 @@ async def aresponses(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> Response | AsyncIterator[ResponseStreamEvent]
 ```
@@ -207,6 +218,8 @@ def responses(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> Response | Iterator[ResponseStreamEvent]
 ```
@@ -223,6 +236,8 @@ async def aembedding(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> CreateEmbeddingResponse
 ```
@@ -245,6 +260,8 @@ def embedding(
     api_base: str | None = None,
     api_key: str | None = None,
     drop_params: bool | None = None,
+    timeout: float | None = None,
+    extra_headers: Mapping[str, str] | None = None,
     **params,
 ) -> CreateEmbeddingResponse
 ```
@@ -259,8 +276,23 @@ All call methods accept:
 - `api_key`: override the API key for this call
 - `drop_params`: override the client's `drop_params` setting for this call
 - `timeout`: override the request timeout, in seconds, for this call
+- `extra_headers`: HTTP headers for this call, the openai SDK's name for them, applied last over the auth header, the organization header, and the prefix's configured `headers`. Streaming calls send them too.
 
-These take precedence over the client's config.
+These take precedence over the client's config. Header names compare case-insensitively, so `extra_headers={"authorization": "Bearer other"}` replaces the configured key's `Authorization` header instead of sending two.
+
+```python
+client.completion(
+    model="openai/gpt-5-mini",
+    messages=[{"role": "user", "content": "hi"}],
+    extra_headers={"X-Request-Id": "abc123"},
+)
+```
+
+### The organization header
+
+When `OPENAI_ORG_ID` is set, the `openai` prefix's `organization` setting takes its value, and calls to the prefix's configured `base_url` (`https://api.openai.com/v1` unless the client's config changes it) send it as `OpenAI-Organization`. A call whose `api_base` points elsewhere, such as an OpenAI-compatible vendor reached through the `openai/` prefix, leaves it off, so the organization id stays with OpenAI. An alias target's `api_base` counts as a per-call `api_base`.
+
+To change this, set `organization` in the client's config (`""` sends none), name the header in the prefix's `headers` to send it everywhere, or pass it in `extra_headers` for one call.
 
 ## Module-level functions
 
@@ -305,6 +337,8 @@ Model names are `prefix/name`. Unprefixed names default to `ollama`.
 The library reads only these environment variables. It never reads `.env` files. The gateway (with the `server` extra) does read `.env` at startup.
 
 Base URLs for Anthropic, vLLM, OpenAI, and OpenRouter include `/v1`, matching the openai SDK convention, and Cohere's includes `/v2`. (The `anthropic` SDK's base URL leaves it out.)
+
+The `ollama` prefix speaks Ollama's native API (`/api/chat`, `/api/embed`), so its base URL is the server root, as `http://localhost:11434`. A base URL ending in `/v1` (with or without a trailing slash), in `config` or as a per-call `api_base`, raises `BadRequestError` before any request is sent. That path is Ollama's OpenAI-compatible API; to use it, call the model with the `openai/` prefix and `api_base="http://localhost:11434/v1"`.
 
 The `anthropic` prefix sends Anthropic Messages to `{base_url}/messages`, so it also reaches OpenRouter's and vLLM's Messages endpoints when `base_url` points there. It authenticates with `Authorization: Bearer`, as the `anthropic` 2.x SDK does, and sends `anthropic-version: 2026-10-21`. Messages requests pass through unchanged. Chat Completions requests are translated: a missing `max_tokens` becomes 4096, `reasoning_effort` becomes adaptive thinking at that effort (OpenAI's `minimal`, which Messages lacks, sends no thinking and is reported as unsupported `thinking.effort`), `parallel_tool_calls` without tools is not sent, and `seed`, `presence_penalty`, `frequency_penalty`, and a `json_object` response format are unsupported. Thinking blocks without a signature (from another backend) are dropped from assistant turns, since Anthropic rejects them, and a turn left empty goes with them. Thinking signed by another server, such as vLLM, is sent as is and Anthropic will reject it.
 
@@ -388,6 +422,8 @@ Every `APIError` carries:
 - `provider` (str | None): backend prefix that raised the error (`ollama`, `vllm`, `openai`, `openrouter`)
 - `status` (int | None): HTTP status code from the backend, or `None` if no usable response arrived
 - `body` (Any): the backend's raw error body, if one was received
+
+A `NotFoundError` from a backend names the request URL, as `ollama returned HTTP 404 for POST http://localhost:11434/api/chat: 404 page not found`, since a wrong base URL and a missing model can both produce a 404. URLs never carry credentials; every provider sends its key in a header. The gateway replaces the URL, like any backend address, before an error reaches its clients.
 
 When `status` is `None`, no backend response arrived. This happens for connection failures, timeouts, requests the library refuses before sending (strict mode rejections, malformed requests), and errors a backend reports inside a stream.
 
@@ -626,7 +662,7 @@ Health check. Returns `{"status": "ok"}`.
 
 ### Reserved request fields
 
-Request bodies must not contain `api_base`, `api_key`, or `drop_params`. These are internal library parameters. The gateway returns 400 if they are present.
+Request bodies must not contain `api_base`, `api_key`, `drop_params`, or `extra_headers`. These are internal library parameters. The gateway returns 400 if they are present.
 
 ### Strictness
 

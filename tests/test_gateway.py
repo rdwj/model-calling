@@ -2,6 +2,7 @@
 
 import json
 
+import httpx
 import pytest
 
 from model_calling.callbacks import Callback
@@ -48,6 +49,31 @@ async def test_backend_error_returns_exact_status_and_error_body(gateway):
     assert "message" in data["error"]
     assert "type" in data["error"]
     assert "not found" in data["error"]["message"].lower()
+
+
+@pytest.mark.parametrize("stream", [False, True], ids=["complete", "stream"])
+async def test_a_backend_404_through_the_gateway_hides_the_backend_url(gateway, stream):
+    """The library's 404 message names the request URL; the gateway's client
+    must see neither the URL nor the backend's host."""
+    base_url = "http://ollama.internal:11434"
+    callback = RecordingCallback()
+    transport = httpx.MockTransport(lambda req: httpx.Response(404, text="404 page not found"))
+    gateway.backends.config["ollama"].update(
+        base_url=base_url, transport=transport, callbacks=[callback]
+    )
+    body = {
+        "model": gateway.alias("ollama/qwen3:4b"),
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": stream,
+    }
+    resp = await gateway.client.post("/v1/chat/completions", json=body)
+
+    assert resp.status_code == 404, resp.text
+    raised = callback.calls[-1][3]
+    assert f"POST {base_url}/api/chat" in raised.message, raised.message
+    assert "ollama.internal" not in resp.text and "/api/chat" not in resp.text, resp.text
+    message = resp.json()["error"]["message"]
+    assert message == "the backend returned HTTP 404 for POST the backend: 404 page not found"
 
 
 @pytest.mark.asyncio
@@ -186,6 +212,10 @@ ENVELOPE_ERRORS = {
     "messages_no_max_tokens": ("/v1/messages", {"max_tokens": None}, "max_tokens is required"),
     "embeddings_no_input": ("/v1/embeddings", {"input": None}, "input is required"),
     "responses_reserved": ("/v1/responses", {"api_key": "k"}, "api_key"),
+    "chat_extra_headers": ("/v1/chat/completions", {"extra_headers": {"x": "y"}}, "extra_headers"),
+    "messages_extra_headers": ("/v1/messages", {"extra_headers": {"x": "y"}}, "extra_headers"),
+    "responses_extra_headers": ("/v1/responses", {"extra_headers": {"x": "y"}}, "extra_headers"),
+    "embeddings_extra_headers": ("/v1/embeddings", {"extra_headers": {"x": "y"}}, "extra_headers"),
     "responses_no_input": ("/v1/responses", {"input": None}, "input is required"),
 }
 
@@ -194,7 +224,8 @@ ENVELOPE_ERRORS = {
 async def test_envelope_errors_are_400_in_the_ingress_format(
     gateway, monkeypatch, path, fields, match
 ):
-    """Reserved Client arguments would point the gateway's key at another host."""
+    """Reserved Client arguments would point the gateway's key at another host
+    or set the headers it sends its backends."""
     from model_calling import server
 
     monkeypatch.setattr(server, "DROP_PARAMS", False)
