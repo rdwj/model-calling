@@ -1,70 +1,68 @@
 # Session Summary — 2026-10-29 · api-shapes · Session B, overnight workflow
 
-**Plan:** NEXT_SESSION-api-shapes.md / #2, #3, #4, #5   **Commits:** batch/0.3.0 (`e880c9d` merges stream 3, `62b7014` stream 4)
+**Plan:** NEXT_SESSION-api-shapes.md / #2, #3, #4, #5   **Commits:** batch/0.3.0, `2d38568..019a023`
 **Deployed:** none   **Model:** Claude Opus 5.5 orchestrating; Sonnet 5.5 and Opus 5.5 agents
 
 ## Plan vs. actual
 Planned: four streams (Cohere v2, Phase 12, Responses ingress, Responses backend) merged onto
 `batch/0.3.0` behind a draft PR.
-Shipped: stream 3 (Responses ingress, #3) merged. Streams 1, 2, and 4 stopped under the plan's
-rules; rdwj then had stream 4 merged as-is. Streams 1 and 2 stay on local branches.
-Scope: stayed in scope; two workflow runs (streams 1–3, then stream 4) because merges ran as a
-shell script between them, not as an agent.
+Shipped: all four, in two rounds. The unattended run merged stream 3; streams 1, 2, and 4 stopped
+under the plan's rules. The same evening rdwj had stream 4 merged as-is, Phase 12 finished by
+the orchestrator, and Cohere redone from scratch by a fresh Opus pass with an Opus review.
+Scope: stayed in scope; merges ran as a shell script (`merge-stream.sh`) between agent runs.
 
 ## Stream outcomes
-| Stream | Branch (local worktree) | Outcome | Offline suite |
+| Stream | Merge | How it got there | Suite after merge |
 |---|---|---|---|
-| 1 Cohere v2 (#5) | `stream/cohere-v2` | Stopped: must-fix unresolved after one fix round | 71 failed, 60 errors |
-| 2 Phase 12 (#2) | `stream/phase12` | Stopped: one must-fix unresolved after one fix round | 1460 passed, 35 xfailed |
-| 3 Responses ingress (#3) | merged as `e880c9d` | Merged | 1868 passed, 35 xfailed |
-| 4 Responses backend (#4) | merged as `62b7014` | Stopped on spend; merged as-is by rdwj | 2126 passed, 35 xfailed |
+| 3 Responses ingress (#3) | `e880c9d` | Opus implement, Sonnet review, no findings | 1868 passed, 35 xfailed |
+| 4 Responses backend (#4) | `62b7014` | Stopped on spend; merged as-is by rdwj | 2126 passed, 35 xfailed |
+| 2 Phase 12 (#2) | `21308a7` | Stopped on one gap; orchestrator finished it | 2152 passed, 35 xfailed |
+| 1 Cohere v2 (#5) | `019a023` | First pass rejected; second Opus pass, Opus review, no must-fix | 2494 passed, 35 xfailed |
 
-Worktrees live under `../model-calling-wt/<stream>`; none of the stopped branches is pushed.
-
-- **Stream 1.** Opus review found 13 must-fix items: the hand-built fixtures and the stream
-  parser didn't match the Cohere v2 reference (system role, tool-call `arguments` as a JSON
-  string, `thinking` shape, every stream event path), wrong refusals of `seed`/`k`, no grid
-  column, no alias test, no README note. The fix round corrected the provider code for most of
-  them but left the fixtures not replaying. WIP saved as `442942b`; it needs a fresh pass.
-- **Stream 2.** Items 1, 2, 3, 4, 6, 7 implemented with tests; xfails unchanged. The re-check left
-  one gap: `stop_details`/`container` pass-through has a streaming test but no non-streaming one
-  (the code path exists in `AnthropicProvider.parse_response`). The rule said stop, so it isn't
-  merged; one small test would clear it.
-- **Stream 3.** Opus implementation, Sonnet review with no findings. 428 new tests; client code
-  split into `library/_calls.py` to stay under the size limit.
-- **Stream 4.** OpenRouter Responses provider, fixtures on mistralai/mistral-nemo, a Responses
-  pass-through test, and `tests/live/test_responses_live.py`. Reviewer must-fix items resolved on
-  re-check. The ledger delta reached $0.5502 against the $0.50 cap: eleven `$0.05` unknown-cost
-  placeholders make up $0.55 of it, and the costs reported come to about $0.0002. The implementer
-  ran the live smoke past the cap instead of stopping. rdwj had it merged as-is the same evening.
+- **Stream 3.** 428 new tests; shared client code moved to `library/_calls.py`.
+- **Stream 4.** OpenRouter Responses provider, mistral-nemo fixtures, a pass-through test, and
+  `tests/live/test_responses_live.py`. The ledger delta reached $0.5502 against the $0.50 cap:
+  eleven `$0.05` unknown-cost placeholders make up $0.55 of it; reported costs come to about
+  $0.0002. The implementer ran the live smoke past the cap instead of stopping.
+- **Stream 2.** The rebase onto streams 3–4 conflicted in `client.py` (resolved; `responses()`
+  got the same `timeout` keyword). Item 6 (timeout) had shipped with no test, which the reviewer
+  missed; added one, mutation-checked. Added the non-streaming `stop_details`/`container` test,
+  and the Responses row's `thinking_unsupported` drop-path check that neither stream could have
+  written alone. These three test commits had no separate review.
+- **Stream 1.** The first pass (Sonnet) failed 13 must-fix items on fixture/spec alignment and was
+  left as WIP on `stream/cohere-v2`. The second pass started fresh off `batch/0.3.0`
+  (`stream/cohere-v2-take2`): 184 Cohere cells across every ingress including Responses, three
+  spec-backed strict refusals (`tool_named`, `parallel_tools_off`, `reasoning_effort`), and
+  `tests/test_cohere_fixtures.py` checking fixtures against the reference's field lists. The
+  reviewer re-fetched the v2 reference and found no spec contradiction.
 
 ## Verification & confidence
 - Premise checks passed at start: `main` = `origin/main` = `2d38568`, Test Package green,
   1440 passed / 35 xfailed, `qwen3-coder:30b` present, key set, no `batch/0.3.0`.
 - Every merge ran rebase, full offline suite, flake8 (CI selection), and black from
-  `merge-stream.sh`; the orchestrator reran the suite on each unmerged branch for the table.
-- gitleaks clean on `batch/0.3.0` and the Cohere WIP.
-- Confidence: high for stream 3; medium for stream 4's fixtures (re-recorded during the fix
-  round, reviewed only by re-check).
+  `merge-stream.sh`. gitleaks clean on `main..batch/0.3.0`.
+- Phase 12 definition of done: `grep -rn "integration" pyproject.toml CONTRIBUTING.md` empty.
+- Confidence: high for streams 2 and 3; medium for stream 4's fixtures (re-recorded during the
+  fix round, reviewed by re-check only) and for Cohere (hand-built, no live coverage by design).
 
 ## Judgment calls & deviations
-- Reported the `$0.05` placeholders as counted, per rdwj's "budget = ledger delta" call, so
-  stream 4 is stopped even though its verifier is green.
-- Stream 4 decided on its own that `openrouter_responses` refuses `parallel_tool_calls` because
-  mistral-nemo ignored it in the recording. That is a model behavior, not an endpoint limit;
-  rdwj should rule on it.
-- Stream 2's reviewer notes anthropic 2.0.0 defines no Refusal content block (only
-  `RefusalStopDetails`), so item 4's "add the Refusal block type" had nothing to add. rdwj
-  confirmed: nothing to add.
-- About 15 agents in total, over the plan's 8–10: fix rounds and re-checks ran in three streams.
+- rdwj: stream 4 merges as-is; Phase 12 item 4 needs no Refusal block (anthropic 2.0.0 has none).
+- Stream 4 made `openrouter_responses` refuse `parallel_tool_calls` because mistral-nemo ignored it
+  in the recording: model behavior, not an endpoint limit. Merged with stream 4; unruled.
+- Cohere design calls (none contradicts the spec), for rdwj: `tool_plan` maps to a Text block and
+  goes back as `content`, not `tool_plan`; named `tool_choice` is refused rather than emulated;
+  no thinking field is sent when the request has none, so reasoning models think by default;
+  embedding `input_type` defaults to `search_document`; usage prefers `tokens` over
+  `billed_units`; `ToolResult.is_error` is dropped.
+- Cohere review should-fix, not done: tool results sent as bare strings where the spec words them
+  as a JSON object string or content blocks; the fixture test stops at `delta.message`; a
+  `fn["name"]` KeyError; no 96-text embed batch limit; a wrong citations comment. README line 20 (Cohere
+  read as shipping in 0.2.0, Responses as unavailable) fixed by the orchestrator.
+- About 17 agents in total, over the plan's 8–10.
 - The merge script's first run misreported "xfailed" as a failure (grep bug); fixed and rerun.
-
-## For the reviewer
-- To take stream 2: rebase onto `batch/0.3.0`, run
-  `../model-calling-wt/merge-stream.sh <stream> "<msg>"`, which merges only when green.
-- Stream 4's live test likely looks up cost by generation id; switching it to `usage.cost` would
-  stop the placeholders.
+- Files over the ~512-line guideline: `library/client.py` (~580), `tests/harness/scenarios.py` (916).
 
 ## Backlog delta
-Filed none · Closed none (issues close when the PR merges to `main`) · #2 and #5 stay open
-with the gaps above · Next: `/plan-next-session` with rdwj (stopped streams, then #6 and #7).
+Filed none · Closed none (#2–#5 close when the PR merges to `main`) · Carry: Cohere should-fix
+and design calls, the `parallel_tool_calls` refusal, stream 4's live cost via `usage.cost`, the
+two oversized files.
