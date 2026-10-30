@@ -188,3 +188,4 @@
 {"ts": "2026-10-30T00:10:19+00:00", "source": "tests/live", "endpoint": "library aresponses stream", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793318987-RHkK3NNQHiAStEwlW4G2", "cost_usd": 0.05}
 {"ts": "2026-10-30T00:10:53+00:00", "source": "tests/live", "endpoint": "gateway /v1/responses", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793319020-4FmP17Q0nXfoy25z8H8W", "cost_usd": 0.05}
 {"ts": "2026-10-30T00:11:09+00:00", "source": "tests/live", "endpoint": "gateway /v1/responses", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793319053-hQO9FFtVn8oCqZNQDtiF", "cost_usd": 1.785e-06}
+{"ts": "2026-10-30T00:11:41+00:00", "source": "tests/live", "endpoint": "gateway /v1/responses stream", "model": "openrouter/mistralai/mistral-nemo", "id": "gen-1793319069-8mjXagrCWGrjnkAYYhsS", "cost_usd": 0.05}
