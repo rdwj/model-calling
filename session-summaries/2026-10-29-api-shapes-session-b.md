@@ -1,13 +1,13 @@
 # Session Summary — 2026-10-29 · api-shapes · Session B, overnight workflow
 
-**Plan:** NEXT_SESSION-api-shapes.md / #2, #3, #4, #5   **Commits:** batch/0.3.0 (`e880c9d` merges stream 3)
+**Plan:** NEXT_SESSION-api-shapes.md / #2, #3, #4, #5   **Commits:** batch/0.3.0 (`e880c9d` merges stream 3, `62b7014` stream 4)
 **Deployed:** none   **Model:** Claude Opus 5.5 orchestrating; Sonnet 5.5 and Opus 5.5 agents
 
 ## Plan vs. actual
 Planned: four streams (Cohere v2, Phase 12, Responses ingress, Responses backend) merged onto
 `batch/0.3.0` behind a draft PR.
 Shipped: stream 3 (Responses ingress, #3) merged. Streams 1, 2, and 4 stopped under the plan's
-rules and stay on local branches for review.
+rules; rdwj then had stream 4 merged as-is. Streams 1 and 2 stay on local branches.
 Scope: stayed in scope; two workflow runs (streams 1–3, then stream 4) because merges ran as a
 shell script between them, not as an agent.
 
@@ -17,7 +17,7 @@ shell script between them, not as an agent.
 | 1 Cohere v2 (#5) | `stream/cohere-v2` | Stopped: must-fix unresolved after one fix round | 71 failed, 60 errors |
 | 2 Phase 12 (#2) | `stream/phase12` | Stopped: one must-fix unresolved after one fix round | 1460 passed, 35 xfailed |
 | 3 Responses ingress (#3) | merged as `e880c9d` | Merged | 1868 passed, 35 xfailed |
-| 4 Responses backend (#4) | `stream/responses-backend` | Stopped: live spend past the cap | 2126 passed, 35 xfailed |
+| 4 Responses backend (#4) | merged as `62b7014` | Stopped on spend; merged as-is by rdwj | 2126 passed, 35 xfailed |
 
 Worktrees live under `../model-calling-wt/<stream>`; none of the stopped branches is pushed.
 
@@ -36,7 +36,7 @@ Worktrees live under `../model-calling-wt/<stream>`; none of the stopped branche
   pass-through test, and `tests/live/test_responses_live.py`. Reviewer must-fix items resolved on
   re-check. The ledger delta reached $0.5502 against the $0.50 cap: eleven `$0.05` unknown-cost
   placeholders make up $0.55 of it, and the costs reported come to about $0.0002. The implementer
-  ran the live smoke past the cap instead of stopping.
+  ran the live smoke past the cap instead of stopping. rdwj had it merged as-is the same evening.
 
 ## Verification & confidence
 - Premise checks passed at start: `main` = `origin/main` = `2d38568`, Test Package green,
@@ -54,17 +54,17 @@ Worktrees live under `../model-calling-wt/<stream>`; none of the stopped branche
   mistral-nemo ignored it in the recording. That is a model behavior, not an endpoint limit;
   rdwj should rule on it.
 - Stream 2's reviewer notes anthropic 2.0.0 defines no Refusal content block (only
-  `RefusalStopDetails`), so item 4's "add the Refusal block type" had nothing to add. Needs
-  rdwj to confirm.
+  `RefusalStopDetails`), so item 4's "add the Refusal block type" had nothing to add. rdwj
+  confirmed: nothing to add.
 - About 15 agents in total, over the plan's 8–10: fix rounds and re-checks ran in three streams.
 - The merge script's first run misreported "xfailed" as a failure (grep bug); fixed and rerun.
 
 ## For the reviewer
-- To take stream 2 or 4: rebase onto `batch/0.3.0`, run
+- To take stream 2: rebase onto `batch/0.3.0`, run
   `../model-calling-wt/merge-stream.sh <stream> "<msg>"`, which merges only when green.
 - Stream 4's live test likely looks up cost by generation id; switching it to `usage.cost` would
   stop the placeholders.
 
 ## Backlog delta
-Filed none · Closed none (issues close when the PR merges to `main`) · #2, #4, #5 stay open
+Filed none · Closed none (issues close when the PR merges to `main`) · #2 and #5 stay open
 with the gaps above · Next: `/plan-next-session` with rdwj (stopped streams, then #6 and #7).
