@@ -9,14 +9,12 @@ client with `aclose()` / `async with` after async use and `close()` /
 `with` after sync use.
 """
 
-import copy
+import dataclasses
 import logging
 import os
 import threading
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from typing import Any
-
-from pydantic import BaseModel
 
 from model_calling.aliases import (
     AliasConfig,
@@ -38,22 +36,10 @@ from model_calling.formats import chat_completions as chat
 from model_calling.formats.anthropic_stream import AnthropicStreamEncoder
 from model_calling.formats.chat_completions_stream import ChatCompletionsStreamEncoder
 from model_calling.formats.responses_stream import ResponsesStreamEncoder
-from model_calling.library._calls import (
-    complete,
-    encoded,
-    open_stream,
-    translate,
-    typed,
-)
+from model_calling.library._calls import complete, encoded, open_stream, translate, typed, wire
+from model_calling.library._route import CallOptions, build_provider
 from model_calling.library._sync import LoopThread
-from model_calling.providers import (
-    PROVIDERS,
-    HttpClients,
-    Provider,
-    default_configs,
-    provider_for,
-    split_model,
-)
+from model_calling.providers import PROVIDERS, HttpClients, Provider, default_configs, split_model
 from model_calling.types.chat import ChatCompletion, ChatCompletionChunk
 from model_calling.types.embeddings import CreateEmbeddingResponse
 from model_calling.types.messages import Message, MessageStreamEvent, parse_stream_event
@@ -73,23 +59,6 @@ def _warn_shadowing(config: AliasConfig) -> None:
             "aliases %s shadow the prefixed names they look like; the alias is used",
             ", ".join(shadowing),
         )
-
-
-def _wire(value: Any) -> Any:
-    """`value` with every pydantic model in it (such as the content blocks a
-    previous `messages()` call returned) dumped as a wire dict. Builds new
-    containers; the caller's are untouched.
-
-    Null fields are left out, as the wire leaves them out. Unset fields are
-    kept, since a block's `type` is a default the caller never sets.
-    """
-    if isinstance(value, BaseModel):
-        return value.model_dump(mode="json", exclude_none=True, by_alias=True)
-    if isinstance(value, (list, tuple)):
-        return [_wire(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _wire(v) for k, v in value.items()}
-    return value
 
 
 class Client:
@@ -156,6 +125,7 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> ChatCompletion | AsyncIterator[ChatCompletionChunk]:
         """A Chat Completions call. `model` is `prefix/name`, as `ollama/qwen3:4b`.
@@ -164,12 +134,12 @@ class Client:
         backend has accepted the request; a refusal raises here, not mid-loop.
 
         `timeout` sets the request timeout in seconds (default 300s); it can
-        also be configured per prefix in the client's config dict. Other
-        keyword arguments are Chat Completions request fields.
+        also be configured per prefix in the client's config dict.
+        `extra_headers` go on this call's HTTP requests, over every other
+        header. Other keyword arguments are Chat Completions request fields.
         """
-        return await self._completion(
-            self._http, model, messages, stream, api_base, api_key, drop_params, timeout, params
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        return await self._completion(self._http, model, messages, stream, opts, params)
 
     def completion(
         self,
@@ -182,32 +152,20 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> ChatCompletion | Iterator[ChatCompletionChunk]:
         """The sync form of `acompletion`; streams are sync iterators."""
-        return self._run_sync(
-            self._completion(
-                self._sync_http,
-                model,
-                messages,
-                stream,
-                api_base,
-                api_key,
-                drop_params,
-                timeout,
-                params,
-            ),
-            stream,
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        call = self._completion(self._sync_http, model, messages, stream, opts, params)
+        return self._run_sync(call, stream)
 
-    async def _completion(
-        self, http, model, messages, stream, api_base, api_key, drop_params, timeout, params
-    ):
-        model, api_base, api_key, _ = self._resolve(model, api_base, api_key)
+    async def _completion(self, http, model, messages, stream, opts, params):
+        model, opts, _ = self._resolve(model, opts)
         body = {**params, "model": model, "messages": messages, "stream": stream}
-        provider = self._provider(http, model, api_base, api_key, timeout)
+        provider = self._provider(http, model, opts)
         request = translate(provider, lambda: chat.request_to_internal(body))
-        await self._check_params(provider, request, drop_params)
+        await self._check_params(provider, request, opts.drop_params)
         if not stream:
             response = await complete(provider, request)
             return typed(
@@ -232,6 +190,7 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> Message | AsyncIterator[MessageStreamEvent]:
         """An Anthropic Messages call over any backend. `model` is `prefix/name`.
@@ -240,23 +199,12 @@ class Client:
         (`message_start` through `message_stop`), once the backend has
         accepted the request.
 
-        `timeout` sets the request timeout in seconds (default 300s); it can
-        also be configured per prefix in the client's config dict. Other
-        keyword arguments are Messages request fields, such as `system`,
-        `tools`, and `thinking`.
+        `timeout` and `extra_headers` work as in `acompletion`. Other keyword
+        arguments are Messages request fields, such as `system`, `tools`, and
+        `thinking`.
         """
-        return await self._messages(
-            self._http,
-            model,
-            messages,
-            max_tokens,
-            stream,
-            api_base,
-            api_key,
-            drop_params,
-            timeout,
-            params,
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        return await self._messages(self._http, model, messages, max_tokens, stream, opts, params)
 
     def messages(
         self,
@@ -270,47 +218,24 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> Message | Iterator[MessageStreamEvent]:
         """The sync form of `amessages`; streams are sync iterators."""
-        return self._run_sync(
-            self._messages(
-                self._sync_http,
-                model,
-                messages,
-                max_tokens,
-                stream,
-                api_base,
-                api_key,
-                drop_params,
-                timeout,
-                params,
-            ),
-            stream,
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        call = self._messages(self._sync_http, model, messages, max_tokens, stream, opts, params)
+        return self._run_sync(call, stream)
 
-    async def _messages(
-        self,
-        http,
-        model,
-        messages,
-        max_tokens,
-        stream,
-        api_base,
-        api_key,
-        drop_params,
-        timeout,
-        params,
-    ):
-        model, api_base, api_key, _ = self._resolve(model, api_base, api_key)
+    async def _messages(self, http, model, messages, max_tokens, stream, opts, params):
+        model, opts, _ = self._resolve(model, opts)
         body = {
             **params,
             "model": model,
-            "messages": _wire(messages),
+            "messages": wire(messages),
             "max_tokens": max_tokens,
             "stream": stream,
         }
-        provider = self._provider(http, model, api_base, api_key, timeout)
+        provider = self._provider(http, model, opts)
         if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens < 1:
             # Messages requires it; the gateway passes None when a client left it out.
             raise BadRequestError(
@@ -318,7 +243,7 @@ class Client:
                 provider=provider.name,
             )
         request = translate(provider, lambda: anthropic.request_to_internal(body))
-        await self._check_params(provider, request, drop_params)
+        await self._check_params(provider, request, opts.drop_params)
         if not stream:
             response = await complete(provider, request)
             # Messages always carries usage; a backend that reports none gets zeros.
@@ -344,6 +269,7 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> Response | AsyncIterator[ResponseStreamEvent]:
         """A stateless OpenAI Responses call over any backend. `model` is
@@ -354,12 +280,12 @@ class Client:
         (`response.created` through `response.completed`), once the backend
         has accepted the request. Other keyword arguments are Responses
         request fields, such as `instructions`, `tools`, and `reasoning`.
-        `timeout` works as in `acompletion`. Nothing is stored: a request needing stored state, such as one with
+        `timeout` and `extra_headers` work as in `acompletion`. Nothing is
+        stored: a request needing stored state, such as one with
         `previous_response_id`, raises `BadRequestError` naming the field.
         """
-        return await self._responses(
-            self._http, model, input, stream, api_base, api_key, drop_params, timeout, params
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        return await self._responses(self._http, model, input, stream, opts, params)
 
     def responses(
         self,
@@ -372,32 +298,20 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> Response | Iterator[ResponseStreamEvent]:
         """The sync form of `aresponses`; streams are sync iterators."""
-        return self._run_sync(
-            self._responses(
-                self._sync_http,
-                model,
-                input,
-                stream,
-                api_base,
-                api_key,
-                drop_params,
-                timeout,
-                params,
-            ),
-            stream,
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        call = self._responses(self._sync_http, model, input, stream, opts, params)
+        return self._run_sync(call, stream)
 
-    async def _responses(
-        self, http, model, input, stream, api_base, api_key, drop_params, timeout, params
-    ):
-        model, api_base, api_key, _ = self._resolve(model, api_base, api_key)
-        body = {**params, "model": model, "input": _wire(input), "stream": stream}
-        provider = self._provider(http, model, api_base, api_key, timeout)
+    async def _responses(self, http, model, input, stream, opts, params):
+        model, opts, _ = self._resolve(model, opts)
+        body = {**params, "model": model, "input": wire(input), "stream": stream}
+        provider = self._provider(http, model, opts)
         request = translate(provider, lambda: responses.request_to_internal(body))
-        await self._check_params(provider, request, drop_params)
+        await self._check_params(provider, request, opts.drop_params)
         if not stream:
             response = await complete(provider, request)
             return typed(
@@ -422,18 +336,17 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> CreateEmbeddingResponse:
         """An OpenAI Embeddings call. `model` is `prefix/name`, as
         `ollama/nomic-embed-text`.
 
-        `timeout` sets the request timeout in seconds (default 300s); it can
-        also be configured per prefix in the client's config dict. Other
-        keyword arguments are Embeddings request fields: `dimensions`,
+        `timeout` and `extra_headers` work as in `acompletion`. Other keyword
+        arguments are Embeddings request fields: `dimensions`,
         `encoding_format`, `user`."""
-        return await self._embedding(
-            self._http, model, input, api_base, api_key, drop_params, timeout, params
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        return await self._embedding(self._http, model, input, opts, params)
 
     def embedding(
         self,
@@ -445,23 +358,20 @@ class Client:
         api_key: str | None = None,
         drop_params: bool | None = None,
         timeout: float | None = None,
+        extra_headers: Mapping[str, str] | None = None,
         **params: Any,
     ) -> CreateEmbeddingResponse:
         """The sync form of `aembedding`."""
-        return self._run_sync(
-            self._embedding(
-                self._sync_http, model, input, api_base, api_key, drop_params, timeout, params
-            ),
-            stream=False,
-        )
+        opts = CallOptions(api_base, api_key, drop_params, timeout, extra_headers)
+        return self._run_sync(self._embedding(self._sync_http, model, input, opts, params), False)
 
-    async def _embedding(self, http, model, input, api_base, api_key, drop_params, timeout, params):
-        model, api_base, api_key, target = self._resolve(model, api_base, api_key)
+    async def _embedding(self, http, model, input, opts, params):
+        model, opts, target = self._resolve(model, opts)
         body = {**params, "model": model, "input": input}
-        provider = self._provider(http, model, api_base, api_key, timeout)
+        provider = self._provider(http, model, opts)
         request = translate(provider, lambda: embeddings.request_to_internal(body))
         fmt = translate(provider, lambda: embeddings.encoding_format(body))
-        self._refuse(provider, provider.unsupported_embedding_params(request), drop_params)
+        self._refuse(provider, provider.unsupported_embedding_params(request), opts.drop_params)
         try:
             response = await provider.embed(request)
         except TranslationError as e:
@@ -474,13 +384,11 @@ class Client:
 
     # --- plumbing -------------------------------------------------------------
 
-    def _resolve(
-        self, model: str, api_base: str | None, api_key: str | None
-    ) -> tuple[str, str | None, str | None, Target | None]:
-        """The prefixed model, backend, and key for `model`, through the alias
+    def _resolve(self, model: str, opts: CallOptions) -> tuple[str, CallOptions, Target | None]:
+        """The prefixed model and call options for `model`, through the alias
         file when it defines `model`. Explicit `api_base` and `api_key` win."""
         if self._store is None:
-            return model, api_base, api_key, None
+            return model, opts, None
         aliases = self._store.current()
         if aliases is not self._aliases:
             self._aliases = aliases
@@ -490,40 +398,16 @@ class Client:
         except AliasConfigError as e:
             raise BadRequestError(str(e)) from e
         if target is None:
-            return model, api_base, api_key, None
-        return (
-            target.model,
-            target.api_base if api_base is None else api_base,
-            target.api_key if api_key is None else api_key,
-            target,
+            return model, opts, None
+        opts = dataclasses.replace(
+            opts,
+            api_base=target.api_base if opts.api_base is None else opts.api_base,
+            api_key=target.api_key if opts.api_key is None else opts.api_key,
         )
+        return target.model, opts, target
 
-    def _provider(
-        self,
-        http: HttpClients,
-        model: str,
-        api_base: str | None,
-        api_key: str | None,
-        timeout: float | None,
-    ) -> Provider:
-        prefix, _ = split_model(model)
-        if prefix not in PROVIDERS:
-            raise BadRequestError(
-                f"no provider for {model!r}: the library supports the prefixes "
-                f"{', '.join(sorted(PROVIDERS))}"
-            )
-        config = copy.copy(self.config.get(prefix, {}))
-        if api_base is not None:
-            config["base_url"] = api_base
-        if api_key is not None:
-            config["api_key"] = api_key
-        if timeout is not None:
-            config["timeout"] = timeout
-        config["callbacks"] = [*self.callbacks, *config.get("callbacks", ())]
-        try:
-            return provider_for(model, {prefix: config}, http)
-        except ValueError as e:
-            raise BadRequestError(str(e), provider=prefix) from e
+    def _provider(self, http: HttpClients, model: str, opts: CallOptions) -> Provider:
+        return build_provider(self.config, self.callbacks, http, model, opts)
 
     async def _check_params(self, provider: Provider, request: Request, drop_params: bool | None):
         """What a backend can honor may depend on its model (Ollama's

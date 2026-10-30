@@ -63,8 +63,9 @@ _IMPLIED_STATUS = (
     (RateLimitError, 429),
 )
 # `Client` keyword arguments a request body must not reach: they would send
-# the gateway's credentials elsewhere or override its parameter policy.
-RESERVED_FIELDS = ("api_base", "api_key", "drop_params")
+# the gateway's credentials elsewhere, override its parameter policy, or set
+# the headers it sends its backends.
+RESERVED_FIELDS = ("api_base", "api_key", "drop_params", "extra_headers")
 SSE_MEDIA_TYPE = "text/event-stream"
 # Stands in for a backend's name or address in what clients see.
 BACKEND = "the backend"

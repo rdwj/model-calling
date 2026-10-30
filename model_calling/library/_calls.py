@@ -7,7 +7,7 @@ mapped onto the library's exceptions.
 from collections.abc import AsyncIterator, Callable
 from typing import Any, TypeVar
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from model_calling.core import Request, Response, StreamError, StreamEvent
 from model_calling.errors import APIResponseValidationError, BadRequestError
@@ -15,6 +15,23 @@ from model_calling.formats import TranslationError
 from model_calling.providers import Provider
 
 T = TypeVar("T")
+
+
+def wire(value: Any) -> Any:
+    """`value` with every pydantic model in it (such as the content blocks a
+    previous `messages()` call returned) dumped as a wire dict. Builds new
+    containers; the caller's are untouched.
+
+    Null fields are left out, as the wire leaves them out. Unset fields are
+    kept, since a block's `type` is a default the caller never sets.
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json", exclude_none=True, by_alias=True)
+    if isinstance(value, (list, tuple)):
+        return [wire(v) for v in value]
+    if isinstance(value, dict):
+        return {k: wire(v) for k, v in value.items()}
+    return value
 
 
 def translate(provider: Provider, fn: Callable[[], Request]) -> Request:

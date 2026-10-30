@@ -212,6 +212,10 @@ ENVELOPE_ERRORS = {
     "messages_no_max_tokens": ("/v1/messages", {"max_tokens": None}, "max_tokens is required"),
     "embeddings_no_input": ("/v1/embeddings", {"input": None}, "input is required"),
     "responses_reserved": ("/v1/responses", {"api_key": "k"}, "api_key"),
+    "chat_extra_headers": ("/v1/chat/completions", {"extra_headers": {"x": "y"}}, "extra_headers"),
+    "messages_extra_headers": ("/v1/messages", {"extra_headers": {"x": "y"}}, "extra_headers"),
+    "responses_extra_headers": ("/v1/responses", {"extra_headers": {"x": "y"}}, "extra_headers"),
+    "embeddings_extra_headers": ("/v1/embeddings", {"extra_headers": {"x": "y"}}, "extra_headers"),
     "responses_no_input": ("/v1/responses", {"input": None}, "input is required"),
 }
 
@@ -220,7 +224,8 @@ ENVELOPE_ERRORS = {
 async def test_envelope_errors_are_400_in_the_ingress_format(
     gateway, monkeypatch, path, fields, match
 ):
-    """Reserved Client arguments would point the gateway's key at another host."""
+    """Reserved Client arguments would point the gateway's key at another host
+    or set the headers it sends its backends."""
     from model_calling import server
 
     monkeypatch.setattr(server, "DROP_PARAMS", False)
