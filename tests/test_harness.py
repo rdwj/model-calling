@@ -270,6 +270,27 @@ def test_messages_reach_a_messages_backend_unchanged(scenario):
     assert backend.native_request(scenario, MESSAGES) == scenario.messages_body(model)
 
 
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        s
+        for s in SCENARIOS.values()
+        if s.responses_form
+        and not s.rejected
+        and BACKENDS["openrouter_responses"].runs(s)
+        and s.name != "store"  # stateless: store: true becomes false
+    ],
+    ids=lambda s: s.name,
+)
+def test_responses_reach_a_responses_backend_unchanged(scenario):
+    """Responses in, Responses out is a pass-through: the body a Responses
+    client sends is the body the backend gets, model name aside. Strict
+    replay proves the grid's Responses cells send this body."""
+    backend = BACKENDS["openrouter_responses"]
+    model = backend.native_model_for(scenario)
+    assert backend.native_request(scenario, RESPONSES) == scenario.responses_body(model)
+
+
 @pytest.mark.parametrize("path", ALL_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.stem}")
 def test_no_native_body_uses_legacy_function_calling(path):
     sent = Exchange.load(path).request_json or {}
