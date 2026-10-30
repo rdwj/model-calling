@@ -63,3 +63,6 @@ tracked in git.
 - **Mount the alias file's directory, never the file.** A single-file bind mount (compose) or a
   `subPath` mount (Kubernetes) pins the original inode, so an editor's rename-on-save or a ConfigMap
   update never reaches the container and hot reload silently stops working.
+- **Tell workflow reviewers the expected `Assisted-by` trailer.** A Session D reviewer read the
+  global CLAUDE.md's `Sonnet 4.5` example as a requirement, flagged the correct Opus trailer as
+  must-fix, and burned the stream's only fix pass on it. State the trailer in the reviewer brief.
