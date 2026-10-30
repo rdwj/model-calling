@@ -2,8 +2,10 @@
 The gateway driven by the official SDK clients, the way apps call it:
 `AsyncAnthropic(base_url=...)` on the Messages ingress, streaming through
 the SDK's own `messages.stream` helper, and `AsyncOpenAI(base_url=...)` on
-the Chat Completions ingress, streaming through the SDK's own iterator. See
-tests/harness/grid.py.
+the Chat Completions ingress, streaming through the SDK's own iterator, and
+on the Responses ingress, streaming through the state its `responses.stream`
+helper keeps.
+See tests/harness/grid.py.
 """
 
 import anthropic
@@ -11,9 +13,11 @@ import httpx2
 import openai
 import pytest
 from openai.lib.streaming.chat import ChatCompletionStreamState
+from openai.lib.streaming.responses import ResponseStreamState
 
 from model_calling.formats import anthropic as anthropic_format
 from model_calling.formats import chat_completions as chat_format
+from model_calling.formats import responses as responses_format
 from tests.harness.checks import (
     COMPLETION_CHECKS,
     FINAL_COMPLETION_CHECKS,
@@ -21,10 +25,16 @@ from tests.harness.checks import (
     MESSAGE_CHECKS,
 )
 from tests.harness.gateway import GATEWAY_BASE_URL, grid_alias
+from tests.harness.responses_checks import FINAL_RESPONSE_CHECKS, RESPONSE_CHECKS
+from tests.harness.responses_scenarios import rejected_name
 from tests.harness.grid import SDK_INGRESSES, Cell, grid
 from tests.harness.replay import Exchange
 from tests.harness.scenarios import BACKENDS, SCENARIOS, fixture_for, refused_params
-from tests.harness.sdk import validate_anthropic_request, validate_chat_completion_request
+from tests.harness.sdk import (
+    validate_anthropic_request,
+    validate_chat_completion_request,
+    validate_responses_request,
+)
 
 # The gateway takes no client key; the SDKs require one.
 SDK_API_KEY = "sdk-grid-not-a-real-key"
@@ -172,7 +182,57 @@ async def check_completion(openai_sdk, cell: Cell):
         COMPLETION_CHECKS[cell.scenario](resp, model(cell))
 
 
-# --- both -------------------------------------------------------------------
+# --- sdk_responses ----------------------------------------------------------
+
+
+def responses_body(cell: Cell) -> dict:
+    body = SCENARIOS[cell.scenario].responses_body(model(cell))
+    validate_responses_request(body)
+    return body
+
+
+async def check_responses_stream(openai_sdk, cell: Cell):
+    body = responses_body(cell)
+    stream = await openai_sdk.responses.create(**body)
+    # What the SDK's responses.stream helper runs: it raises on an event out
+    # of order, and assembles the final response.
+    state = ResponseStreamState(input_tools=body.get("tools", openai.omit), text_format=openai.omit)
+    events, fired = [], []
+    async for event in stream:
+        events.append(event)
+        fired += state.handle_event(event)
+    RESPONSE_CHECKS[cell.scenario](events, model(cell))
+    # The SDK assembles the same response from our events.
+    FINAL_RESPONSE_CHECKS[cell.scenario](fired[-1].response, model(cell))
+
+
+async def check_responses_backend_error(openai_sdk, cell: Cell):
+    status = recorded_status(cell)
+    with pytest.raises(openai.APIStatusError) as err:
+        await openai_sdk.responses.create(**responses_body(cell))
+    assert err.value.status_code == status
+    assert err.value.type == responses_format.error_body(status, "")["error"]["type"]
+
+
+async def check_responses_rejected(openai_sdk, cell: Cell):
+    with pytest.raises(openai.BadRequestError) as err:
+        await openai_sdk.responses.create(**responses_body(cell))
+    assert rejected_name(cell.scenario) in err.value.message
+
+
+async def check_responses(openai_sdk, cell: Cell):
+    if cell.scenario == "backend_error":
+        await check_responses_backend_error(openai_sdk, cell)
+    elif SCENARIOS[cell.scenario].rejected:
+        await check_responses_rejected(openai_sdk, cell)
+    elif SCENARIOS[cell.scenario].stream:
+        await check_responses_stream(openai_sdk, cell)
+    else:
+        resp = await openai_sdk.responses.create(**responses_body(cell))
+        RESPONSE_CHECKS[cell.scenario](resp, model(cell))
+
+
+# --- all three --------------------------------------------------------------
 
 # Ingress -> (the SDK's create call for a cell, the SDK's 400 error).
 REFUSAL_CALLS = {
@@ -182,6 +242,10 @@ REFUSAL_CALLS = {
     ),
     "sdk_completion": (
         lambda sdk, openai_sdk, cell: openai_sdk.chat.completions.create(**completion_body(cell)),
+        openai.BadRequestError,
+    ),
+    "sdk_responses": (
+        lambda sdk, openai_sdk, cell: openai_sdk.responses.create(**responses_body(cell)),
         openai.BadRequestError,
     ),
 }
@@ -210,5 +274,7 @@ async def test_cell(gateway, sdk, openai_sdk, cell: Cell, monkeypatch):
         await check_refused(sdk, openai_sdk, cell, replay, monkeypatch)
     elif cell.ingress == "sdk_messages":
         await check_messages(sdk, cell)
+    elif cell.ingress == "sdk_responses":
+        await check_responses(openai_sdk, cell)
     else:
         await check_completion(openai_sdk, cell)

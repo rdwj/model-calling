@@ -1,14 +1,13 @@
 """
 Backends behind the provider interface in `providers.base`.
-
-Cohere is not ported yet; it returns as a Cohere v2 provider.
 """
 
 import os
 from collections.abc import Mapping
 
 from model_calling.providers.anthropic import AnthropicProvider
-from model_calling.providers.base import HttpClients, Provider, StreamParser
+from model_calling.providers.base import DEFAULT_TIMEOUT, HttpClients, Provider, StreamParser
+from model_calling.providers.cohere import CohereProvider
 from model_calling.providers.ollama import OllamaProvider
 from model_calling.providers.openai_compat import (
     OpenAICompatProvider,
@@ -16,13 +15,16 @@ from model_calling.providers.openai_compat import (
     OpenRouterProvider,
     VLLMProvider,
 )
+from model_calling.providers.openrouter_responses import OpenRouterResponsesProvider
 
 # Model-name prefix -> provider. Unprefixed names default to Ollama.
 PROVIDERS: dict[str, type[Provider]] = {
     "anthropic": AnthropicProvider,
+    "cohere": CohereProvider,
     "ollama": OllamaProvider,
     "openai": OpenAIProvider,
     "openrouter": OpenRouterProvider,
+    "openrouter_responses": OpenRouterResponsesProvider,
     "vllm": VLLMProvider,
 }
 DEFAULT_PREFIX = "ollama"
@@ -40,6 +42,10 @@ def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
             "base_url": "https://api.anthropic.com/v1",
             "api_key": environ.get("ANTHROPIC_API_KEY", ""),
         },
+        "cohere": {
+            "base_url": "https://api.cohere.com/v2",
+            "api_key": environ.get("COHERE_API_KEY", ""),
+        },
         "ollama": {"base_url": "http://localhost:11434"},
         # OpenAI-compatible base URLs are the API root, /v1 included.
         "vllm": {"base_url": "http://localhost:8000/v1"},
@@ -49,6 +55,10 @@ def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
             "headers": {"OpenAI-Organization": org} if org else {},
         },
         "openrouter": {
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": environ.get("OPENROUTER_API_KEY", ""),
+        },
+        "openrouter_responses": {
             "base_url": "https://openrouter.ai/api/v1",
             "api_key": environ.get("OPENROUTER_API_KEY", ""),
         },
@@ -69,7 +79,7 @@ def provider_for(
     """The provider for `model_name`, or None if its prefix isn't ported yet.
 
     `configs` maps each prefix to its settings (`base_url`, `api_key`,
-    `callbacks`, and optionally `headers` and `transport`), as in
+    `callbacks`, and optionally `headers`, `transport`, and `timeout`), as in
     `Client.config`. With `clients`, the provider shares its
     prefix's pooled HTTP client instead of opening one per call.
     """
@@ -85,6 +95,7 @@ def provider_for(
         base_url=config["base_url"],
         api_key=config.get("api_key") or None,
         callbacks=config.get("callbacks", ()),
+        timeout=config.get("timeout", DEFAULT_TIMEOUT),
         http_client=clients.get(prefix, config) if clients is not None else None,
         extra_headers=config.get("headers"),
         model_info_cache=clients.model_info if clients is not None else None,
@@ -93,11 +104,13 @@ def provider_for(
 
 __all__ = [
     "AnthropicProvider",
+    "CohereProvider",
     "HttpClients",
     "OllamaProvider",
     "OpenAICompatProvider",
     "OpenAIProvider",
     "OpenRouterProvider",
+    "OpenRouterResponsesProvider",
     "PROVIDERS",
     "Provider",
     "StreamParser",

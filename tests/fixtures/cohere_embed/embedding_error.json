@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "backend": "cohere_embed",
+    "scenario": "embedding_error",
+    "hand_built_from": "https://docs.cohere.com/reference/embed",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/embed",
+    "json": {
+      "model": "model-calling-missing",
+      "texts": [
+        "The sky is blue.",
+        "Grass is green."
+      ],
+      "input_type": "search_document",
+      "embedding_types": [
+        "float"
+      ]
+    }
+  },
+  "response": {
+    "status": 404,
+    "content_type": "application/json",
+    "json": {
+      "id": "1f2e3d4c-5b6a-4798-8a9b-c0d1e2f3a4b5",
+      "message": "model 'model-calling-missing' not found, make sure the correct model ID was used and that you have access to the model."
+    }
+  }
+}

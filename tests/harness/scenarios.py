@@ -9,6 +9,8 @@ exchange. The exception is a backend that speaks Anthropic Messages: it sees
 more of a Messages request than of the same scenario in Chat Completions
 (shorthand content, cache_control, metadata), so where the two bodies differ
 the Chat Completions form has a fixture of its own (`Backend.fixture_name`).
+A third form, OpenAI Responses, is written in `responses_scenarios.py`; it
+replays whichever form's fixture has its native body.
 """
 
 import base64
@@ -18,11 +20,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Mapping, Optional, Tuple
 
-from model_calling.formats import anthropic, chat_completions, embeddings
+from model_calling.formats import anthropic, chat_completions, embeddings, responses
 from model_calling.providers import (
     AnthropicProvider,
+    CohereProvider,
     OllamaProvider,
     OpenRouterProvider,
+    OpenRouterResponsesProvider,
     Provider,
     VLLMProvider,
 )
@@ -107,6 +111,13 @@ REASONING = "reasoning"
 NO_THINKING = "no_thinking"
 CHAT_COMPLETIONS = "chat_completions"
 MESSAGES = "messages"
+RESPONSES = "responses"
+# Cohere v2: a format of its own, which no ingress speaks.
+COHERE = "cohere"
+
+
+# A scenario only OpenAI Responses can express.
+RESPONSES_ONLY = {"chat_form": False, "messages_form": False, "native_form": RESPONSES}
 
 
 @dataclass(frozen=True)
@@ -149,6 +160,9 @@ class Scenario:
     # Replay another scenario's fixture: the native exchange is identical,
     # and strict body matching proves it.
     fixture: Optional[str] = None
+    # The Responses ingress refuses the request, naming a field, before any
+    # backend call; so it has no fixture.
+    rejected: bool = False
 
     def messages(self) -> list:
         return [{"role": "user", "content": self.prompt}]
@@ -185,18 +199,37 @@ class Scenario:
         return body
 
     @property
+    def responses_form(self) -> bool:
+        """Whether OpenAI Responses can express the request."""
+        from tests.harness.responses_scenarios import RESPONSES_FORMS
+
+        return self.name in RESPONSES_FORMS
+
+    def responses_body(self, model: str) -> dict:
+        from tests.harness.responses_scenarios import responses_body
+
+        return responses_body(self, model)
+
+    @property
     def forms(self) -> Tuple[str, ...]:
         """The wire forms this scenario has."""
         return tuple(
             form
-            for form, has in ((MESSAGES, self.messages_form), (CHAT_COMPLETIONS, self.chat_form))
+            for form, has in (
+                (MESSAGES, self.messages_form),
+                (CHAT_COMPLETIONS, self.chat_form),
+                (RESPONSES, self.responses_form),
+            )
             if has
         )
 
     def native_internal(self, model: str, form: Optional[str] = None):
         """The scenario as an internal request, from `form` (default its native form)."""
-        if (form or self.native_form) == MESSAGES:
+        form = form or self.native_form
+        if form == MESSAGES:
             return anthropic.request_to_internal(self.messages_body(model))
+        if form == RESPONSES:
+            return responses.request_to_internal(self.responses_body(model))
         return chat_completions.request_to_internal(self.chat_completions_body(model))
 
     @property
@@ -365,6 +398,17 @@ SCENARIOS = {
             needs=NO_THINKING,
             only_backends=("ollama",),
         ),
+        # Streaming version of thinking_unsupported, to test Provider.prepare
+        # on the streaming path (Phase 12 item 3).
+        Scenario(
+            "stream_thinking_unsupported",
+            THINKING_PROMPT,
+            stream=True,
+            chat_extra={"reasoning_effort": "high"},
+            messages_extra={"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}},
+            needs=NO_THINKING,
+            only_backends=("ollama",),
+        ),
         # Structured output. "response" is the name providers give a schema
         # that arrives without one, as from Messages.
         Scenario(
@@ -456,6 +500,24 @@ SCENARIOS = {
             chat_extra={"max_completion_tokens": 256, "seed": SEED},
             messages_form=False,
         ),
+        # Responses only (Phase 7). `store` is accepted, though nothing is
+        # stored; the native exchange is text's.
+        Scenario("store", TEXT_PROMPT, fixture="text", **RESPONSES_ONLY),
+        # Requests the stateless Responses ingress refuses: stored state,
+        # built-in tools, and encrypted reasoning.
+        *(
+            Scenario(name, TEXT_PROMPT, rejected=True, **RESPONSES_ONLY)
+            for name in (
+                "previous_response_id",
+                "conversation",
+                "background",
+                "web_search",
+                "file_search",
+                "code_interpreter",
+                "computer_use",
+                "encrypted_reasoning",
+            )
+        ),
     )
 }
 
@@ -477,9 +539,12 @@ class Backend:
     gateway_config: dict = field(default_factory=dict)
     # Fixture recording needs an OpenRouter key.
     needs_openrouter_key: bool = False
-    # The wire format the backend speaks. A Messages backend's native body
-    # depends on the ingress form; see the module docstring.
+    # The wire format the backend speaks. A Messages or Responses backend's
+    # native body depends on the ingress form; see the module docstring.
     speaks: str = CHAT_COMPLETIONS
+    # True for a backend whose fixtures are written by hand from its API
+    # reference, because there is no key to record with. The recorder skips it.
+    hand_built: bool = False
     # False for a backend recorded only as a reference, because no provider
     # can reach it yet. Its fixtures are validated but stay off the grid.
     in_grid: bool = True
@@ -497,9 +562,11 @@ class Backend:
     def runs(self, scenario: Scenario) -> bool:
         return (
             self.unsupported(scenario) is None
+            and not scenario.rejected
             and scenario.name not in self.refuses
             and (self.only_scenarios is None or scenario.name in self.only_scenarios)
             and (scenario.only_backends is None or self.name in scenario.only_backends)
+            and (self.speaks != RESPONSES or scenario.responses_form)
         )
 
     def unsupported(self, scenario: Scenario) -> Optional[str]:
@@ -523,23 +590,27 @@ class Backend:
         """The form the native body is built from, for an ingress sending
         `form`. A Chat Completions backend always uses the scenario's native
         form, and strict replay proves the other form sends the same body."""
-        if self.speaks != MESSAGES:
+        if self.speaks == CHAT_COMPLETIONS:
             return scenario.native_form
+        # Messages and Responses backends use the form they're sent.
         if form in scenario.forms:
             return form
         return scenario.forms[0]
 
     def fixture_name(self, scenario: Scenario, form: Optional[str] = None) -> str:
         """The fixture an ingress sending `form` replays: the scenario's own,
-        or for a form whose native body differs from the default form's, one
-        named for that form."""
+        or for a form whose native body differs from the default form's, the
+        first other form's with the same body, or one named for this form."""
         default = self.native_form(scenario)
         chosen = self.native_form(scenario, form)
-        if chosen == default or self.native_request(scenario, chosen) == self.native_request(
-            scenario
-        ):
-            return scenario.fixture_name
-        return f"{scenario.fixture_name}.{chosen}"
+        body = None
+        for other in dict.fromkeys((default, *scenario.forms)):
+            if other != chosen:
+                body = body or self.native_request(scenario, chosen)
+                if self.native_request(scenario, other) != body:
+                    continue
+            return scenario.fixture_name if other == default else f"{scenario.fixture_name}.{other}"
+        raise ValueError(f"{chosen!r} is not a form of scenario {scenario.name!r}")
 
     def model_info_fixture(self, scenario: Scenario) -> Optional[str]:
         """The fixture of the model lookup `scenario` needs first, if any."""
@@ -585,6 +656,12 @@ MODEL_INFO_FIXTURE_PREFIX = "model_info-"
 OPENROUTER_VISION_MODEL = "google/gemma-3-4b-it"
 OPENROUTER_REASONING_MODEL = "openai/gpt-oss-20b"
 VLLM_NO_VISION = "vLLM serves gpt-oss-20b, which takes no image input"
+# Cohere's v2 API root. Its fixtures are hand-built (see fixtures/README.md).
+COHERE_URL = "https://api.cohere.com/v2"
+COHERE_MODEL = "command-a-03-2025"
+COHERE_VISION_MODEL = "command-a-vision-07-2025"
+COHERE_REASONING_MODEL = "command-a-reasoning-08-2025"
+COHERE_EMBED_MODEL = "embed-v4.0"
 
 BACKENDS = {
     b.name: b
@@ -603,10 +680,10 @@ BACKENDS = {
                 REASONING: OLLAMA_REASONING_MODEL,
                 NO_THINKING: OLLAMA_NO_THINKING_MODEL,
             },
-            # Ollama has no tool_choice, parallel switch, or strict tools,
-            # and refuses `think` for a model that can't think.
+            # Ollama has no tool_choice, parallel switch, or strict tools.
+            # thinking_unsupported is refused via unsupported_params(), not here,
+            # so it can have fixtures for the drop path (Phase 12 item 3).
             refuses={
-                "thinking_unsupported": ("thinking",),
                 "tool_required": ("tool_choice",),
                 "tool_named": ("tool_choice",),
                 "parallel_tools_off": ("parallel_tool_calls",),
@@ -626,6 +703,25 @@ BACKENDS = {
             capability_models={
                 VISION: OPENROUTER_VISION_MODEL,
                 REASONING: OPENROUTER_REASONING_MODEL,
+            },
+        ),
+        Backend(
+            name="openrouter_responses",
+            gateway_model="openrouter_responses/mistralai/mistral-nemo",
+            native_model="mistralai/mistral-nemo",
+            missing_native_model="model-calling/does-not-exist",
+            endpoint=f"{OPENROUTER_URL}/responses",
+            config_prefix="openrouter_responses",
+            gateway_config={"base_url": OPENROUTER_URL, "api_key": REPLAY_API_KEY},
+            needs_openrouter_key=True,
+            provider=OpenRouterResponsesProvider,
+            speaks=RESPONSES,
+            capability_models={
+                VISION: OPENROUTER_VISION_MODEL,
+                REASONING: OPENROUTER_REASONING_MODEL,
+            },
+            refuses={
+                "parallel_tools_off": ("parallel_tool_calls",),
             },
         ),
         Backend(
@@ -654,6 +750,26 @@ BACKENDS = {
             lacks={VISION: VLLM_NO_VISION},
             # Messages has no seed.
             refuses={"max_completion_tokens": ("seed",)},
+        ),
+        Backend(
+            name="cohere",
+            gateway_model=f"cohere/{COHERE_MODEL}",
+            native_model=COHERE_MODEL,
+            missing_native_model="model-calling-missing",
+            endpoint=f"{COHERE_URL}/chat",
+            config_prefix="cohere",
+            gateway_config={"base_url": COHERE_URL, "api_key": REPLAY_API_KEY},
+            provider=CohereProvider,
+            speaks=COHERE,
+            hand_built=True,
+            capability_models={VISION: COHERE_VISION_MODEL, REASONING: COHERE_REASONING_MODEL},
+            # v2's tool_choice is REQUIRED or NONE, it has no parallel switch,
+            # and its thinking takes a token budget but no effort level.
+            refuses={
+                "tool_named": ("tool_choice",),
+                "parallel_tools_off": ("parallel_tool_calls",),
+                "reasoning_effort": ("thinking.effort",),
+            },
         ),
     )
 }
@@ -708,6 +824,7 @@ class EmbeddingBackend:
     provider: type[Provider]
     gateway_config: dict = field(default_factory=dict)
     needs_openrouter_key: bool = False
+    hand_built: bool = False
 
     def native_model_for(self, scenario: EmbeddingScenario) -> str:
         return self.missing_native_model if scenario.missing_model else self.native_model
@@ -747,6 +864,17 @@ EMBEDDING_BACKENDS = {
             gateway_config={"base_url": f"{OLLAMA_URL}/v1", "api_key": REPLAY_API_KEY},
             provider=VLLMProvider,
         ),
+        EmbeddingBackend(
+            name="cohere_embed",
+            gateway_model=f"cohere/{COHERE_EMBED_MODEL}",
+            native_model=COHERE_EMBED_MODEL,
+            missing_native_model="model-calling-missing",
+            endpoint=f"{COHERE_URL}/embed",
+            config_prefix="cohere",
+            gateway_config={"base_url": COHERE_URL, "api_key": REPLAY_API_KEY},
+            provider=CohereProvider,
+            hand_built=True,
+        ),
     )
 }
 
@@ -769,6 +897,8 @@ def exchanges_for(backend_name: str, scenario_name: str, form: Optional[str] = N
     from tests.harness.replay import Exchange, fixture_path
 
     backend, scenario = ALL_BACKENDS[backend_name], ALL_SCENARIOS[scenario_name]
+    if getattr(scenario, "rejected", False):
+        return []
     info = getattr(backend, "model_info_fixture", lambda s: None)(scenario)
     exchanges = [] if info is None else [Exchange.load(fixture_path(backend_name, info))]
     if not refused_params(backend_name, scenario_name):

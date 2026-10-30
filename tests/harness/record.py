@@ -259,6 +259,9 @@ def main(argv=None) -> int:
     spent_before = ledger.total_spend()
 
     for backend in backends:
+        if backend.hand_built:
+            print(f"skip   {backend.name} (hand-built fixtures; see tests/fixtures/README.md)")
+            continue
         family = _scenarios_for(backend)
         names = [n for n in (args.scenario or sorted(family)) if n in family]
         todo = []

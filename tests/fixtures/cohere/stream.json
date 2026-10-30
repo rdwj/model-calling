@@ -1,0 +1,47 @@
+{
+  "meta": {
+    "backend": "cohere",
+    "scenario": "stream",
+    "hand_built_from": "https://docs.cohere.com/reference/chat-stream",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/chat",
+    "json": {
+      "model": "command-a-03-2025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with exactly one word: pong"
+        }
+      ],
+      "max_tokens": 256,
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "text/event-stream",
+    "lines": [
+      "event: message-start",
+      "data: {\"delta\":{\"message\":{\"role\":\"assistant\"}},\"id\":\"29d4e7a1-6c3b-4f8e-a2d5-9b0c1e2f3a4d\",\"type\":\"message-start\"}",
+      "",
+      "event: content-start",
+      "data: {\"delta\":{\"message\":{\"content\":{\"text\":\"\",\"type\":\"text\"}}},\"index\":0,\"type\":\"content-start\"}",
+      "",
+      "event: content-delta",
+      "data: {\"delta\":{\"message\":{\"content\":{\"text\":\"po\"}}},\"index\":0,\"type\":\"content-delta\"}",
+      "",
+      "event: content-delta",
+      "data: {\"delta\":{\"message\":{\"content\":{\"text\":\"ng\"}}},\"index\":0,\"type\":\"content-delta\"}",
+      "",
+      "event: content-end",
+      "data: {\"index\":0,\"type\":\"content-end\"}",
+      "",
+      "event: message-end",
+      "data: {\"delta\":{\"finish_reason\":\"COMPLETE\",\"usage\":{\"billed_units\":{\"input_tokens\":8,\"output_tokens\":2},\"tokens\":{\"input_tokens\":499,\"output_tokens\":2}}},\"type\":\"message-end\"}",
+      ""
+    ]
+  }
+}

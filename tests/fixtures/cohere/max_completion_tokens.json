@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "backend": "cohere",
+    "scenario": "max_completion_tokens",
+    "hand_built_from": "https://docs.cohere.com/reference/chat",
+    "written_at": "2026-10-29"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.cohere.com/v2/chat",
+    "json": {
+      "model": "command-a-03-2025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with exactly one word: pong"
+        }
+      ],
+      "max_tokens": 256,
+      "seed": 7,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "c7e1b9a4-2f6d-4a8c-9e3b-5d0f7a1c2e48",
+      "finish_reason": "COMPLETE",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "pong"
+          }
+        ]
+      },
+      "usage": {
+        "billed_units": {
+          "input_tokens": 8,
+          "output_tokens": 2
+        },
+        "tokens": {
+          "input_tokens": 499,
+          "output_tokens": 2
+        }
+      }
+    }
+  }
+}

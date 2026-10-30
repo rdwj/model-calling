@@ -35,16 +35,20 @@ The harness lives in `harness/`:
   whose prefix config carries the replay transport.
 - `grid.py` parametrizes tests over (ingress, backend, scenario) cells.
   The gateway's ingresses (`chat_completions`, `gateway_messages`,
-  `gateway_embeddings`) run in `test_gateway_grid.py`, which also checks
-  that every gateway answer equals the library's for the same cell. The
-  library's `library_completion`, `library_messages`, and
+  `gateway_responses`, `gateway_embeddings`) run in
+  `test_gateway_grid.py`, which also checks that every gateway answer
+  equals the library's for the same cell. The library's
+  `library_completion`, `library_messages`, `library_responses`, and
   `library_embedding` run in `test_library_grid.py`. In
   `test_sdk_grid.py`, `sdk_messages` drives the gateway with the official
   `anthropic.AsyncAnthropic` client and streams through its
-  `messages.stream` helper, and `sdk_completion` drives it with
-  `openai.AsyncOpenAI` and streams through the SDK's own iterator. Both
-  SDKs run on httpx2, so they get an httpx2 ASGI transport, and both
-  cells check the message or completion the SDK assembles from a stream. Embeddings have their
+  `messages.stream` helper, `sdk_completion` drives it with
+  `openai.AsyncOpenAI` and streams through the SDK's own iterator, and
+  `sdk_responses` calls `client.responses.create(...)` and runs each
+  stream through the SDK's `ResponseStreamState`, which raises on an
+  event out of order. Both SDKs run on httpx2, so they get an httpx2 ASGI
+  transport, and the cells check the message, completion, or response
+  the SDK assembles from a stream. Embeddings have their
   own backends and scenarios (`EMBEDDING_BACKENDS`, `embedding_grid`).
   `KNOWN_FAILURES` lists the cells that are expected to fail as strict
   xfails, each naming the epic phase that fixes it (or the backend
@@ -55,18 +59,27 @@ The harness lives in `harness/`:
   (vLLM's gpt-oss has no vision) makes that cell a strict xfail. A
   backend that `refuses` a scenario (Ollama can't force a tool call) has
   no fixture for it: the cell checks that strict mode refuses the request,
-  naming the parameters, without calling the backend.
+  naming the parameters, without calling the backend. The Responses
+  ingresses, added after the others, get no cell at all where a backend
+  limitation (`BACKEND_LIMITATIONS`, `lacks`) would fail it, and a
+  `rejected` scenario (`previous_response_id`, a built-in tool) checks
+  that the stateless ingress refuses it by name without calling the
+  backend.
 - `scenarios.py` defines the requests and backends shared by the tests and
   the recorder. A scenario is written in both wire forms where both can
   express it; `native_form` picks the one the backend body is built from,
   so strict replay proves the other form sends the same body. A backend
   that speaks Messages (`vllm_messages`) builds its body from the ingress's
   own form instead, and where the Chat Completions form's body differs it
-  replays `<scenario>.chat_completions.json`. A backend's
+  replays `<scenario>.chat_completions.json`. The Responses form of each
+  scenario is in `responses_scenarios.py`; it replays whichever form's
+  fixture has the same native body, so it needs no recordings of its own
+  (`<scenario>.responses.json` if it ever does). A backend's
   `capability_models` names the model it uses for a scenario that needs
   vision or reasoning.
 - `checks.py` holds what each scenario must return, checked on the typed
-  result, shared by the library, gateway, and SDK-client cells.
+  result, shared by the library, gateway, and SDK-client cells;
+  `responses_checks.py` does the same for the Responses ingresses.
 - `sdk.py` validates output against the official `openai` and `anthropic`
   SDK types.
 - `replay.py` serves recorded exchanges from `fixtures/`. A request must
@@ -101,6 +114,12 @@ the endpoint wants one; `VLLM_VERIFY_TLS=false` skips certificate checks
 for an endpoint reached through a port-forward. Native request bodies come
 from each backend's provider, so recordings match what the gateway sends.
 Run gitleaks on `tests/fixtures/` before committing new recordings.
+
+Backends marked `hand_built` (`cohere`, `cohere_embed`) have no key to
+record with, so the recorder skips them. Their request bodies still come
+from the provider; their responses are written by hand from the backend's
+API reference, and `tests/test_cohere_fixtures.py` checks both halves
+against the field lists in that reference.
 
 ## Live tests and the spend ledger
 

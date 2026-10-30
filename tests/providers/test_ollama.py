@@ -7,6 +7,7 @@ import pytest
 
 from model_calling.core import (
     Base64Source,
+    Document,
     Image,
     Message,
     Request,
@@ -159,6 +160,17 @@ def test_build_request_url_image_raises(provider):
         messages=[Message(role="user", content=[img])],
     )
     with pytest.raises(TranslationError, match="base64 images"):
+        provider.build_request(req)
+
+
+def test_build_request_document_block_raises(provider):
+    """Ollama cannot accept document blocks (Phase 12 item 4)."""
+    doc = Document(data={"source": {"type": "text", "text": "content"}})
+    req = Request(
+        model="qwen3:4b",
+        messages=[Message(role="user", content=[doc])],
+    )
+    with pytest.raises(TranslationError, match="cannot accept document blocks"):
         provider.build_request(req)
 
 

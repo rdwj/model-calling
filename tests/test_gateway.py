@@ -151,6 +151,7 @@ NAME_ONLY = {
         {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 8},
     ),
     "embeddings": ("/v1/embeddings", {"input": "hi"}),
+    "responses": ("/v1/responses", {"input": "hi"}),
 }
 NOT_FOUND_TYPES = {"/v1/messages": "not_found_error"}
 
@@ -159,7 +160,7 @@ NOT_FOUND_TYPES = {"/v1/messages": "not_found_error"}
 @pytest.mark.parametrize("name", ["ollama/qwen3:4b", "vllm/gpt-oss-20b", "cohere/command-a", "x"])
 async def test_a_name_that_is_not_an_alias_is_404(gateway, path, fields, name):
     """Backend names never cross the gateway's wire, even for a backend the
-    alias file uses; and Cohere, not yet ported, has no route at all."""
+    alias file uses, or one it doesn't (Cohere here)."""
     gateway.alias("ollama/qwen3:4b")
     resp = await gateway.client.post(path, json={"model": name, **fields})
     assert resp.status_code == 404, resp.text
@@ -184,6 +185,8 @@ ENVELOPE_ERRORS = {
     "messages_no_model": ("/v1/messages", {"model": None}, "model is required"),
     "messages_no_max_tokens": ("/v1/messages", {"max_tokens": None}, "max_tokens is required"),
     "embeddings_no_input": ("/v1/embeddings", {"input": None}, "input is required"),
+    "responses_reserved": ("/v1/responses", {"api_key": "k"}, "api_key"),
+    "responses_no_input": ("/v1/responses", {"input": None}, "input is required"),
 }
 
 

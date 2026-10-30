@@ -10,6 +10,7 @@ import pytest
 from model_calling.errors import APIStatusError
 from model_calling.formats import anthropic
 from model_calling.formats import chat_completions as chat
+from model_calling.formats import responses
 from model_calling.aliases import Target
 from model_calling.gateway import client_status, public_message
 from tests.harness.grid import (
@@ -20,6 +21,8 @@ from tests.harness.grid import (
     grid,
 )
 from tests.harness.checks import COMPLETION_CHECKS, MESSAGE_CHECKS
+from tests.harness.responses_checks import RESPONSE_CHECKS
+from tests.harness.responses_scenarios import REJECTIONS, rejected_name
 from tests.harness.gateway import grid_alias
 from tests.harness.replay import Exchange, ReplayTransport
 from tests.harness.scenarios import ALL_BACKENDS, ALL_SCENARIOS, fixture_for, refused_params
@@ -32,9 +35,12 @@ from tests.harness.sdk import (
     validate_chat_completion,
     validate_chat_completion_chunks,
     validate_embedding_response,
+    validate_response,
+    validate_responses_stream,
 )
 
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
+BAD_REQUEST = 400
 
 # Ingress -> (gateway path, request body for a scenario and model, library method).
 INGRESS_CALLS = {
@@ -48,14 +54,20 @@ INGRESS_CALLS = {
         lambda scenario, model: scenario.messages_body(model),
         "amessages",
     ),
+    "gateway_responses": (
+        "/v1/responses",
+        lambda scenario, model: scenario.responses_body(model),
+        "aresponses",
+    ),
     "gateway_embeddings": (
         "/v1/embeddings",
         lambda scenario, model: scenario.body(model),
         "aembedding",
     ),
 }
-# Fields that differ between two runs of the same exchange.
-VOLATILE_FIELDS = ("id", "created")
+# Fields that differ between two runs of the same exchange. Responses item
+# ids derive from the response id, and Ollama invents call ids.
+VOLATILE_FIELDS = ("id", "created", "created_at", "item_id", "call_id")
 
 
 def model(cell: Cell) -> str:
@@ -157,6 +169,42 @@ async def check_messages_backend_error(gateway, cell, replay):
     assert_no_backend_details(resp.text, cell)
 
 
+# --- gateway_responses ------------------------------------------------------
+
+
+async def check_responses(gateway, cell, replay):
+    resp = await post(gateway, cell)
+    assert resp.status_code == 200, resp.text
+    if ALL_SCENARIOS[cell.scenario].stream:
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        blocks = sse_blocks(resp.text)
+        assert all(name == data["type"] for name, data in blocks), blocks
+        result = validate_responses_stream([data for _, data in blocks])
+    else:
+        result = validate_response(resp.json())
+    RESPONSE_CHECKS[cell.scenario](result, grid_alias(model(cell)))
+
+
+async def check_responses_backend_error(gateway, cell, replay):
+    resp = await post(gateway, cell)
+    recorded = Exchange.load(fixture_for(cell.backend, cell.scenario, cell.form))
+    assert resp.status_code == recorded.status, resp.text
+    expected = responses.error_body(recorded.status, "")["error"]["type"]
+    assert resp.json()["error"]["type"] == expected
+    assert_no_backend_details(resp.text, cell)
+
+
+async def check_responses_rejected(gateway, cell, replay):
+    """The stateless ingress refuses what needs state or is out of scope,
+    naming it, and never calls the backend."""
+    resp = await post(gateway, cell)
+    assert resp.status_code == BAD_REQUEST, resp.text
+    error = resp.json()["error"]
+    assert error["type"] == responses.error_body(BAD_REQUEST, "")["error"]["type"]
+    assert rejected_name(cell.scenario) in error["message"]
+    replay.check()
+
+
 # --- gateway_embeddings -----------------------------------------------------
 
 
@@ -179,12 +227,18 @@ CHECKS = {
     **{("gateway_messages", name): check_messages for name in MESSAGE_CHECKS},
     ("chat_completions", "backend_error"): check_chat_completions_backend_error,
     ("gateway_messages", "backend_error"): check_messages_backend_error,
+    **{("gateway_responses", name): check_responses for name in RESPONSE_CHECKS},
+    ("gateway_responses", "backend_error"): check_responses_backend_error,
+    **{("gateway_responses", name): check_responses_rejected for name in REJECTIONS},
     ("gateway_embeddings", "embedding"): check_embeddings,
     ("gateway_embeddings", "embedding_error"): check_embeddings_error,
 }
 GATEWAY_GRID = grid(ingresses=GATEWAY_INGRESSES) + embedding_grid(GATEWAY_EMBEDDING_INGRESSES)
-ERROR_TYPES = {"chat_completions": chat.error_body, "gateway_messages": anthropic.error_body}
-BAD_REQUEST = 400
+ERROR_TYPES = {
+    "chat_completions": chat.error_body,
+    "gateway_messages": anthropic.error_body,
+    "gateway_responses": responses.error_body,
+}
 
 
 async def check_refused(gateway, cell, replay, monkeypatch):
@@ -210,7 +264,8 @@ async def test_cell(gateway, cell: Cell, monkeypatch):
         await check_refused(gateway, cell, replay, monkeypatch)
         return
     await CHECKS[(cell.ingress, cell.scenario)](gateway, cell, replay)
-    assert_backend_auth(cell, replay)
+    if not getattr(ALL_SCENARIOS[cell.scenario], "rejected", False):
+        assert_backend_auth(cell, replay)
 
 
 # --- the gateway answers exactly as the library does ---------------------------
@@ -244,8 +299,12 @@ async def library_answer(library, cell: Cell):
     its message in the form the gateway shows clients."""
     library.use(cell.backend, cell.scenario, cell.form)
     method = getattr(library.client, INGRESS_CALLS[cell.ingress][2])
+    body = request_body(cell)
+    # thinking_unsupported tests the drop path (Phase 12 item 3).
+    if "thinking_unsupported" in cell.scenario:
+        body["drop_params"] = True
     try:
-        result = await method(**request_body(cell))
+        result = await method(**body)
     except APIStatusError as e:
         target = Target(grid_alias(model(cell)), model(cell), None, None, None)
         return client_status(e), public_message(e.message, target)

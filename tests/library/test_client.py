@@ -26,6 +26,7 @@ from model_calling.errors import (
 )
 from model_calling.library import Client
 from model_calling.library._sync import ClosedError
+from model_calling.providers import DEFAULT_TIMEOUT
 from model_calling.types.chat import ChatCompletion
 from model_calling.types.messages import Message
 from tests.harness.replay import Exchange, ReplayTransport, fixture_path
@@ -70,9 +71,9 @@ def mock(handler) -> httpx.MockTransport:
 
 @pytest.mark.parametrize(
     "model, match",
-    [("cohere/x", "no provider for 'cohere/x'"), ("bogus/x", "no provider")],
+    [("cohere_v1/x", "no provider for 'cohere_v1/x'"), ("bogus/x", "no provider")],
 )
-async def test_unported_prefix_is_bad_request(model, match):
+async def test_unknown_prefix_is_bad_request(model, match):
     async with Client() as client:
         with pytest.raises(BadRequestError, match=match) as err:
             await client.acompletion(model, USER)
@@ -108,6 +109,21 @@ async def test_per_call_api_base_and_key_override_config():
             **body("text", BACKENDS["vllm"]), api_base=VLLM_URL, api_key="call-key"
         )
     assert transport.requests[0].headers["authorization"] == "Bearer call-key"
+
+
+@pytest.mark.parametrize(
+    "config_timeout, call_timeout, expected",
+    [(None, None, DEFAULT_TIMEOUT), (12.0, None, 12.0), (12.0, 3.0, 3.0), (None, 3.0, 3.0)],
+    ids=["default", "per_prefix", "per_call_wins", "per_call"],
+)
+async def test_request_timeout_from_config_and_call(config_timeout, call_timeout, expected):
+    transport = replay("text")
+    config = {"ollama": {**OLLAMA.gateway_config, "transport": transport}}
+    if config_timeout is not None:
+        config["ollama"]["timeout"] = config_timeout
+    async with Client(config=config) as client:
+        await client.acompletion(**body("text"), timeout=call_timeout)
+    assert set(transport.requests[0].extensions["timeout"].values()) == {expected}
 
 
 async def test_client_callbacks_run_before_prefix_callbacks():

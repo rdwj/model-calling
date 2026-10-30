@@ -66,6 +66,11 @@ class AnthropicProvider(Provider):
             for name in ("seed", "presence_penalty", "frequency_penalty")
             if getattr(request, name) is not None
         ]
+        # Chat Completions extras that Anthropic doesn't support.
+        chat_extras = request.extras_for("openai_chat")
+        for name in ("logprobs", "logit_bias", "user"):
+            if chat_extras.get(name) is not None:
+                names.append(name)
         fmt = request.response_format
         if fmt is not None and fmt.type == "json_object":
             # Messages constrains output only to a schema.
@@ -116,6 +121,11 @@ class AnthropicProvider(Provider):
         ):
             # vLLM ends a forced tool call with end_turn; Anthropic says tool_use.
             response.stop_reason = "tool_use"
+        # Pass through stop_details and container from the wire.
+        if body.get("stop_details") is not None:
+            response.stop_details = body["stop_details"]
+        if body.get("container") is not None:
+            response.container = body["container"]
         return response
 
     def stream_parser(self) -> StreamParser:

@@ -330,7 +330,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 ```
 
-The gateway serves `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/embeddings`, and `GET /v1/models`. See the [API reference](api-reference.md) for details.
+The gateway serves `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses` (stateless), `POST /v1/embeddings`, and `GET /v1/models`. See the [API reference](api-reference.md) for details.
 
 ## Next steps
 

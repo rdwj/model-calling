@@ -80,11 +80,11 @@ def _part_in(part: dict) -> Any:
         image_url = dict(part["image_url"])
         url = image_url.pop("url")
         extras = {FORMAT: image_url} if image_url else {}
-        return Image(source=_image_source(url), extras=extras)
+        return Image(source=image_source(url), extras=extras)
     return Opaque(format=FORMAT, data=part)
 
 
-def _image_source(url: str) -> Base64Source | UrlSource:
+def image_source(url: str) -> Base64Source | UrlSource:
     if url.startswith(_DATA_URL_PREFIX) and _BASE64_MARKER in url:
         media_type, data = url[len(_DATA_URL_PREFIX) :].split(_BASE64_MARKER, 1)
         return Base64Source(media_type=media_type, data=data)

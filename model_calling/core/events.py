@@ -82,6 +82,10 @@ class MessageDelta(CoreModel):
     stop_reason: StopReason | None = None
     stop_sequence: str | None = None
     usage: Usage | None = None
+    # Anthropic-specific fields: container info and structured refusal details.
+    # Kept as dicts since they're format-specific and passed through verbatim.
+    stop_details: dict[str, Any] | None = None
+    container: dict[str, Any] | None = None
 
 
 class MessageStop(CoreModel):

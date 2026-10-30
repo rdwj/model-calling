@@ -1,0 +1,110 @@
+{
+  "meta": {
+    "backend": "openrouter_responses",
+    "scenario": "reasoning_effort",
+    "recorded_at": "2026-10-30T00:03:51+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/responses",
+    "json": {
+      "model": "openai/gpt-oss-20b",
+      "input": "What is 17 * 23? Reply with just the number.",
+      "max_output_tokens": 2048,
+      "reasoning": {
+        "effort": "low"
+      },
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json",
+    "json": {
+      "id": "gen-1793318631-8jmUnmfPS1tMJnE1e288",
+      "object": "response",
+      "created_at": 1793318631,
+      "model": "openai/gpt-oss-20b",
+      "status": "completed",
+      "completed_at": 1793318631,
+      "output": [
+        {
+          "id": "rs_tmp_79p3wpx0pm8",
+          "type": "reasoning",
+          "status": "completed",
+          "content": [
+            {
+              "type": "reasoning_text",
+              "text": "Multiply: 17*23 = 391."
+            }
+          ],
+          "summary": [],
+          "format": "unknown"
+        },
+        {
+          "id": "msg_tmp_wdiykvso6",
+          "type": "message",
+          "role": "assistant",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "391",
+              "annotations": [],
+              "logprobs": []
+            }
+          ]
+        }
+      ],
+      "error": null,
+      "incomplete_details": null,
+      "tools": [],
+      "tool_choice": "auto",
+      "parallel_tool_calls": true,
+      "max_output_tokens": 2048,
+      "temperature": 1,
+      "top_p": 1,
+      "presence_penalty": 0,
+      "frequency_penalty": 0,
+      "top_logprobs": 0,
+      "max_tool_calls": null,
+      "metadata": {},
+      "background": false,
+      "previous_response_id": null,
+      "service_tier": "auto",
+      "truncation": "disabled",
+      "store": false,
+      "instructions": null,
+      "text": {
+        "format": {
+          "type": "text"
+        }
+      },
+      "reasoning": {
+        "effort": "low"
+      },
+      "safety_identifier": null,
+      "prompt_cache_key": null,
+      "prompt_cache_options": null,
+      "usage": {
+        "input_tokens": 81,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 21,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 102,
+        "cost": 3.72e-06,
+        "is_byok": false,
+        "cost_details": {
+          "upstream_inference_cost": 3.72e-06,
+          "upstream_inference_input_cost": 1.62e-06,
+          "upstream_inference_output_cost": 2.1e-06
+        }
+      }
+    }
+  }
+}

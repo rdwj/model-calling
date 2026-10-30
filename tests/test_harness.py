@@ -18,7 +18,9 @@ from tests.harness.scenarios import (
     EMBEDDING_BACKENDS,
     EMBEDDING_SCENARIOS,
     GRID_BACKENDS,
+    CAPITAL_SCHEMA,
     MESSAGES,
+    RESPONSES,
     SCENARIOS,
     SEED,
     recorded_scenarios,
@@ -149,8 +151,9 @@ SECRET_PATTERNS = [
 
 
 def test_per_form_fixtures_are_exactly_the_needed_ones():
-    """A Chat Completions-form fixture exists only where its body differs
-    from the default form's, so one left behind after the two converge fails."""
+    """A per-form fixture exists only where its body differs from every
+    earlier form's, so one left behind after the forms converge fails, as
+    does a Responses form whose body no recorded form sends."""
     from tests.harness.record import _fixture_names
 
     expected = {
@@ -160,7 +163,10 @@ def test_per_form_fixtures_are_exactly_the_needed_ones():
         for _, fixture in _fixture_names(b, s)
         if fixture != s.name
     }
-    assert set(FIXTURES_DIR.glob(f"*/*.{CHAT_COMPLETIONS}.json")) == expected
+    per_form = {
+        p for form in (CHAT_COMPLETIONS, RESPONSES) for p in FIXTURES_DIR.glob(f"*/*.{form}.json")
+    }
+    assert per_form == expected
 
 
 def test_every_grid_cell_has_a_fixture():
@@ -227,6 +233,32 @@ NATIVE_FIELDS = [
         ("tools", 1, "input_schema"),
         {"type": "object", "properties": {}},
     ),
+    # And Cohere v2 in its own (https://docs.cohere.com/reference/chat).
+    ("tool_required", ("cohere",), ("tool_choice",), "REQUIRED"),
+    ("tool_strict", ("cohere",), ("strict_tools",), True),
+    (
+        "tool_parameterless",
+        ("cohere",),
+        ("tools", 1, "function", "parameters"),
+        {"type": "object", "properties": {}},
+    ),
+    ("max_completion_tokens", ("cohere",), ("max_tokens",), 256),
+    ("max_completion_tokens", ("cohere",), ("seed",), SEED),
+    ("system_blocks", ("cohere",), ("messages", 0, "role"), "system"),
+    ("system_blocks", ("cohere",), ("stop_sequences",), ["###"]),
+    ("thinking", ("cohere",), ("thinking",), {"type": "enabled", "token_budget": 1024}),
+    (
+        "json_schema",
+        ("cohere",),
+        ("response_format",),
+        {"type": "json_object", "json_schema": CAPITAL_SCHEMA},
+    ),
+    (
+        "tool_error",
+        ("cohere",),
+        ("messages", 1, "tool_calls", 0, "function", "arguments"),
+        '{"location": "Paris"}',
+    ),
 ]
 # Ollama takes sampling settings under `options`.
 OLLAMA_OPTION_FIELDS = {"seed": "seed", "max_tokens": "num_predict"}
@@ -263,6 +295,27 @@ def test_messages_reach_a_messages_backend_unchanged(scenario):
     backend = BACKENDS["vllm_messages"]
     model = backend.native_model_for(scenario)
     assert backend.native_request(scenario, MESSAGES) == scenario.messages_body(model)
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        s
+        for s in SCENARIOS.values()
+        if s.responses_form
+        and not s.rejected
+        and BACKENDS["openrouter_responses"].runs(s)
+        and s.name != "store"  # stateless: store: true becomes false
+    ],
+    ids=lambda s: s.name,
+)
+def test_responses_reach_a_responses_backend_unchanged(scenario):
+    """Responses in, Responses out is a pass-through: the body a Responses
+    client sends is the body the backend gets, model name aside. Strict
+    replay proves the grid's Responses cells send this body."""
+    backend = BACKENDS["openrouter_responses"]
+    model = backend.native_model_for(scenario)
+    assert backend.native_request(scenario, RESPONSES) == scenario.responses_body(model)
 
 
 @pytest.mark.parametrize("path", ALL_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.stem}")
@@ -342,3 +395,12 @@ def test_recorder_reads_vllm_base_url_as_the_api_root(monkeypatch, backend, base
     monkeypatch.setenv("VLLM_BASE_URL", base_url)
     monkeypatch.setenv("VLLM_MODEL", "deployed-model")
     assert _target(ALL_BACKENDS[backend]).url == expected
+
+
+def test_recorder_skips_hand_built_backends(capsys):
+    """No key exists for a hand-built backend; the recorder must not send
+    its requests (unauthenticated) and save the refusal as a fixture."""
+    from tests.harness.record import main
+
+    assert main(["--backend", "cohere", "--backend", "cohere_embed", "--force"]) == 0
+    assert capsys.readouterr().out.count("hand-built fixtures") == 2

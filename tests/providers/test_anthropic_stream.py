@@ -317,3 +317,23 @@ def test_message_delta_stop_sequence():
     )
     msg_delta = [e for e in evts if isinstance(e, MessageDelta)][0]
     assert msg_delta.stop_sequence == "STOP"
+
+
+def test_message_delta_stop_details_and_container():
+    """stop_details and container pass through from the wire (Phase 12 item 2)."""
+    stop_details = {"context_window_exceeded": {"input_tokens": 5000}}
+    container = {"type": "project", "id": "proj_123"}
+    evts = events(
+        START,
+        {
+            "type": "message_delta",
+            "delta": {
+                "stop_reason": "end_turn",
+                "stop_details": stop_details,
+                "container": container,
+            },
+        },
+    )
+    msg_delta = [e for e in evts if isinstance(e, MessageDelta)][0]
+    assert msg_delta.stop_details == stop_details
+    assert msg_delta.container == container
