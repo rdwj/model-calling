@@ -16,6 +16,7 @@ from model_calling.providers.openai_compat import (
     OpenRouterProvider,
     VLLMProvider,
 )
+from model_calling.providers.openrouter_responses import OpenRouterResponsesProvider
 
 # Model-name prefix -> provider. Unprefixed names default to Ollama.
 PROVIDERS: dict[str, type[Provider]] = {
@@ -23,6 +24,7 @@ PROVIDERS: dict[str, type[Provider]] = {
     "ollama": OllamaProvider,
     "openai": OpenAIProvider,
     "openrouter": OpenRouterProvider,
+    "openrouter_responses": OpenRouterResponsesProvider,
     "vllm": VLLMProvider,
 }
 DEFAULT_PREFIX = "ollama"
@@ -49,6 +51,10 @@ def default_configs(environ: Mapping[str, str] = os.environ) -> dict[str, dict]:
             "headers": {"OpenAI-Organization": org} if org else {},
         },
         "openrouter": {
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": environ.get("OPENROUTER_API_KEY", ""),
+        },
+        "openrouter_responses": {
             "base_url": "https://openrouter.ai/api/v1",
             "api_key": environ.get("OPENROUTER_API_KEY", ""),
         },
@@ -98,6 +104,7 @@ __all__ = [
     "OpenAICompatProvider",
     "OpenAIProvider",
     "OpenRouterProvider",
+    "OpenRouterResponsesProvider",
     "PROVIDERS",
     "Provider",
     "StreamParser",

@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "backend": "openrouter_responses",
+    "scenario": "stream_tools",
+    "recorded_at": "2026-10-30T00:03:53+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/responses",
+    "json": {
+      "model": "mistralai/mistral-nemo",
+      "input": "Use the get_weather tool to look up the weather in Paris.",
+      "tools": [
+        {
+          "type": "function",
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "City name"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          },
+          "strict": null
+        }
+      ],
+      "max_output_tokens": 256,
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "text/event-stream",
+    "lines": [
+      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"gen-1793318632-eXBNCrMpRNqb4wTgZ17A\",\"object\":\"response\",\"created_at\":1793318632,\"model\":\"mistralai/mistral-nemo\",\"status\":\"in_progress\",\"completed_at\":null,\"output\":[],\"error\":null,\"incomplete_details\":null,\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather for a city\",\"strict\":null,\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name\"}},\"required\":[\"location\"]}}],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"max_output_tokens\":256,\"temperature\":1,\"top_p\":1,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"max_tool_calls\":null,\"metadata\":{},\"background\":false,\"previous_response_id\":null,\"service_tier\":\"auto\",\"truncation\":\"disabled\",\"store\":false,\"instructions\":null,\"text\":{\"format\":{\"type\":\"text\"}},\"reasoning\":null,\"safety_identifier\":null,\"prompt_cache_key\":null,\"prompt_cache_options\":null,\"usage\":null},\"sequence_number\":0}",
+      "",
+      "data: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"gen-1793318632-eXBNCrMpRNqb4wTgZ17A\",\"object\":\"response\",\"created_at\":1793318632,\"model\":\"mistralai/mistral-nemo\",\"status\":\"in_progress\",\"completed_at\":null,\"output\":[],\"error\":null,\"incomplete_details\":null,\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather for a city\",\"strict\":null,\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name\"}},\"required\":[\"location\"]}}],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"max_output_tokens\":256,\"temperature\":1,\"top_p\":1,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"max_tool_calls\":null,\"metadata\":{},\"background\":false,\"previous_response_id\":null,\"service_tier\":\"auto\",\"truncation\":\"disabled\",\"store\":false,\"instructions\":null,\"text\":{\"format\":{\"type\":\"text\"}},\"reasoning\":null,\"safety_identifier\":null,\"prompt_cache_key\":null,\"prompt_cache_options\":null,\"usage\":null},\"sequence_number\":1}",
+      "",
+      "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_tmp_leaeksicrk\",\"type\":\"function_call\",\"status\":\"in_progress\",\"call_id\":\"8azhPkLV9\",\"name\":\"get_weather\",\"arguments\":\"\"},\"sequence_number\":2}",
+      "",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_tmp_leaeksicrk\",\"delta\":\"{\\\"\",\"sequence_number\":3}",
+      "",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_tmp_leaeksicrk\",\"delta\":\"location\",\"sequence_number\":4}",
+      "",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_tmp_leaeksicrk\",\"delta\":\"\\\":\",\"sequence_number\":5}",
+      "",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_tmp_leaeksicrk\",\"delta\":\" \\\"\",\"sequence_number\":6}",
+      "",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_tmp_leaeksicrk\",\"delta\":\"Paris\",\"sequence_number\":7}",
+      "",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_tmp_leaeksicrk\",\"delta\":\"\\\"}\",\"sequence_number\":8}",
+      "",
+      "data: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"item_id\":\"fc_tmp_leaeksicrk\",\"name\":\"get_weather\",\"arguments\":\"{\\\"location\\\": \\\"Paris\\\"}\",\"sequence_number\":9}",
+      "",
+      "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"fc_tmp_leaeksicrk\",\"type\":\"function_call\",\"status\":\"completed\",\"call_id\":\"8azhPkLV9\",\"name\":\"get_weather\",\"arguments\":\"{\\\"location\\\": \\\"Paris\\\"}\"},\"sequence_number\":10}",
+      "",
+      "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"gen-1793318632-eXBNCrMpRNqb4wTgZ17A\",\"object\":\"response\",\"created_at\":1793318632,\"model\":\"mistralai/mistral-nemo\",\"status\":\"completed\",\"completed_at\":1793318633,\"output\":[{\"id\":\"fc_tmp_leaeksicrk\",\"type\":\"function_call\",\"status\":\"completed\",\"call_id\":\"8azhPkLV9\",\"name\":\"get_weather\",\"arguments\":\"{\\\"location\\\": \\\"Paris\\\"}\"}],\"error\":null,\"incomplete_details\":null,\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather for a city\",\"strict\":null,\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name\"}},\"required\":[\"location\"]}}],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"max_output_tokens\":256,\"temperature\":1,\"top_p\":1,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"max_tool_calls\":null,\"metadata\":{},\"background\":false,\"previous_response_id\":null,\"service_tier\":\"auto\",\"truncation\":\"disabled\",\"store\":false,\"instructions\":null,\"text\":{\"format\":{\"type\":\"text\"}},\"reasoning\":null,\"safety_identifier\":null,\"prompt_cache_key\":null,\"prompt_cache_options\":null,\"usage\":{\"input_tokens\":86,\"input_tokens_details\":{\"cached_tokens\":16},\"output_tokens\":21,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":107,\"cost\":0.0000017856,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.0000017856,\"upstream_inference_input_cost\":0.000001332,\"upstream_inference_output_cost\":4.536e-7}}},\"sequence_number\":11}",
+      "",
+      "data: [DONE]",
+      ""
+    ]
+  }
+}

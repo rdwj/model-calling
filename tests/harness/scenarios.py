@@ -25,6 +25,7 @@ from model_calling.providers import (
     AnthropicProvider,
     OllamaProvider,
     OpenRouterProvider,
+    OpenRouterResponsesProvider,
     Provider,
     VLLMProvider,
 )
@@ -548,6 +549,7 @@ class Backend:
             and scenario.name not in self.refuses
             and (self.only_scenarios is None or scenario.name in self.only_scenarios)
             and (scenario.only_backends is None or self.name in scenario.only_backends)
+            and (self.speaks != RESPONSES or scenario.responses_form)
         )
 
     def unsupported(self, scenario: Scenario) -> Optional[str]:
@@ -571,8 +573,9 @@ class Backend:
         """The form the native body is built from, for an ingress sending
         `form`. A Chat Completions backend always uses the scenario's native
         form, and strict replay proves the other form sends the same body."""
-        if self.speaks != MESSAGES:
+        if self.speaks == CHAT_COMPLETIONS:
             return scenario.native_form
+        # Messages and Responses backends use the form they're sent.
         if form in scenario.forms:
             return form
         return scenario.forms[0]
@@ -677,6 +680,25 @@ BACKENDS = {
             capability_models={
                 VISION: OPENROUTER_VISION_MODEL,
                 REASONING: OPENROUTER_REASONING_MODEL,
+            },
+        ),
+        Backend(
+            name="openrouter_responses",
+            gateway_model="openrouter_responses/mistralai/mistral-nemo",
+            native_model="mistralai/mistral-nemo",
+            missing_native_model="model-calling/does-not-exist",
+            endpoint=f"{OPENROUTER_URL}/responses",
+            config_prefix="openrouter_responses",
+            gateway_config={"base_url": OPENROUTER_URL, "api_key": REPLAY_API_KEY},
+            needs_openrouter_key=True,
+            provider=OpenRouterResponsesProvider,
+            speaks=RESPONSES,
+            capability_models={
+                VISION: OPENROUTER_VISION_MODEL,
+                REASONING: OPENROUTER_REASONING_MODEL,
+            },
+            refuses={
+                "parallel_tools_off": ("parallel_tool_calls",),
             },
         ),
         Backend(

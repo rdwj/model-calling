@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "backend": "openrouter_responses",
+    "scenario": "backend_error",
+    "recorded_at": "2026-10-30T00:03:46+00:00",
+    "recorder": "tests/harness/record.py"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/responses",
+    "json": {
+      "model": "model-calling/does-not-exist",
+      "input": "Reply with exactly one word: pong",
+      "max_output_tokens": 256,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 400,
+    "content_type": "application/json",
+    "json": {
+      "error": {
+        "message": "model-calling/does-not-exist is not a valid model ID",
+        "code": 400
+      },
+      "user_id": "scrubbed"
+    }
+  }
+}

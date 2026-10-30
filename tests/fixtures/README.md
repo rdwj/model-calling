@@ -12,6 +12,7 @@ really returns even where our translation is broken.
 | --- | --- | --- |
 | `ollama` | local Ollama, `/api/chat` | `qwen3:4b` |
 | `openai_compat` | OpenRouter, `/api/v1/chat/completions` | `mistralai/mistral-nemo` |
+| `openrouter_responses` | OpenRouter, `/api/v1/responses` | `mistralai/mistral-nemo` |
 | `vllm` | vLLM 0.24 on OpenShift AI, `/v1/chat/completions` | `gpt-oss-20b` |
 | `vllm_messages` | the same vLLM, `/v1/messages` | `gpt-oss-20b` |
 | `ollama_embed` | local Ollama 0.40, `/api/embed` | `nomic-embed-text` |
@@ -65,6 +66,10 @@ Places where OpenRouter's responses don't match the official SDK types:
   `usage.input_tokens_details` omits `cache_write_tokens`, which
   `openai.types.responses.ResponseUsage` requires as of `openai` 3.35.1.
   The live smoke test fills that one field before validating.
+- **Responses API parallel_tool_calls** (`/api/v1/responses`, checked 2026-10-29):
+  `parallel_tool_calls: false` is accepted in the request but not honored;
+  mistralai/mistral-nemo returns parallel tool calls anyway. The
+  `openrouter_responses` backend refuses this scenario.
 
 ## vLLM divergences
 
