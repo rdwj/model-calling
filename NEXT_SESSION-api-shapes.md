@@ -10,102 +10,14 @@
 > same evening when PR #9 merged to `main` (`f9806bb`).
 > 0.3.0 released to PyPI 2026-10-29 (`9c46d41`); the sanicode pilot
 > (rdwj/sanicode#243) merged and #7 closed; friction filed as #10 and #11.
-> Left: #6, #10, #11 (milestone 0.3.0), planned below as Session D.
+> Session D (2026-10-30) closed #6, #10, #11, and #8 and released 0.3.1.
+> **The epic is done.** What remains is the `/retro`.
 
-## Next: Session D, close the epic (#10, #11, #6) as 0.3.1
+## Next: retro, then pick the next epic
 
-Fix the two pilot friction issues and write the LiteLLM migration doc in an
-unattended Workflow, then run #6's cluster checks interactively with rdwj
-and, on his go, release 0.3.1. When this lands, every epic issue is closed.
-
-**Part 1: Workflow (unattended, offline, no live spend).** Three streams off
-`batch/0.3.1` (branched from `main`), each on its own `stream/*` branch in a
-worktree: Opus implements, a separate agent reviews (Sonnet for 1 and 2,
-Opus for 3).
-
-1. **#10 — Ollama `/v1` base URL fails with a bare 404** (decided 2026-10-29:
-   refuse + URL in 404s). The `ollama` prefix raises `BadRequestError` up
-   front when `base_url` ends in `/v1`, saying the prefix wants the server
-   root and `openai/` serves Ollama's OpenAI-compatible endpoint. Every
-   provider's 404 `APIError` message names the request URL (scrub nothing
-   secret: URLs carry no keys here, but check the gateway's error scrubbing
-   still hides backend URLs from gateway clients). Grid cells or tests for
-   both; API reference updated. `providers/ollama.py`, `providers/base.py`.
-2. **#11 — `OPENAI_ORG_ID` header follows `api_base`** (decided 2026-10-29:
-   both). The default `OpenAI-Organization` header goes only to calls on the
-   prefix's configured base URL, not a per-call `api_base`; and every call
-   method (sync and async: completion, messages, responses, embedding, and
-   the module-level wrappers) takes `extra_headers`, merged last, as the
-   openai SDK names it. Tests assert the wire headers. `library/client.py`
-   is already ~580 lines: move code out (e.g. to `library/_calls.py`) rather
-   than grow it.
-3. **#6 item 1 — "Migrating from LiteLLM" doc.** Fold the "Upgrading from
-   0.1.x" section of `docs/migration-guide.md` into a guide for LiteLLM users
-   listing every intentional difference (strict by default vs drop_params,
-   prefixes, typed SDK responses, error hierarchy, gateway aliases and the
-   body fields it refuses, JSON key order, timeout). Clean room: names and
-   call patterns only, from model-calling's own code and docs; do not read
-   LiteLLM source or docs (CONTRIBUTING "Independent Implementation"). Every
-   claim about model-calling cites code or a test; the reviewer checks each.
-   Prose follows rdwj's house style (`writing-voice` skill).
-
-**Part 2: Interactive (rdwj present).**
-
-4. **#6 items 2–4.** Find the existing vLLM server read-only (`oc get
-   inferenceservice,servingruntime,deploy -A --context=<ctx>` on a context
-   rdwj confirms), check its version serves `/v1/messages`, and run the
-   `anthropic` provider against it (record the result; add a `-m live`-style
-   test only if rdwj wants it). Then, each after asking: remote amd64 build
-   on ec2-dev-2 via the `remote-builder` agent, the compose alias-swap check
-   on that image, and the ConfigMap hot-reload check (`docs/advanced.md`
-   "Model Aliases") in a namespace rdwj names.
-5. **Release 0.3.1** from `main` once `batch/0.3.1` merges: bump, release
-   notes, publish, fresh-venv smoke (pip, not uv, for the first minutes).
-   Then drop sanicode's two workarounds (Ollama `/v1` strip, org header
-   clearing) on a sanicode branch by PR, pinned `model-calling>=0.3.1,<0.4`.
-
-**Sequencing.** Streams 1–3 run in parallel; merge order 2, 1, 3 (2 touches
-the most shared code). Part 2 starts after the draft PR is green.
-
-**Constraints for the session:**
-- Offline only in Part 1: no `-m live`, no network beyond package installs.
-- Strict xfails stay the bug list; no new xfails without a named owner.
-- Workflow size: one implementer and one reviewer per stream (6 agents);
-  a stream that fails review gets at most one fix pass (2 more agents).
-
-**Session start protocol:**
-- Premise checks (report before acting): `main` = `origin/main` at or after
-  the Session C summary commit, Test Package green; #10, #11, #6 open and
-  unchanged since 2026-10-30; no `batch/0.3.1` branch; offline suite 2494
-  passed, 35 xfailed; PyPI latest is 0.3.0.
-- Rules with history:
-  - Session B's implementer ran past its spend cap and its Sonnet Cohere pass
-    failed spec review: Part 1 has no live spend, and implementers are Opus.
-  - Anything the decisions above don't cover stops that stream and is
-    reported, not decided by the agent.
-- Stop-and-ask before: the remote build, any cluster write (each namespace,
-  each `oc apply`), deleting anything on a cluster the session didn't
-  create, pushing to `main`, creating the `v0.3.1` release.
-- Close ritual: session summary with per-stream outcomes and suite counts;
-  close #10, #11, #6 (each box's result recorded) and #8; then `/retro` on
-  the epic.
-
-**Loop design (Part 1):**
-- **Exit predicate:** all three streams merged onto `batch/0.3.1` with a
-  review verdict of no must-fix, and the draft PR's Test Package green.
-- **Max iterations:** one fix pass per stream; a stream still failing review
-  stays on its branch as WIP and is reported.
-- **Per-item verifier:** offline suite green with no new xfails, `flake8`
-  (CI selection) and `black --check` clean, gitleaks clean on the diff;
-  stream 3 also needs every model-calling claim mapped to a file or test.
-- **Premise to re-validate each pass:** `batch/0.3.1` still fast-forwards
-  from the stream's base (rebase before merge), and the issue is still open.
-- **Maker ≠ checker:** worktree per stream; the reviewer is a fresh agent
-  given the issue, the decision above, and the diff, not the implementer's
-  summary. Merges run as a shell script (rebase, suite, lint) between
-  agent runs; write it as `scripts/merge-stream.sh` if it isn't committed.
-- **If stuck:** report the stream as WIP with its open findings and go on to
-  Part 2 with what merged.
+Every epic issue is closed and 0.3.1 is on PyPI. Run `/retro` on the epic, then `/plan-epics`.
+The out-of-scope list below and the Session B carries ("What landed" below) are the
+candidates. sanicode's follow-up PR (rdwj/sanicode#244) awaits rdwj's merge.
 
 ## Remaining epic phases
 
@@ -311,7 +223,15 @@ suite passes with LiteLLM removed from its dependencies.
 - Granite Guardian / moderation rework
 - FIPS container validation (`fips-todo.md`)
 
-## What landed last session (2026-10-29): Session C, 0.3.0 and the sanicode pilot
+## What landed last session (2026-10-30): Session D, 0.3.1, epic closed
+
+#10, #11, and the LiteLLM guide merged through PR #12 (`ccccede`) after a Workflow and one
+approved follow-up round; 0.3.1 released (`c6c34c2`). #6's cluster checks passed on OpenShift
+(vLLM `/v1/messages`, amd64 image built in-cluster, ConfigMap hot reload). sanicode drops its
+org-header workaround (rdwj/sanicode#244) and keeps its `/v1` strip. Offline 2598 passed,
+35 xfailed. No live spend. Record: `session-summaries/2026-10-30-api-shapes-session-d.md`.
+
+## What landed earlier (2026-10-29): Session C, 0.3.0 and the sanicode pilot
 
 `model-calling==0.3.0` is on PyPI (`9c46d41`, release `v0.3.0`); a fresh 3.11
 venv runs `acompletion` and `amessages`. sanicode runs on it with LiteLLM
